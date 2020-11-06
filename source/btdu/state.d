@@ -1,3 +1,20 @@
+/*  Copyright (C) 2020  Vladimir Panteleev <btdu@cy.md>
+ *
+ *  This program is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU Affero General Public License as
+ *  published by the Free Software Foundation, either version 3 of the
+ *  License, or (at your option) any later version.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU Affero General Public License for more details.
+ *
+ *  You should have received a copy of the GNU Affero General Public License
+ *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ */
+
+/// Global state definitions
 module btdu.state;
 
 import std.exception;
@@ -38,11 +55,14 @@ shared Object mutex = new Object;
 
 private shared GlobalState theGlobalState;
 
+/// Perform an operation while holding the global state.
 T withGlobalState(T)(scope T delegate(ref GlobalState) dg)
 {
 	synchronized(mutex) return dg(*cast(GlobalState*)&theGlobalState);
 }
 
+/// Performs memoized recursive resolution of the path for a btrfs
+/// root object.
 GlobalPath* getRoot(__u64 rootID)
 {
 	if (rootID == BTRFS_FS_TREE_OBJECTID)

@@ -1,3 +1,20 @@
+/*  Copyright (C) 2020  Vladimir Panteleev <btdu@cy.md>
+ *
+ *  This program is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU Affero General Public License as
+ *  published by the Free Software Foundation, either version 3 of the
+ *  License, or (at your option) any later version.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU Affero General Public License for more details.
+ *
+ *  You should have received a copy of the GNU Affero General Public License
+ *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ */
+
+/// Path manipulation and storage
 module btdu.paths;
 
 import ae.utils.aa;
@@ -6,6 +23,7 @@ import std.string;
 
 import btdu.state : GlobalState;
 
+/// Common definitions for a deduplicated trie for paths.
 mixin template SimplePath()
 {
 	/// Parent directory name
@@ -105,6 +123,15 @@ struct SubPath
 }
 
 /// Global path (spanning multiple trees)
+/// This is to allow efficiently representing paths where the prefix
+/// (subvolume path) varies, e.g.:
+/// - /@root/usr/lib/libfoo.so.1.0.0
+/// - /backups/@root-20200101000000/usr/lib/libfoo.so.1.0.0
+/// - /backups/@root-20200102000000/usr/lib/libfoo.so.1.0.0
+/// etc.
+/// Here we can store /backups/@root-20200102000000 etc. as one
+/// SubPath and /usr/lib/libfoo.so.1.0.0 as another, with the
+/// GlobalPath representing a concatenation of the two.
 struct GlobalPath
 {
 	GlobalPath* parent; /// Parent tree (or null if none)

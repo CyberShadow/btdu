@@ -1,3 +1,20 @@
+/*  Copyright (C) 2020  Vladimir Panteleev <btdu@cy.md>
+ *
+ *  This program is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU Affero General Public License as
+ *  published by the Free Software Foundation, either version 3 of the
+ *  License, or (at your option) any later version.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU Affero General Public License for more details.
+ *
+ *  You should have received a copy of the GNU Affero General Public License
+ *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ */
+
+/// btdu entry point
 module btdu.main;
 
 import core.sys.posix.fcntl;
@@ -48,8 +65,8 @@ void program(
 	Sampler[] samplers;
 	foreach (n; 0 .. threads)
 		samplers ~= new Sampler(rndGen.uniform!Seed);
-	
-	Thread.sleep(1.seconds);
+
+	Thread.sleep(10.seconds);
 	withGlobalState((ref g) { g.stop = true; });
 	foreach (sampler; samplers)
 		sampler.join();
