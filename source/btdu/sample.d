@@ -5,6 +5,7 @@ import core.sys.posix.unistd;
 import core.thread;
 
 import std.algorithm.iteration;
+import std.array;
 import std.exception;
 import std.format;
 import std.random;
@@ -85,9 +86,11 @@ private:
 									}
 
 									auto rootGlobalPath = getRoot(root);
-									auto rootAbsolutePath = format!"%s%s"(globalParams.fsPath, *rootGlobalPath);
-									int rootFD = open(rootAbsolutePath.toStringz, O_RDONLY);
-									errnoEnforce(rootFD >= 0, "open:" ~ rootAbsolutePath);
+									static Appender!(char[]) pathBuf;
+									pathBuf.clear();
+									pathBuf.formattedWrite!"%s%s\0"(globalParams.fsPath, *rootGlobalPath);
+									int rootFD = open(pathBuf.data.ptr, O_RDONLY);
+									errnoEnforce(rootFD >= 0, "open:" ~ pathBuf.data[0 .. $-1]);
 									scope(exit) close(rootFD);
 
 									inoPaths(rootFD, inode,
