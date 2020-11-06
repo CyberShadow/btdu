@@ -85,7 +85,9 @@ private:
 										return;
 									}
 
-									auto rootGlobalPath = getRoot(root);
+									static GlobalPath*[u64] rootCache; // Thread-local cache
+									auto rootGlobalPath = rootCache.require(root, getRoot(root));
+
 									static Appender!(char[]) pathBuf;
 									pathBuf.clear();
 									pathBuf.formattedWrite!"%s%s\0"(globalParams.fsPath, *rootGlobalPath);
