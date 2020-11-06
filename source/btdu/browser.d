@@ -78,7 +78,7 @@ void runBrowser()
 				mvprintw(h - 1, 0,
 					" Samples: %lld  Resolution: ~%s",
 					cast(cpp_longlong)currentPath.samples,
-					(globalParams.totalSize / g.browserRoot.samples).humanSize().toStringz()
+					(globalParams.totalSize / (1 + g.browserRoot.samples)).humanSize().toStringz()
 				);
 			attroff(A_REVERSE);
 
