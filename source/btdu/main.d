@@ -46,9 +46,10 @@ void program(
 	Parameter!(string, "Path to the root of the filesystem to analyze") path,
 	Option!(uint, "Number of sampling threads\n (default is number of logical CPUs for this system)", "N", 'j') threads = 0,
 	Switch!("Print fewer messages") quiet = false,
+	Option!(Seed, "Random seed used to choose samples") seed = 0,
 )
 {
-	rndGen = Random(2);
+	rndGen = Random(seed);
 
 	if (!quiet) stderr.writeln("Opening filesystem...");
 	globalParams.fsPath = path;
