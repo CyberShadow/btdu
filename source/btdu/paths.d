@@ -26,7 +26,7 @@ mixin template SimplePath()
 	{
 		if (name)
 		{
-			assert(parent, "Named node without parent");
+			assert(parent !is null, "Named node without parent");
 			assert(parent.children[name] is &this, "Child/parent mismatch");
 		}
 		else // root
