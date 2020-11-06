@@ -107,7 +107,11 @@ private:
 
 									static Appender!(char[]) pathBuf;
 									pathBuf.clear();
-									pathBuf.formattedWrite!"%s%s\0"(globalParams.fsPath, *rootGlobalPath);
+									pathBuf.put(globalParams.fsPath);
+									if (rootGlobalPath)
+										rootGlobalPath.toString(&pathBuf.put!(const(char)[]));
+									pathBuf.put('\0');
+
 									int rootFD = open(pathBuf.data.ptr, O_RDONLY);
 									errnoEnforce(rootFD >= 0, "open:" ~ pathBuf.data[0 .. $-1]);
 									scope(exit) close(rootFD);
