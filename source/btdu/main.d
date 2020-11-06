@@ -35,10 +35,12 @@ import btrfs;
 import btrfs.c.kerncompat;
 import btrfs.c.kernel_shared.ctree;
 
+import btdu.common;
 import btdu.paths;
 import btdu.sample;
 import btdu.state;
 
+@(`Sampling disk usage profiler for btrfs.`)
 void program(
 	Parameter!(string, "Path to the root of the filesystem to analyze") path,
 	Option!(uint, "Number of sampling threads\n (default is number of logical CPUs for this system)", "N", 'j') threads = 0,
@@ -83,4 +85,10 @@ void program(
 	});
 }
 
-mixin main!(funopt!program);
+void usageFun(string usage)
+{
+	stderr.writeln("btdu v" ~ btduVersion);
+	stderr.writeln(usage);
+}
+
+mixin main!(funopt!(program, FunOptConfig.init, usageFun));
