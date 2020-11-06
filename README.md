@@ -1,7 +1,7 @@
 btdu - sampling disk usage profiler for btrfs
 =============================================
 
-[btrfs](https://btrfs.wiki.kernel.org/) is not quite like other filesystems. Some of its advanced features may make it difficult to estimate what your disk space is being used for:
+Some [btrfs](https://btrfs.wiki.kernel.org/) features may make it difficult to estimate what disk space is being used for:
 
 - **Subvolumes** allow cheap copy-on-write snapshots of entire filesystem trees, with data that hasn't been modified being shared among snapshots
 - **File and extent cloning** allow creating cheap copies of files or parts thereof, with extents being stored only once
