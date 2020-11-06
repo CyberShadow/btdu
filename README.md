@@ -42,6 +42,8 @@ Usage
 
 Note that the indicated path must be to the root subvolume (otherwise btdu will be unable to open other subvolumes for inode resolution). If in doubt, mount the filesystem to a new mountpoint with `-o subvol=/,subvolid=5`.
 
+Run `btdu --help` for more usage information.
+
 
 License
 -------
