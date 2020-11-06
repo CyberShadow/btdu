@@ -67,51 +67,53 @@ GlobalPath* getRoot(__u64 rootID)
 {
 	if (rootID == BTRFS_FS_TREE_OBJECTID)
 		return null;
-	return withGlobalState(
-		(ref GlobalState g)
-		{
-			return g.globalRoots.require(
-				rootID,
+	auto pcachedRoot = withGlobalState((ref g) => rootID in g.globalRoots);
+	if (pcachedRoot)
+		return *pcachedRoot;
+	// Intentional cache race so that we don't do I/O with the lock held
+	GlobalPath* result;
+	findRootBackRef(
+		globalParams.fd,
+		rootID,
+		(
+			__u64 parentRootID,
+			__u64 dirID,
+			__u64 sequence,
+			char[] name,
+		) {
+			inoLookup(
+				globalParams.fd,
+				parentRootID,
+				dirID,
+				(char[] dirPath)
 				{
-					// This keeps the global mutex locked while we do I/O,
-					// but that's OK because the number of roots should be
-					// relatively small, and we only need to query them once.
-					GlobalPath* result;
-					findRootBackRef(
-						globalParams.fd,
-						rootID,
-						(
-							__u64 parentRootID,
-							__u64 dirID,
-							__u64 sequence,
-							char[] name,
-						) {
-							inoLookup(
-								globalParams.fd,
-								parentRootID,
-								dirID,
-								(char[] dirPath)
-								{
-									SubPath* subPath = &g.subPathRoot;
-									if (dirPath.length)
-									{
-										enforce(dirPath[$ - 1] == '/',
-											"ino lookup ioctl returned path without trailing /");
-										subPath = subPath.appendPath(g, dirPath[0 .. $-1]);
-									}
-									subPath = subPath.appendName(g, name);
-									// Recursive locking is OK too, D's synchronized blocks are reentrant.
-									auto parentPath = getRoot(parentRootID);
-									assert(result is null, "Multiple root locations");
-									result = new GlobalPath(parentPath, subPath);
-								}
-							);
+					SubPath* subPath = withGlobalState((ref g) {
+						SubPath* subPath = &g.subPathRoot;
+						if (dirPath.length)
+						{
+							enforce(dirPath[$ - 1] == '/',
+								"ino lookup ioctl returned path without trailing /");
+							subPath = subPath.appendPath(g, dirPath[0 .. $-1]);
 						}
-					);
-					assert(result, "Root not found");
-					return result;
-				}(),
+						subPath = subPath.appendName(g, name);
+						return subPath;
+					});
+					// Recursive locking is OK too, D's synchronized blocks are reentrant.
+					auto parentPath = getRoot(parentRootID);
+					assert(result is null, "Multiple root locations");
+					result = new GlobalPath(parentPath, subPath);
+				}
 			);
 		}
 	);
+	assert(result, "Root not found");
+	withGlobalState((ref g) {
+		g.globalRoots.update(rootID,
+			// We are the first
+			{ return result; },
+			// Another thread beat us to it
+			(ref GlobalPath* old) { result = old; },
+		);
+	});
+	return result;
 }
