@@ -11,6 +11,9 @@ import std.random;
 import std.stdio;
 import std.string;
 
+import ae.utils.funopt;
+import ae.utils.main;
+
 import btrfs;
 import btrfs.c.kerncompat;
 import btrfs.c.kernel_shared.ctree;
@@ -19,13 +22,14 @@ import btdu.paths;
 import btdu.sample;
 import btdu.state;
 
-void main(string[] args)
+void program(
+	Parameter!(string, "Path to the root of the filesystem to analyze") path,
+)
 {
 	rndGen = Random(2);
 
 	stderr.writeln("Opening filesystem...");
-	enforce(args.length == 2, "Usage: " ~ args[0] ~ " PATH");
-	globalParams.fsPath = args[1];
+	globalParams.fsPath = path;
 	globalParams.fd = open(globalParams.fsPath.toStringz, O_RDONLY);
 	errnoEnforce(globalParams.fd >= 0, "open");
 
@@ -57,3 +61,5 @@ void main(string[] args)
 		dump(&g.browserRoot, 0);
 	});
 }
+
+mixin main!(funopt!program);
