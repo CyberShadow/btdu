@@ -98,11 +98,9 @@ private:
 									inoPaths(rootFD, inode,
 										(char[] fn)
 										{
-											withGlobalState((ref g) {
-												auto subPath = g.subPathRoot.appendPath(g, fn);
-												auto path = GlobalPath(rootGlobalPath, subPath);
-												allPaths ~= path;
-											});
+											auto subPath = withGlobalState((ref g) => g.subPathRoot.appendPath(g, fn));
+											auto path = GlobalPath(rootGlobalPath, subPath);
+											allPaths ~= path;
 										});
 								});
 						}
