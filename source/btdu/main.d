@@ -35,6 +35,7 @@ import btrfs;
 import btrfs.c.kerncompat;
 import btrfs.c.kernel_shared.ctree;
 
+import btdu.browser;
 import btdu.common;
 import btdu.paths;
 import btdu.sample;
@@ -68,21 +69,12 @@ void program(
 	foreach (n; 0 .. threads)
 		samplers ~= new Sampler(rndGen.uniform!Seed);
 
-	Thread.sleep(10.seconds);
+	runBrowser();
+
 	withGlobalState((ref g) { g.stop = true; });
+	stderr.writeln("Stopping sampling threads...");
 	foreach (sampler; samplers)
 		sampler.join();
-
-	withGlobalState((ref g) {
-		void dump(BrowserPath* p, size_t indent)
-		{
-			writefln("%*s%s [%d]", indent * 2, "", p.name, p.samples);
-			auto children = p.getChildren(g);
-			foreach (childName; children.keys.sort)
-				dump(children[childName], indent + 1);
-		}
-		dump(&g.browserRoot, 0);
-	});
 }
 
 void usageFun(string usage)

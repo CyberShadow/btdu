@@ -17,4 +17,29 @@
 /// Common definitions
 module btdu.common;
 
+import std.format;
+
 enum btduVersion = "0.0.1";
+
+string humanSize(ulong size)
+{
+	static immutable prefixChars = " KMGTPEZY";
+	double fpSize = size;
+	size_t power = 0;
+	while (fpSize > 1024 && power + 1 < prefixChars.length)
+	{
+		fpSize /= 1024;
+		power++;
+	}
+	return format("%3.1f %s%sB", fpSize, prefixChars[power], prefixChars[power] == ' ' ? ' ' : 'i');
+}
+
+struct PointerWriter(T)
+{
+	T* ptr;
+	void toString(scope void delegate(const(char)[]) sink) const
+	{
+		ptr.toString(sink);
+	}
+}
+PointerWriter!T pointerWriter(T)(T* ptr) { return PointerWriter!T(ptr); }
