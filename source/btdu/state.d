@@ -38,7 +38,7 @@ shared Object mutex = new Object;
 
 private shared GlobalState theGlobalState;
 
-T withGlobalState(T)(T delegate(ref GlobalState) dg)
+T withGlobalState(T)(scope T delegate(ref GlobalState) dg)
 {
 	synchronized(mutex) return dg(*cast(GlobalState*)&theGlobalState);
 }
