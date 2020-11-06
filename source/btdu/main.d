@@ -45,22 +45,23 @@ import btdu.state;
 void program(
 	Parameter!(string, "Path to the root of the filesystem to analyze") path,
 	Option!(uint, "Number of sampling threads\n (default is number of logical CPUs for this system)", "N", 'j') threads = 0,
+	Switch!("Print fewer messages") quiet = false,
 )
 {
 	rndGen = Random(2);
 
-	stderr.writeln("Opening filesystem...");
+	if (!quiet) stderr.writeln("Opening filesystem...");
 	globalParams.fsPath = path;
 	globalParams.fd = open(globalParams.fsPath.toStringz, O_RDONLY);
 	errnoEnforce(globalParams.fd >= 0, "open");
 
-	stderr.writeln("Reading chunks...");
+	if (!quiet) stderr.writeln("Reading chunks...");
 	enumerateChunks(globalParams.fd, (u64 offset, const ref btrfs_chunk chunk) {
 		globalParams.chunks ~= GlobalParams.ChunkInfo(offset, chunk);
 	});
 
 	globalParams.totalSize = globalParams.chunks.map!((ref chunk) => chunk.chunk.length).sum;
-	stderr.writefln("Found %d chunks with a total size of %d.", globalParams.chunks.length, globalParams.totalSize);
+	if (!quiet) stderr.writefln("Found %d chunks with a total size of %d.", globalParams.chunks.length, globalParams.totalSize);
 
 	if (threads == 0)
 		threads = totalCPUs;
@@ -72,7 +73,7 @@ void program(
 	runBrowser();
 
 	withGlobalState((ref g) { g.stop = true; });
-	stderr.writeln("Stopping sampling threads...");
+	if (!quiet) stderr.writeln("Stopping sampling threads...");
 	foreach (sampler; samplers)
 		sampler.join();
 }
