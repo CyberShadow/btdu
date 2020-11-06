@@ -24,6 +24,7 @@ import btdu.state;
 
 void program(
 	Parameter!(string, "Path to the root of the filesystem to analyze") path,
+	Option!(uint, "Number of sampling threads\n (default is number of logical CPUs for this system)", "N", 'j') threads = 0,
 )
 {
 	rndGen = Random(2);
@@ -41,8 +42,11 @@ void program(
 	globalParams.totalSize = globalParams.chunks.map!((ref chunk) => chunk.chunk.length).sum;
 	stderr.writefln("Found %d chunks with a total size of %d.", globalParams.chunks.length, globalParams.totalSize);
 
+	if (threads == 0)
+		threads = totalCPUs;
+
 	Sampler[] samplers;
-	foreach (n; 0 .. totalCPUs)
+	foreach (n; 0 .. threads)
 		samplers ~= new Sampler(rndGen.uniform!Seed);
 	
 	Thread.sleep(1.seconds);
