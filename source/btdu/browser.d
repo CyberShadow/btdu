@@ -42,8 +42,15 @@ struct Browser
 	sizediff_t top; // Scroll offset (row number, in the content, corresponding to the topmost displayed line)
 	sizediff_t contentAreaHeight; // Number of rows where scrolling content is displayed
 	string selection;
-	string[] items;
+	string[] items, info;
 	bool done;
+
+	enum Mode
+	{
+		browser,
+		info,
+	}
+	Mode mode;
 
 	void start()
 	{
@@ -77,95 +84,164 @@ struct Browser
 		int h, w;
 		getmaxyx(stdscr, h, w); h++; w++;
 
-		erase();
-
-		if (h < 5 || w < 30)
-		{
-			mvprintw(0, 0, "Window too small");
-			return;
-		}
-
-		attron(A_REVERSE);
-		mvhline(0, 0, ' ', w);
-		mvprintw(0, 0, "btdu v" ~ btduVersion ~ " ~ Use the arrow keys to navigate");
-		mvhline(h - 1, 0, ' ', w);
-		if (message && MonoTime.currTime < showMessageUntil)
-			mvprintw(h - 1, 0, " %s", message.toStringz);
-		else
-		{
-			auto resolution = browserRoot.samples
-				? "~" ~ (totalSize / browserRoot.samples).humanSize()
-				: "-";
-			mvprintw(h - 1, 0,
-				" Samples: %lld  Resolution: %s",
-				cast(cpp_longlong)currentPath.samples,
-				resolution.toStringz()
-			);
-		}
-		attroff(A_REVERSE);
-
-		mvhline(1, 0, '-', w);
-		mvprintw(1, 3,
-			" %s ",
-			text(fsPath.asNormalizedPath, currentPath.pointerWriter).toStringz()
-		);
-
 		items = currentPath.children.keys;
 		items.sort();
 		if (!selection && items.length)
 			selection = items[0];
+		if (!items.length && mode == Mode.browser && currentPath !is &browserRoot)
+			mode = Mode.info;
 
-		contentAreaHeight = h - 3;
-		auto contentHeight = items.length;
-		auto pos = selection && items ? items.countUntil(selection) : 0;
-		// Ensure there is no unnecessary space at the bottom
-		if (top + contentAreaHeight > contentHeight)
-			top = contentHeight - contentAreaHeight;
-		// Ensure we are never scrolled "above" the first row
-		if (top < 0)
-			top = 0;
-		// Ensure the selected item is visible
-		top = top.clamp(
-			pos - contentAreaHeight + 1,
-			pos,
-		);
-
-		auto mostSamples = currentPath.children.byValue.fold!((a, b) => max(a, b.samples))(0UL);
-
-		foreach (i, item; items)
+		// Build info
 		{
-			auto y = cast(int)(i - top);
-			if (y < 0 || y >= contentAreaHeight)
-				continue;
-			y += 2;
+			info = null;
 
-			if (item is selection)
-				attron(A_REVERSE);
-			else
-				attroff(A_REVERSE);
-			mvhline(y, 0, ' ', w);
-
-			auto child = currentPath.children[item];
-			char[10] bar;
-			if (mostSamples)
+			if (!currentPath.seenAs.empty)
 			{
-				auto barPos = 10 * child.samples / mostSamples;
-				bar[0 .. barPos] = '#';
-				bar[barPos .. $] = ' ';
+				info ~= ["", "--- Shares data with:"];
+				foreach (path; currentPath.seenAs.keys.sort)
+					info ~= "- " ~ path.text;
 			}
-			else
-				bar[] = '-';
 
-			auto size = browserRoot.samples
-				? "~" ~ humanSize(child.samples * totalSize / browserRoot.samples)
-				: "?";
-			mvprintw(y, 0,
-				"%12s [%.10s] %c%s",
-				size.toStringz(),
-				bar.ptr,
-				child.children is null ? ' ' : '/',
-				item.toStringz(),
+			if (mode == Mode.info && !info.length)
+			{
+				if (items.length)
+					info ~= "  (no info for this node - press i or q to exit)";
+				else
+					info ~= "  (empty node)";
+			}
+			// TODO: word-wrap info
+		}
+
+		// Scrolling and cursor upkeep
+		{
+			contentAreaHeight = h - 3;
+			size_t contentHeight;
+			final switch (mode)
+			{
+				case Mode.browser:
+					contentHeight = items.length;
+					break;
+				case Mode.info:
+					contentHeight = info.length;
+					break;
+			}
+
+			// Ensure there is no unnecessary space at the bottom
+			if (top + contentAreaHeight > contentHeight)
+				top = contentHeight - contentAreaHeight;
+			// Ensure we are never scrolled "above" the first row
+			if (top < 0)
+				top = 0;
+
+			final switch (mode)
+			{
+				case Mode.browser:
+				{
+					// Ensure the selected item is visible
+					auto pos = selection && items ? items.countUntil(selection) : 0;
+					top = top.clamp(
+						pos - contentAreaHeight + 1,
+						pos,
+					);
+					break;
+				}
+				case Mode.info:
+					break;
+			}
+		}
+
+		// Rendering
+		{
+			erase();
+
+			if (h < 10 || w < 32)
+			{
+				mvprintw(0, 0, "Window too small");
+				refresh();
+				return;
+			}
+
+			attron(A_REVERSE);
+			mvhline(0, 0, ' ', w);
+			mvprintw(0, 0, "btdu v" ~ btduVersion ~ " ~ Use the arrow keys to navigate");
+			mvhline(h - 1, 0, ' ', w);
+			if (message && MonoTime.currTime < showMessageUntil)
+				mvprintw(h - 1, 0, " %s", message.toStringz);
+			else
+			{
+				auto resolution = browserRoot.samples
+					? "~" ~ (totalSize / browserRoot.samples).humanSize()
+					: "-";
+				mvprintw(h - 1, 0,
+					" Samples: %lld  Resolution: %s",
+					cast(cpp_longlong)currentPath.samples,
+					resolution.toStringz()
+				);
+			}
+			attroff(A_REVERSE);
+
+			mvhline(1, 0, '-', w);
+			mvprintw(1, 3,
+				" %s%s ",
+				["".ptr, "INFO: ".ptr][mode],
+				text(fsPath.asNormalizedPath, currentPath.pointerWriter).toStringz()
 			);
+		}
+
+		final switch (mode)
+		{
+			case Mode.browser:
+			{
+				auto mostSamples = currentPath.children.byValue.fold!((a, b) => max(a, b.samples))(0UL);
+
+				foreach (i, item; items)
+				{
+					auto y = cast(int)(i - top);
+					if (y < 0 || y >= contentAreaHeight)
+						continue;
+					y += 2;
+
+					if (item is selection)
+						attron(A_REVERSE);
+					else
+						attroff(A_REVERSE);
+					mvhline(y, 0, ' ', w);
+
+					auto child = currentPath.children[item];
+					char[10] bar;
+					if (mostSamples)
+					{
+						auto barPos = 10 * child.samples / mostSamples;
+						bar[0 .. barPos] = '#';
+						bar[barPos .. $] = ' ';
+					}
+					else
+						bar[] = '-';
+
+					auto size = browserRoot.samples
+						? "~" ~ humanSize(child.samples * totalSize / browserRoot.samples)
+						: "?";
+					mvprintw(y, 0,
+						"%12s [%.10s] %c%s",
+						size.toStringz(),
+						bar.ptr,
+						child.children is null ? ' ' : '/',
+						item.toStringz(),
+					);
+				}
+				break;
+			}
+
+			case Mode.info:
+				foreach (i, line; info)
+				{
+					auto y = cast(int)(i - top);
+					if (y < 0 || y >= contentAreaHeight)
+						continue;
+					y += 2;
+					mvprintw(y, 0, "%s", line.toStringz());
+				}
+				break;
 		}
 
 		refresh();
@@ -190,53 +266,110 @@ struct Browser
 	{
 		auto ch = getch();
 
-		if (ch != ERR)
+		if (ch == ERR)
+			return; // timeout - refresh only
+		else
 			message = null;
-		switch (ch)
+
+		final switch (mode)
 		{
-			case ERR:
-				break; // timeout - refresh only
-			case KEY_LEFT:
-				if (currentPath.parent)
+			case Mode.browser:
+				switch (ch)
 				{
-					selection = currentPath.name;
-					currentPath = currentPath.parent;
+					case KEY_LEFT:
+						if (currentPath.parent)
+						{
+							selection = currentPath.name;
+							currentPath = currentPath.parent;
+							top = 0;
+						}
+						else
+							showMessage("Already at top-level");
+						break;
+					case KEY_RIGHT:
+						if (selection)
+						{
+							currentPath = currentPath.children[selection];
+							selection = null;
+							top = 0;
+						}
+						else
+							showMessage("Nowhere to descend into");
+						break;
+					case KEY_UP:
+						moveCursor(-1);
+						break;
+					case KEY_DOWN:
+						moveCursor(+1);
+						break;
+					case KEY_PPAGE:
+						moveCursor(-contentAreaHeight);
+						break;
+					case KEY_NPAGE:
+						moveCursor(+contentAreaHeight);
+						break;
+					case KEY_HOME:
+						moveCursor(-items.length);
+						break;
+					case KEY_END:
+						moveCursor(+items.length);
+						break;
+					case 'i':
+						mode = Mode.info;
+						top = 0;
+						break;
+					case 'q':
+						done = true;
+						break;
+					default:
+						// TODO: show message
+						break;
 				}
-				else
-					showMessage("Already at top-level");
 				break;
-			case KEY_RIGHT:
-				if (selection)
+
+			case Mode.info:
+				switch (ch)
 				{
-					currentPath = currentPath.children[selection];
-					selection = null;
+					case KEY_LEFT:
+						mode = Mode.browser;
+						if (currentPath.parent)
+						{
+							selection = currentPath.name;
+							currentPath = currentPath.parent;
+							top = 0;
+						}
+						break;
+					case 'q':
+						if (items.length)
+							goto case 'i';
+						else
+							goto case KEY_LEFT;
+					case 'i':
+						mode = Mode.browser;
+						top = 0;
+						break;
+					case KEY_UP:
+						top += -1;
+						break;
+					case KEY_DOWN:
+						top += +1;
+						break;
+					case KEY_PPAGE:
+						top += -contentAreaHeight;
+						break;
+					case KEY_NPAGE:
+						top += +contentAreaHeight;
+						break;
+					case KEY_HOME:
+						top -= info.length;
+						break;
+					case KEY_END:
+						top += info.length;
+						break;
+					default:
+						// TODO: show message
+						break;
 				}
-				else
-					showMessage("Nowhere to descend into");
-				break;
-			case KEY_UP:
-				moveCursor(-1);
-				break;
-			case KEY_DOWN:
-				moveCursor(+1);
-				break;
-			case KEY_PPAGE:
-				moveCursor(-contentAreaHeight);
-				break;
-			case KEY_NPAGE:
-				moveCursor(+contentAreaHeight);
-				break;
-			case KEY_HOME:
-				moveCursor(-items.length);
-				break;
-			case KEY_END:
-				moveCursor(+items.length);
-				break;
-			case 'q':
-				done = true;
-				break;
-			default:
-				// TODO: show message
 				break;
 		}
 	}
