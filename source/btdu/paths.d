@@ -105,8 +105,10 @@ mixin template SimplePath()
 	void toString(scope void delegate(const(char)[]) sink) const
 	{
 		if (parent)
+		{
 			parent.toString(sink);
-		sink("/");
+			sink("/");
+		}
 		sink(name);
 	}
 }
