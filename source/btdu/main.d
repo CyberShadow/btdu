@@ -86,31 +86,26 @@ void program(
 	enum refreshInterval = 500.msecs;
 	auto nextRefresh = startTime + refreshInterval;
 
-	SocketSet[2] sets;
-	foreach (ref set; sets)
-		set = new SocketSet;
+	auto readSet = new SocketSet;
+	auto exceptSet = new SocketSet;
 
 	// Main event loop
 	while (true)
 	{
-		foreach (set; sets)
+		readSet.reset();
+		exceptSet.reset();
+		if (stdinSocket)
 		{
-			set.reset();
-			if (stdinSocket)
-				set.add(stdinSocket);
-			foreach (ref subproc; subprocesses)
-				set.add(subproc.socket);
+			readSet.add(stdinSocket);
+			exceptSet.add(stdinSocket);
 		}
+		foreach (ref subproc; subprocesses)
+			readSet.add(subproc.socket);
 
-		Socket.select(sets[0], null, sets[1]);
+		Socket.select(readSet, null, exceptSet);
 		auto now = MonoTime.currTime();
 
-		if (stdinSocket)
-			enforce(!sets[1].isSet(stdinSocket), "stdin socket error");
-		foreach (ref subproc; subprocesses)
-			enforce(!sets[1].isSet(subproc.socket), "Subprocess socket error");
-
-		if (stdinSocket && sets[0].isSet(stdinSocket))
+		if (stdinSocket && (readSet.isSet(stdinSocket) || exceptSet.isSet(stdinSocket)))
 		{
 			browser.handleInput();
 			if (browser.done)
@@ -119,7 +114,7 @@ void program(
 			nextRefresh = now + refreshInterval;
 		}
 		foreach (ref subproc; subprocesses)
-			if (sets[0].isSet(subproc.socket))
+			if (readSet.isSet(subproc.socket))
 				subproc.handleInput();
 		if (!headless && now > nextRefresh)
 		{
