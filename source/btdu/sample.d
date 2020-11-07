@@ -16,7 +16,7 @@
  * Boston, MA 021110-1307, USA.
  */
 
-/// Sampling thread
+/// Sampling subprocess implementation
 module btdu.sample;
 
 import core.sys.posix.fcntl;
@@ -35,121 +35,156 @@ import btrfs.c.kerncompat;
 import btrfs.c.kernel_shared.ctree;
 import btrfs.c.ioctl;
 
-import btdu.state;
-import btdu.paths;
+import btdu.proto;
 
-alias Seed = typeof(Random.defaultSeed);
-
-class Sampler : Thread
+void subprocessMain(string fsPath)
 {
-	this(Seed seed)
+	try
 	{
-		super(&run);
-		rndGen = Random(seed);
-		start();
-	}
+		// if (!quiet) stderr.writeln("Opening filesystem...");
+		int fd = open(fsPath.toStringz, O_RDONLY);
+		errnoEnforce(fd >= 0, "open");
 
-private:
-	Random rndGen;
-
-	void run()
-	{
-		while (!withGlobalState((ref g) => g.stop))
+		// if (!quiet) stderr.writeln("Reading chunks...");
+		static struct ChunkInfo
 		{
-			auto targetPos = uniform(0, globalParams.totalSize, rndGen);
+			u64 offset;
+			btrfs_chunk chunk; /// No stripes
+		}
+		ChunkInfo[] chunks;
+		enumerateChunks(fd, (u64 offset, const ref btrfs_chunk chunk) {
+			chunks ~= ChunkInfo(offset, chunk);
+		});
+
+		ulong totalSize = chunks.map!((ref chunk) => chunk.chunk.length).sum;
+		// if (!quiet) stderr.writefln("Found %d chunks with a total size of %d.", globalParams.chunks.length, globalParams.totalSize);
+		send(StartMessage(totalSize));
+
+		while (true)
+		{
+			auto targetPos = uniform(0, totalSize);
 			u64 pos = 0;
-			foreach (ref chunk; globalParams.chunks)
+			foreach (ref chunk; chunks)
 			{
 				auto end = pos + chunk.chunk.length;
 				if (end > targetPos)
 				{
-					auto browserPath = withGlobalState((ref g) {
-						auto path = &g.browserRoot;
+					send(ResultStartMessage(chunk.chunk.type));
 
-						static immutable flagNames = [
-							"DATA",
-							"SYSTEM",
-							"METADATA",
-							"RAID0",
-							"RAID1",
-							"DUP",
-							"RAID10",
-							"RAID5",
-							"RAID6",
-							"RAID1C3",
-							"RAID1C4",
-						];
-						foreach_reverse (b; 0 .. flagNames.length)
-							if (chunk.chunk.type & (1UL << b))
-								path = path.appendName(g, flagNames[b]);
-						return path;
-					});
-					GlobalPath[] allPaths;
 					if (chunk.chunk.type & BTRFS_BLOCK_GROUP_DATA)
 					{
 						auto offset = chunk.offset + (targetPos - pos);
-						// writeln(offset);
 						try
 						{
-							logicalIno(globalParams.fd, offset,
-								(u64 inode, u64 offset, u64 root)
+							logicalIno(fd, offset,
+								(u64 inode, u64 offset, u64 rootID)
 								{
 									// writeln("- ", inode, " ", offset, " ", root);
-									if (root == BTRFS_ROOT_TREE_OBJECTID)
+									cast(void) offset; // unused
+
+									// Send new roots before the inode start
+									cast(void)getRoot(fd, rootID);
+
+									send(ResultInodeStartMessage(rootID));
+
+									try
 									{
-										withGlobalState((ref g) {
-											auto subPath = g.subPathRoot.appendPath(g, "ROOT_TREE");
-											allPaths ~= GlobalPath(null, subPath);
-										});
-										return;
-									}
+										static Appender!(char[]) pathBuf;
+										pathBuf.clear();
+										pathBuf.put(fsPath);
 
-									static GlobalPath*[u64] rootCache; // Thread-local cache
-									auto rootGlobalPath = rootCache.require(root, getRoot(root));
-
-									static Appender!(char[]) pathBuf;
-									pathBuf.clear();
-									pathBuf.put(globalParams.fsPath);
-									if (rootGlobalPath)
-										rootGlobalPath.toString(&pathBuf.put!(const(char)[]));
-									pathBuf.put('\0');
-
-									int rootFD = open(pathBuf.data.ptr, O_RDONLY);
-									errnoEnforce(rootFD >= 0, "open:" ~ pathBuf.data[0 .. $-1]);
-									scope(exit) close(rootFD);
-
-									inoPaths(rootFD, inode,
-										(char[] fn)
+										void putRoot(u64 rootID)
 										{
-											auto subPath = withGlobalState((ref g) => g.subPathRoot.appendPath(g, fn));
-											auto path = GlobalPath(rootGlobalPath, subPath);
-											allPaths ~= path;
+											auto root = getRoot(fd, rootID);
+											if (root is Root.init)
+												enforce(rootID == BTRFS_FS_TREE_OBJECTID, "Unresolvable root");
+											else
+												putRoot(root.parent);
+											pathBuf.put('/');
+											pathBuf.put(root.path);
+										}
+										putRoot(rootID);
+										pathBuf.put('\0');
+
+										int rootFD = open(pathBuf.data.ptr, O_RDONLY);
+										errnoEnforce(rootFD >= 0, "open:" ~ pathBuf.data[0 .. $-1]);
+										scope(exit) close(rootFD);
+
+										inoPaths(rootFD, inode, (char[] fn) {
+											send(ResultMessage(fn));
 										});
+									}
+									catch (Exception e)
+										send(ResultInodeErrorMessage(e.msg));
 								});
 						}
 						catch (Exception e)
 						{
-							browserPath = withGlobalState((ref g) => browserPath
-								.appendName(g, "ERROR")
-								.appendPath(g, e.msg)
-							);
-							allPaths = null;
+							send(ResultErrorMessage(e.msg));
 						}
 					}
-					withGlobalState((ref g) {
-						if (allPaths)
-						{
-							auto shortestPath = allPaths.fold!((a, b) => a.length < b.length ? a : b)();
-							browserPath = browserPath.appendPath(g, &shortestPath);
-						}
-						browserPath.addSample();
-						foreach (path; allPaths)
-							browserPath.seenAs.add(path);
-					});
+					send(ResultEndMessage());
 					break;
 				}
 				pos = end;
 			}
 		}
 	}
+	catch (Throwable e)
+	{
+		debug
+			send(FatalErrorMessage(e.toString()));
+		else
+			send(FatalErrorMessage(e.msg));
+	}
+}
+
+private:
+
+struct Root
+{
+	u64 parent;
+	string path;
+}
+Root[u64] roots;
+
+/// Performs memoized resolution of the path for a btrfs root object.
+Root getRoot(int fd, __u64 rootID)
+{
+	return roots.require(rootID, {
+		Root result;
+		findRootBackRef(
+			fd,
+			rootID,
+			(
+				__u64 parentRootID,
+				__u64 dirID,
+				__u64 sequence,
+				char[] name,
+			) {
+				cast(void) sequence; // unused
+
+				inoLookup(
+					fd,
+					parentRootID,
+					dirID,
+					(char[] dirPath)
+					{
+						if (result !is Root.init)
+							throw new Exception("Multiple root locations");
+						result.path = cast(string)(dirPath ~ name);
+						result.parent = parentRootID;
+					}
+				);
+			}
+		);
+
+		// Ensure parents are written first
+		if (result !is Root.init)
+			cast(void)getRoot(fd, result.parent);
+
+		send(NewRootMessage(rootID, result.parent, result.path));
+
+		return result;
+	}());
 }

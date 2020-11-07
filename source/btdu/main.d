@@ -19,66 +19,98 @@
 /// btdu entry point
 module btdu.main;
 
-import core.sys.posix.fcntl;
-import core.thread;
+import core.time;
 
-import std.algorithm.iteration;
-import std.algorithm.sorting;
 import std.exception;
 import std.parallelism;
 import std.random;
+import std.socket;
 import std.stdio;
-import std.string;
 
 import ae.utils.funopt;
 import ae.utils.main;
-
-import btrfs;
-import btrfs.c.kerncompat;
-import btrfs.c.kernel_shared.ctree;
 
 import btdu.browser;
 import btdu.common;
 import btdu.paths;
 import btdu.sample;
+import btdu.subproc;
 import btdu.state;
 
 @(`Sampling disk usage profiler for btrfs.`)
 void program(
 	Parameter!(string, "Path to the root of the filesystem to analyze") path,
-	Option!(uint, "Number of sampling threads\n (default is number of logical CPUs for this system)", "N", 'j') threads = 0,
-	Switch!("Print fewer messages") quiet = false,
+	Option!(uint, "Number of sampling subprocesses\n (default is number of logical CPUs for this system)", "N", 'j') procs = 0,
 	Option!(Seed, "Random seed used to choose samples") seed = 0,
+	Switch!hiddenOption subprocess = false,
 )
 {
 	rndGen = Random(seed);
+	fsPath = path;
 
-	if (!quiet) stderr.writeln("Opening filesystem...");
-	globalParams.fsPath = path;
-	globalParams.fd = open(globalParams.fsPath.toStringz, O_RDONLY);
-	errnoEnforce(globalParams.fd >= 0, "open");
+	if (subprocess)
+		return subprocessMain(path);
 
-	if (!quiet) stderr.writeln("Reading chunks...");
-	enumerateChunks(globalParams.fd, (u64 offset, const ref btrfs_chunk chunk) {
-		globalParams.chunks ~= GlobalParams.ChunkInfo(offset, chunk);
-	});
+	if (procs == 0)
+		procs = totalCPUs;
 
-	globalParams.totalSize = globalParams.chunks.map!((ref chunk) => chunk.chunk.length).sum;
-	if (!quiet) stderr.writefln("Found %d chunks with a total size of %d.", globalParams.chunks.length, globalParams.totalSize);
+	auto subprocesses = new Subprocess[procs];
+	foreach (ref subproc; subprocesses)
+		subproc.start();
 
-	if (threads == 0)
-		threads = totalCPUs;
+	auto stdinSocket = new Socket(cast(socket_t)stdin.fileno, AddressFamily.UNSPEC);
+	stdinSocket.blocking = false;
 
-	Sampler[] samplers;
-	foreach (n; 0 .. threads)
-		samplers ~= new Sampler(rndGen.uniform!Seed);
+	Browser browser;
+	browser.start();
+	browser.update();
 
-	runBrowser();
+	enum refreshInterval = 500.msecs;
+	auto nextRefresh = MonoTime.currTime() + refreshInterval;
 
-	withGlobalState((ref g) { g.stop = true; });
-	if (!quiet) stderr.writeln("Stopping sampling threads...");
-	foreach (sampler; samplers)
-		sampler.join();
+	SocketSet[2] sets;
+	foreach (ref set; sets)
+		set = new SocketSet;
+
+	// Main event loop
+	while (true)
+	{
+		foreach (set; sets)
+		{
+			set.reset();
+			set.add(stdinSocket);
+			foreach (ref subproc; subprocesses)
+				set.add(subproc.socket);
+		}
+
+		Socket.select(sets[0], null, sets[1]);
+		auto now = MonoTime.currTime();
+
+		enforce(!sets[1].isSet(stdinSocket), "stdin socket error");
+		foreach (ref subproc; subprocesses)
+			enforce(!sets[1].isSet(subproc.socket), "Subprocess socket error");
+
+		if (sets[0].isSet(stdinSocket))
+		{
+			browser.handleInput();
+			if (browser.done)
+				break;
+			browser.update();
+			nextRefresh = now + refreshInterval;
+		}
+		foreach (ref subproc; subprocesses)
+			if (sets[0].isSet(subproc.socket))
+				subproc.handleInput();
+		if (now > nextRefresh)
+		{
+			browser.update();
+			nextRefresh = now + refreshInterval;
+		}
+	}
+
+	// if (!quiet) stderr.writeln("Stopping sampling threads...");
+	// foreach (sampler; samplers)
+	// 	sampler.join();
 }
 
 void usageFun(string usage)

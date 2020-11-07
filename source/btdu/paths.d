@@ -23,8 +23,6 @@ import ae.utils.aa;
 
 import std.string;
 
-import btdu.state : GlobalState;
-
 /// Common definitions for a deduplicated trie for paths.
 mixin template SimplePath()
 {
@@ -32,8 +30,8 @@ mixin template SimplePath()
 	typeof(this)* parent;
 	/// Base name
 	immutable string name;
-	/// Children - must hold the lock to access
-	private typeof(this)*[string] children;
+	/// Directory items, if any
+	typeof(this)*[string] children;
 
 	private this(typeof(this)* parent, string name)
 	{
@@ -54,8 +52,7 @@ mixin template SimplePath()
 	}
 
 	/// Append a single path segment to this one.
-	/// globalState is used only as proof that we hold the lock.
-	typeof(this)* appendName(ref GlobalState globalState, in char[] name)
+	typeof(this)* appendName(in char[] name)
 	{
 		assert(name.length, "Empty path segment");
 		assert(name.indexOf('/') < 0, "Path segment contains /");
@@ -66,47 +63,42 @@ mixin template SimplePath()
 	}
 
 	/// Append a normalized relative string path to this one.
-	typeof(this)* appendPath(ref GlobalState globalState, in char[] path)
+	typeof(this)* appendPath(in char[] path)
 	{
 		auto p = path.indexOf('/');
 		auto nextName = p < 0 ? path : path[0 .. p];
-		auto next = appendName(globalState, nextName);
+		auto next = appendName(nextName);
 		if (p < 0)
 			return next;
 		else
-			return next.appendPath(globalState, path[p + 1 .. $]);
+			return next.appendPath(path[p + 1 .. $]);
 	}
 
 	/// ditto
-	typeof(this)* appendPath(ref GlobalState globalState, in SubPath* path)
+	typeof(this)* appendPath(in SubPath* path)
 	{
 		typeof(this)* recurse(typeof(this)* base, in SubPath* path)
 		{
 			if (!path.parent) // root
 				return base;
 			base = recurse(base, path.parent);
-			return base.appendName(globalState, path.name);
+			return base.appendName(path.name);
 		}
 
 		return recurse(&this, path);
 	}
 
 	/// ditto
-	typeof(this)* appendPath(ref GlobalState globalState, in GlobalPath* path)
+	typeof(this)* appendPath(in GlobalPath* path)
 	{
 		typeof(this)* recurse(typeof(this)* base, in GlobalPath* path)
 		{
 			if (path.parent)
 				base = recurse(base, path.parent);
-			return base.appendPath(globalState, path.subPath);
+			return base.appendPath(path.subPath);
 		}
 
 		return recurse(&this, path);
-	}
-
-	typeof(this)*[string] getChildren(ref GlobalState globalState)
-	{
-		return children;
 	}
 
 	void toString(scope void delegate(const(char)[]) sink) const
