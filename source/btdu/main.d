@@ -65,7 +65,7 @@ void program(
 		benchmarkTime = parseDuration(benchmark);
 	}
 
-	auto subprocesses = new Subprocess[procs];
+	subprocesses = new Subprocess[procs];
 	foreach (ref subproc; subprocesses)
 		subproc.start();
 
@@ -100,8 +100,9 @@ void program(
 			readSet.add(stdinSocket);
 			exceptSet.add(stdinSocket);
 		}
-		foreach (ref subproc; subprocesses)
-			readSet.add(subproc.socket);
+		if (!paused)
+			foreach (ref subproc; subprocesses)
+				readSet.add(subproc.socket);
 
 		Socket.select(readSet, null, exceptSet);
 		auto now = MonoTime.currTime();
@@ -114,9 +115,10 @@ void program(
 			browser.update();
 			nextRefresh = now + refreshInterval;
 		}
-		foreach (ref subproc; subprocesses)
-			if (readSet.isSet(subproc.socket))
-				subproc.handleInput();
+		if (!paused)
+			foreach (ref subproc; subprocesses)
+				if (readSet.isSet(subproc.socket))
+					subproc.handleInput();
 		if (!headless && now > nextRefresh)
 		{
 			browser.update();

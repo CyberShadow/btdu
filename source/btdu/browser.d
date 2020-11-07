@@ -337,6 +337,9 @@ struct Browser
 			attron(A_REVERSE);
 			mvhline(0, 0, ' ', w);
 			mvprintw(0, 0, "btdu v" ~ btduVersion ~ " @ %s", fsPath.toStringz());
+			if (paused)
+				mvprintw(0, w - 10, " [PAUSED] ");
+
 			mvhline(h - 1, 0, ' ', w);
 			if (message && MonoTime.currTime < showMessageUntil)
 				mvprintw(h - 1, 0, " %s", message.toStringz);
@@ -467,6 +470,17 @@ struct Browser
 		selection = items[pos];
 	}
 
+	/// Pausing has the following effects:
+	/// 1. We sent a SIGSTOP to subprocesses, so that they stop working ASAP.
+	/// 2. We immediately stop reading subprocess output, so that the UI stops updating.
+	/// 3. We display the paused state in the UI.
+	void togglePause()
+	{
+		paused = !paused;
+		foreach (ref subprocess; subprocesses)
+			subprocess.pause(paused);
+	}
+
 	bool handleInput()
 	{
 		auto ch = getch();
@@ -475,6 +489,15 @@ struct Browser
 			return false; // no events - would have blocked
 		else
 			message = null;
+
+		switch (ch)
+		{
+			case 'p':
+				togglePause();
+				return true;
+			default:
+				// Proceed according to mode
+		}
 
 		final switch (mode)
 		{

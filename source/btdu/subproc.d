@@ -21,6 +21,7 @@ module btdu.subproc;
 
 import ae.utils.array;
 
+import core.sys.posix.signal;
 import core.sys.posix.unistd;
 
 import std.algorithm.iteration;
@@ -65,6 +66,11 @@ struct Subprocess
 			stdin,
 			pipe.writeEnd,
 		);
+	}
+
+	void pause(bool doPause)
+	{
+		pid.kill(doPause ? SIGSTOP : SIGCONT);
 	}
 
 	/// Receive buffer

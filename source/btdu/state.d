@@ -27,6 +27,7 @@ import btrfs.c.kerncompat;
 import btrfs.c.kernel_shared.ctree;
 
 import btdu.paths;
+import btdu.subproc : Subprocess;
 
 // Global variables
 
@@ -36,3 +37,6 @@ ulong totalSize;
 SubPath subPathRoot;
 GlobalPath*[u64] globalRoots;
 BrowserPath browserRoot;
+
+Subprocess[] subprocesses;
+bool paused;
