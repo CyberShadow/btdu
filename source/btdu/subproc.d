@@ -172,8 +172,16 @@ struct Subprocess
 
 		if (result.allPaths)
 		{
-			auto shortestPath = result.allPaths.fold!((a, b) => a.length < b.length ? a : b)();
-			result.browserPath = result.browserPath.appendPath(&shortestPath);
+			auto canonicalPath = result.allPaths.fold!((a, b) {
+				// Shortest path always wins
+				auto aLength = a.length;
+				auto bLength = b.length;
+				if (aLength != bLength)
+					return aLength < bLength ? a : b;
+				// If the length is the same, pick the lexicographically smallest one
+				return a < b ? a : b;
+			})();
+			result.browserPath = result.browserPath.appendPath(&canonicalPath);
 		}
 		result.browserPath.addSample();
 		foreach (path; result.allPaths)

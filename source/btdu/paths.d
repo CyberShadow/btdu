@@ -21,6 +21,7 @@ module btdu.paths;
 
 import ae.utils.aa;
 
+import std.algorithm.comparison;
 import std.string;
 
 /// Common definitions for a deduplicated trie for paths.
@@ -110,10 +111,86 @@ mixin template SimplePath()
 	}
 }
 
+/// Implements comparison for linked-list-like path structures
+mixin template PathCmp()
+{
+	/// Returns the total length of this path chain,
+	/// including this instance.
+	size_t chainLength() const
+	{
+		return 1 + (parent ? parent.chainLength() : 0);
+	}
+
+	int opCmp(const ref typeof(this) b) const
+	{
+		if (this is b)
+			return 0;
+
+		// Because the lengths may be uneven, query them first
+		auto aLength = this.chainLength();
+		auto bLength = b   .chainLength();
+		auto maxLength = max(aLength, bLength);
+
+		// We are starting from the tail end of two
+		// linked lists with possibly different length
+		int recurse(
+			// The tail so far
+			in typeof(this)*[2] paths,
+			// How many nodes this side is "shorter" by
+			size_t[2] rem,
+		)
+		{
+			if (paths[0] is paths[1])
+				return 0; // Also covers the [null, null] case which stops recursion
+
+			// What we will recurse with
+			const(typeof(this))*[2] recPaths;
+			size_t[2] recRem;
+			// What we will compare in this step (if recursion returns 0)
+			const(typeof(this))*[2] thisPaths;
+
+			foreach (n; 0 .. 2)
+			{
+				if (rem[n])
+				{
+					thisPaths[n] = null;
+					recPaths[n] = paths[n];
+					recRem[n] = rem[n] - 1;
+				}
+				else
+				{
+					thisPaths[n] = paths[n];
+					recPaths[n] = paths[n].parent;
+					recRem[n] = 0;
+				}
+			}
+
+			int res = recurse(recPaths, recRem);
+			if (res)
+				return res;
+
+			if ((thisPaths[0] is null) != (thisPaths[1] is null))
+				return thisPaths[0] is null ? -1 : 1;
+			return thisPaths[0].compareContents(*thisPaths[1]);
+		}
+		return recurse([&this, &b], [
+			maxLength - aLength,
+			maxLength - bLength,
+		]);
+	}
+}
+
 /// Path within a tree (subvolume)
 struct SubPath
 {
 	mixin SimplePath;
+	mixin PathCmp;
+
+	/// PathCmp implementation
+	private int compareContents(const ref typeof(this) b) const
+	{
+		return cmp(name, b.name);
+	}
 }
 
 /// Global path (spanning multiple trees)
@@ -144,6 +221,14 @@ struct GlobalPath
 		toString((const(char)[] s) { length += s.length; });
 		return length;
 	}
+
+	/// PathCmp implementation
+	private int compareContents(const ref typeof(this) b) const
+	{
+		return subPath.opCmp(*b.subPath);
+	}
+
+	mixin PathCmp;
 }
 
 /// Browser path (GUI hierarchy)
