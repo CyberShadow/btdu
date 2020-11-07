@@ -401,6 +401,8 @@ struct Browser
 						? "~" ~ humanSize(child.samples * totalSize / browserRoot.samples)
 						: "?";
 					auto displayedItem = child.humanName;
+					if (child.name.startsWith("\0"))
+						displayedItem = "<" ~ displayedItem ~ ">";
 					auto maxItemWidth = w - 27;
 					if (displayedItem.length > maxItemWidth)
 					{
