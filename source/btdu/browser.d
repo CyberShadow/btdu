@@ -134,7 +134,11 @@ struct Browser
 			if (fullPath)
 				info ~= "- Full path: " ~ cast(string)fullPath;
 			info ~= "- Size: " ~ (browserRoot.samples
-				? "~" ~ humanSize(currentPath.samples * totalSize / browserRoot.samples)
+				? format!"~%s (%d sample%s)"(
+					humanSize(currentPath.samples * totalSize / browserRoot.samples),
+					currentPath.samples,
+					currentPath.samples == 1 ? "" : "s",
+				)
 				: "-");
 			info ~= "- Average query duration: " ~ (currentPath.samples
 				? stdDur(currentPath.duration / currentPath.samples).toString()
@@ -326,7 +330,7 @@ struct Browser
 					: "-";
 				mvprintw(h - 1, 0,
 					" Samples: %lld  Resolution: %s",
-					cast(cpp_longlong)currentPath.samples,
+					cast(cpp_longlong)browserRoot.samples,
 					resolution.toStringz()
 				);
 			}
