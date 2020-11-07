@@ -180,11 +180,17 @@ struct Browser
 			}
 			attroff(A_REVERSE);
 
+			auto displayedPath = text(fsPath.asNormalizedPath, currentPath.pointerWriter);
+			auto prefix = ["", "INFO: "][mode];
+			auto maxPathWidth = w - 8 - prefix.length;
+			if (displayedPath.length > maxPathWidth)
+				displayedPath = "..." ~ displayedPath[$ - (maxPathWidth - 3) .. $];
+
 			mvhline(1, 0, '-', w);
 			mvprintw(1, 3,
 				" %s%s ",
-				["".ptr, "INFO: ".ptr][mode],
-				text(fsPath.asNormalizedPath, currentPath.pointerWriter).toStringz()
+				prefix.ptr,
+				displayedPath.toStringz()
 			);
 		}
 
@@ -221,12 +227,22 @@ struct Browser
 					auto size = browserRoot.samples
 						? "~" ~ humanSize(child.samples * totalSize / browserRoot.samples)
 						: "?";
+					auto displayedItem = item;
+					auto maxItemWidth = w - 27;
+					if (displayedItem.length > maxItemWidth)
+					{
+						auto leftLength = (maxItemWidth - "...".length) / 2;
+						auto rightLength = maxItemWidth - "...".length - leftLength;
+						displayedItem =
+							displayedItem[0 .. leftLength] ~ "..." ~
+							displayedItem[$ - rightLength .. $];
+					}
 					mvprintw(y, 0,
 						"%12s [%.10s] %c%s",
 						size.toStringz(),
 						bar.ptr,
 						child.children is null ? ' ' : '/',
-						item.toStringz(),
+						displayedItem.toStringz(),
 					);
 				}
 				break;
