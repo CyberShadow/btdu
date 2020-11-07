@@ -251,7 +251,10 @@ struct Browser
 				else
 					info ~= "  (empty node)";
 			}
-			// TODO: word-wrap info
+
+			for (size_t i = 0; i < info.length; i++)
+				if (info[i].length > w)
+					info = info[0 .. i] ~ info[i][0 .. w] ~ info[i][w .. $] ~ info[i + 1 .. $];
 		}
 
 		// Scrolling and cursor upkeep
