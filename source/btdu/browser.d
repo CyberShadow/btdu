@@ -67,7 +67,7 @@ struct Browser
 		size,
 	}
 	SortMode sortMode;
-	bool reverseSort;
+	bool reverseSort, dirsFirst;
 
 	void start()
 	{
@@ -117,6 +117,11 @@ struct Browser
 		}
 		if (reverseSort)
 			items.reverse();
+		if (dirsFirst)
+			items.sort!(
+				(a, b) => !!currentPath.children[a].children > !!currentPath.children[b].children,
+				SwapStrategy.stable,
+			);
 
 		if (!selection && items.length)
 			selection = items[0];
@@ -609,6 +614,9 @@ struct Browser
 					case 's':
 						setSort(SortMode.size);
 						break;
+					case 't':
+						dirsFirst = !dirsFirst;
+						break;
 					default:
 						// TODO: show message
 						break;
@@ -753,6 +761,7 @@ Right/Enter - Open selected node
           p - Pause/resume
           n - Sort by name (ascending/descending)
           s - Sort by size (ascending/descending)
+          t - Toggle dirs before files when sorting
           i - Expand/collapse information panel
           q - Close information panel or quit btdu
 
