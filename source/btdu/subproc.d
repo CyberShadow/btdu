@@ -30,6 +30,7 @@ import std.process;
 import std.random;
 import std.socket;
 import std.stdio;
+import std.string;
 
 import btrfs.c.kernel_shared.ctree;
 
@@ -153,7 +154,7 @@ struct Subprocess
 
 	void handleMessage(ResultInodeErrorMessage m)
 	{
-		result.allPaths ~= GlobalPath(result.inodeRoot, subPathRoot.appendName("ERROR").appendPath(m.msg));
+		result.allPaths ~= GlobalPath(result.inodeRoot, subPathRoot.appendName("ERROR").appendPath(m.msg.chomp("/")));
 	}
 
 	void handleMessage(ResultMessage m)
@@ -163,7 +164,7 @@ struct Subprocess
 
 	void handleMessage(ResultErrorMessage m)
 	{
-		result.allPaths ~= GlobalPath(null, subPathRoot.appendName("ERROR").appendPath(m.msg));
+		result.allPaths ~= GlobalPath(null, subPathRoot.appendName("ERROR").appendPath(m.msg.chomp("/")));
 	}
 
 	void handleMessage(ResultEndMessage m)
