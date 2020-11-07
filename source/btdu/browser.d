@@ -127,7 +127,7 @@ struct Browser
 					fullPath = buf.data;
 			}
 
-			info ~= ["", "--- Details:"];
+			info ~= ["", "--- Details: "];
 			if (fullPath)
 				info ~= "- Full path: " ~ cast(string)fullPath;
 			info ~= "- Size: " ~ (browserRoot.samples
@@ -225,7 +225,7 @@ struct Browser
 				}();
 
 				if (explanation)
-					info ~= ["", "--- Explanation:"] ~ explanation.verbatimWrap(w).replace("\n ", "\n").split("\n");
+					info ~= ["", "--- Explanation: "] ~ explanation.verbatimWrap(w).replace("\n ", "\n").strip().split("\n");
 			}
 
 			bool showSeenAs;
@@ -239,7 +239,7 @@ struct Browser
 
 			if (showSeenAs)
 			{
-				info ~= ["", "--- Shares data with:"];
+				info ~= ["", "--- Shares data with: "];
 				foreach (path; currentPath.seenAs.keys.sort)
 					info ~= "- " ~ path.text;
 			}
@@ -265,6 +265,7 @@ struct Browser
 			{
 				case Mode.browser:
 					contentHeight = items.length;
+					contentAreaHeight -= min(info.length, contentAreaHeight / 2);
 					break;
 				case Mode.info:
 					contentHeight = info.length;
@@ -389,6 +390,20 @@ struct Browser
 						child.children is null ? ' ' : '/',
 						displayedItem.toStringz(),
 					);
+				}
+				attroff(A_REVERSE);
+
+				foreach (i, line; info)
+				{
+					auto y = cast(int)(contentAreaHeight + i);
+					y += 2;
+					if (y == h - 2 && i + 1 < info.length)
+					{
+						mvprintw(y, 0, " --- more - press i to view --- ");
+						break;
+					}
+					mvhline(y, 0, i != 1 ? ' ' : '-', w);
+					mvprintw(y, 0, "%s", line.toStringz());
 				}
 				break;
 			}
