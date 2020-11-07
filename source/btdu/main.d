@@ -23,6 +23,7 @@ import core.time;
 
 import std.exception;
 import std.parallelism;
+import std.path;
 import std.random;
 import std.socket;
 import std.stdio;
@@ -48,7 +49,7 @@ void program(
 )
 {
 	rndGen = Random(seed);
-	fsPath = path;
+	fsPath = path.buildNormalizedPath;
 
 	if (subprocess)
 		return subprocessMain(path);

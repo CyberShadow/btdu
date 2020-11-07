@@ -19,6 +19,8 @@
 /// Subprocess management
 module btdu.subproc;
 
+import ae.utils.array;
+
 import core.sys.posix.unistd;
 
 import std.algorithm.iteration;
@@ -112,9 +114,9 @@ struct Subprocess
 				return new GlobalPath(null, &subPathRoot);
 			else
 			if (m.rootID == BTRFS_ROOT_TREE_OBJECTID)
-				return new GlobalPath(null, subPathRoot.appendName("ROOT_TREE"));
+				return new GlobalPath(null, subPathRoot.appendName("\0ROOT_TREE"));
 			else
-				return new GlobalPath(null, subPathRoot.appendName(format!"TREE_%d"(m.rootID)));
+				return new GlobalPath(null, subPathRoot.appendName(format!"\0TREE_%d"(m.rootID)));
 		}());
 	}
 
@@ -141,7 +143,7 @@ struct Subprocess
 			"RAID6",
 			"RAID1C3",
 			"RAID1C4",
-		];
+		].amap!(s => "\0" ~ s);
 		foreach_reverse (b; 0 .. flagNames.length)
 			if (m.chunkFlags & (1UL << b))
 				result.browserPath = result.browserPath.appendName(flagNames[b]);
@@ -154,7 +156,7 @@ struct Subprocess
 
 	void handleMessage(ResultInodeErrorMessage m)
 	{
-		result.allPaths ~= GlobalPath(result.inodeRoot, subPathRoot.appendName("ERROR").appendPath(m.msg.chomp("/")));
+		result.allPaths ~= GlobalPath(result.inodeRoot, subPathRoot.appendName("\0ERROR").appendPath(m.msg));
 	}
 
 	void handleMessage(ResultMessage m)
@@ -164,7 +166,7 @@ struct Subprocess
 
 	void handleMessage(ResultErrorMessage m)
 	{
-		result.allPaths ~= GlobalPath(null, subPathRoot.appendName("ERROR").appendPath(m.msg.chomp("/")));
+		result.allPaths ~= GlobalPath(null, subPathRoot.appendName("\0ERROR").appendPath(m.msg));
 	}
 
 	void handleMessage(ResultEndMessage m)

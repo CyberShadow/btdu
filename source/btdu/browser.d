@@ -20,17 +20,22 @@
 module btdu.browser;
 
 import core.stdc.config;
+import core.stdc.errno;
 import core.time;
 
 import std.algorithm.comparison;
 import std.algorithm.iteration;
 import std.algorithm.searching;
 import std.algorithm.sorting;
+import std.array;
 import std.conv;
+import std.exception;
 import std.path;
 import std.string;
 
 import deimos.ncurses;
+
+import ae.utils.text;
 
 import btdu.common;
 import btdu.state;
@@ -95,7 +100,144 @@ struct Browser
 		{
 			info = null;
 
-			if (!currentPath.seenAs.empty)
+			char[] fullPath;
+			{
+				static Appender!(char[]) buf;
+				buf.clear();
+				buf.put(fsPath);
+				bool recurse(BrowserPath *path)
+				{
+					string name = path.name;
+					if (name.skipOver("\0"))
+						switch (name)
+						{
+							case "DATA":
+								return true;
+							default:
+								return false;
+						}
+					if (path.parent)
+						if (!recurse(path.parent))
+							return false;
+					buf.put('/');
+					buf.put(name);
+					return true;
+				}
+				if (recurse(currentPath))
+					fullPath = buf.data;
+			}
+
+			info ~= ["", "--- Details:"];
+			if (fullPath)
+				info ~= "- Full path: " ~ cast(string)fullPath;
+			info ~= "- Size: " ~ (browserRoot.samples
+				? "~" ~ humanSize(currentPath.samples * totalSize / browserRoot.samples)
+				: "-");
+
+			{
+				string explanation = {
+					if (currentPath is &browserRoot)
+						return
+							"Welcome to btdu. You are in the hierarchy root; " ~
+							"results will be arranged according to their block group and profile, and then by path." ~
+							"\n\n" ~
+							"Use the arrow keys to navigate.";
+
+					string name = currentPath.name;
+					if (name.skipOver("\0"))
+					{
+						switch (name)
+						{
+							case "DATA":
+								return
+									"This node holds samples from chunks in the DATA block group, " ~
+									"which mostly contains file data.";
+							case "METADATA":
+								return
+									"This node holds samples from chunks in the METADATA block group, " ~
+									"which contains btrfs internal metadata arranged in b-trees." ~
+									"\n\n" ~
+									"The contents of small files may be stored here, in line with their metadata." ~
+									"\n\n" ~
+									"The contents of METADATA chunks is opaque to btdu, so this node does not have children.";
+							case "SYSTEM":
+								return
+									"This node holds samples from chunks in the SYSTEM block group " ~
+									"which contains some core btrfs information, such as how to map physical device space to linear logical space or vice-versa." ~
+									"\n\n" ~
+									"The contents of SYSTEM chunks is opaque to btdu, so this node does not have children.";
+							case "RAID0":
+							case "RAID1":
+							case "DUP":
+							case "RAID10":
+							case "RAID5":
+							case "RAID6":
+							case "RAID1C3":
+							case "RAID1C4":
+								return
+									"This node holds samples from chunks in the " ~ name ~ " profile.";
+							case "ERROR":
+								return
+									"This node represents sample points for which btdu encountered an error when attempting to query them." ~
+									"\n\n" ~
+									"Children of this node indicate the encountered error, and may have a more detailed explanation attached.";
+							case "ROOT_TREE":
+								return
+									"This node holds samples with inodes contained in the BTRFS_ROOT_TREE_OBJECTID object." ~
+									"\n\n" ~
+									"These samples are not resolvable to paths, and most likely indicate some kind of metadata. " ~
+									"(If you know, please tell me!)";
+							default:
+								if (name.skipOver("TREE_"))
+									return
+										"This node holds samples with inodes contained in the tree #" ~ name ~ ", " ~
+										"but btdu failed to resolve this tree number to an absolute path.";
+								debug assert(false, "Unknown special node: " ~ name);
+						}
+					}
+
+					if (currentPath.parent && currentPath.parent.name == "\0ERROR")
+					{
+						switch (name)
+						{
+							case "Unresolvable root":
+								return
+									"btdu failed to resolve this tree number to an absolute path.";
+							default:
+								if (name == errnoString!("logical ino", ENOENT))
+									return
+										"btrfs reports that there is nothing at the random sample location that btdu picked." ~
+										"\n\n" ~
+										"This most likely represents allocated but unused space, " ~
+										"which could be reduced by running a balance on the DATA block group.";
+								if (name == errnoString!("open", ENOENT))
+									return
+										"btdu failed to open the filesystem root containing an inode." ~
+										"\n\n" ~
+										"The most likely reason for this is that you didn't specify the path to the volume root when starting btdu, " ~
+										"and instead specified the path to a subvolume or subdirectory." ~
+										"\n\n" ~
+										"You can descend into this node to see the path that btdu failed to open.";
+						}
+					}
+
+					return null;
+				}();
+
+				if (explanation)
+					info ~= ["", "--- Explanation:"] ~ explanation.verbatimWrap(w).replace("\n ", "\n").split("\n");
+			}
+
+			bool showSeenAs;
+			if (currentPath.seenAs.empty)
+				showSeenAs = false;
+			else
+			if (fullPath is null && currentPath.seenAs.length == 1)
+				showSeenAs = false; // Not a real file
+			else
+				showSeenAs = true;
+
+			if (showSeenAs)
 			{
 				info ~= ["", "--- Shares data with:"];
 				foreach (path; currentPath.seenAs.keys.sort)
@@ -227,7 +369,7 @@ struct Browser
 					auto size = browserRoot.samples
 						? "~" ~ humanSize(child.samples * totalSize / browserRoot.samples)
 						: "?";
-					auto displayedItem = item;
+					auto displayedItem = child.humanName;
 					auto maxItemWidth = w - 27;
 					if (displayedItem.length > maxItemWidth)
 					{
@@ -419,3 +561,12 @@ struct PointerWriter(T)
 	}
 }
 PointerWriter!T pointerWriter(T)(T* ptr) { return PointerWriter!T(ptr); }
+
+/// Allow matching error messages with strerror strings
+string errnoString(string s, int errno)()
+{
+	static string result;
+	if (!result)
+		result = new ErrnoException(s, errno).msg;
+	return result;
+}

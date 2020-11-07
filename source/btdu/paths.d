@@ -22,6 +22,7 @@ module btdu.paths;
 import ae.utils.aa;
 
 import std.algorithm.comparison;
+import std.algorithm.searching;
 import std.string;
 
 /// Common definitions for a deduplicated trie for paths.
@@ -30,6 +31,8 @@ mixin template SimplePath()
 	/// Parent directory name
 	typeof(this)* parent;
 	/// Base name
+	/// Names prefixed with a NUL character indicate "special" nodes,
+	/// which do not correspond to a filesystem path.
 	immutable string name;
 	/// Directory items, if any
 	typeof(this)*[string] children;
@@ -109,7 +112,14 @@ mixin template SimplePath()
 			parent.toString(sink);
 			sink("/");
 		}
-		sink(name);
+		sink(humanName);
+	}
+
+	string humanName() const
+	{
+		string humanName = name;
+		humanName.skipOver("\0");
+		return humanName;
 	}
 }
 

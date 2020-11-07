@@ -100,14 +100,18 @@ void subprocessMain(string fsPath)
 												enforce(rootID == BTRFS_FS_TREE_OBJECTID, "Unresolvable root");
 											else
 												putRoot(root.parent);
-											pathBuf.put('/');
-											pathBuf.put(root.path);
+											if (root.path)
+											{
+												pathBuf.put('/');
+												pathBuf.put(root.path);
+											}
 										}
 										putRoot(rootID);
 										pathBuf.put('\0');
 
 										int rootFD = open(pathBuf.data.ptr, O_RDONLY);
-										errnoEnforce(rootFD >= 0, "open:" ~ pathBuf.data[0 .. $-1]);
+										if (rootFD < 0)
+											throw new Exception(new ErrnoException("open").msg ~ cast(string)pathBuf.data[0 .. $-1]);
 										scope(exit) close(rootFD);
 
 										inoPaths(rootFD, inode, (char[] fn) {
