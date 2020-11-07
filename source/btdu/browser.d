@@ -39,6 +39,8 @@ import btdu.paths;
 struct Browser
 {
 	BrowserPath* currentPath;
+	sizediff_t top; // Scroll offset (row number, in the content, corresponding to the topmost displayed line)
+	sizediff_t contentAreaHeight; // Number of rows where scrolling content is displayed
 	string selection;
 	string[] items;
 	bool done;
@@ -76,6 +78,13 @@ struct Browser
 		getmaxyx(stdscr, h, w); h++; w++;
 
 		erase();
+
+		if (h < 5 || w < 30)
+		{
+			mvprintw(0, 0, "Window too small");
+			return;
+		}
+
 		attron(A_REVERSE);
 		mvhline(0, 0, ' ', w);
 		mvprintw(0, 0, "btdu v" ~ btduVersion ~ " ~ Use the arrow keys to navigate");
@@ -106,11 +115,29 @@ struct Browser
 		if (!selection && items.length)
 			selection = items[0];
 
+		contentAreaHeight = h - 3;
+		auto contentHeight = items.length;
+		auto pos = selection && items ? items.countUntil(selection) : 0;
+		// Ensure there is no unnecessary space at the bottom
+		if (top + contentAreaHeight > contentHeight)
+			top = contentHeight - contentAreaHeight;
+		// Ensure we are never scrolled "above" the first row
+		if (top < 0)
+			top = 0;
+		// Ensure the selected item is visible
+		top = top.clamp(
+			pos - contentAreaHeight + 1,
+			pos,
+		);
+
 		auto mostSamples = currentPath.children.byValue.fold!((a, b) => max(a, b.samples))(0UL);
 
 		foreach (i, item; items)
 		{
-			auto y = 2 + cast(int)i;
+			auto y = cast(int)(i - top);
+			if (y < 0 || y >= contentAreaHeight)
+				continue;
+			y += 2;
 
 			if (item is selection)
 				attron(A_REVERSE);
@@ -144,6 +171,21 @@ struct Browser
 		refresh();
 	}
 
+	void moveCursor(sizediff_t delta)
+	{
+		if (!items.length)
+			return;
+		auto pos = items.countUntil(selection);
+		if (pos < 0)
+			return;
+		pos += delta;
+		if (pos < 0)
+			pos = 0;
+		if (pos > items.length - 1)
+			pos = items.length - 1;
+		selection = items[pos];
+	}
+
 	void handleInput()
 	{
 		auto ch = getch();
@@ -173,26 +215,22 @@ struct Browser
 					showMessage("Nowhere to descend into");
 				break;
 			case KEY_UP:
-			{
-				auto i = items.countUntil(selection);
-				if (i >= 0 && i - 1 >= 0)
-					selection = items[i - 1];
+				moveCursor(-1);
 				break;
-			}
 			case KEY_DOWN:
-			{
-				auto i = items.countUntil(selection);
-				if (i >= 0 && i + 1 < items.length)
-					selection = items[i + 1];
+				moveCursor(+1);
 				break;
-			}
+			case KEY_PPAGE:
+				moveCursor(-contentAreaHeight);
+				break;
+			case KEY_NPAGE:
+				moveCursor(+contentAreaHeight);
+				break;
 			case KEY_HOME:
-				if (items.length)
-					selection = items[0];
+				moveCursor(-items.length);
 				break;
 			case KEY_END:
-				if (items.length)
-					selection = items[$ - 1];
+				moveCursor(+items.length);
 				break;
 			case 'q':
 				done = true;
