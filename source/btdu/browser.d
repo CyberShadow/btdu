@@ -336,7 +336,7 @@ struct Browser
 
 			attron(A_REVERSE);
 			mvhline(0, 0, ' ', w);
-			mvprintw(0, 0, "btdu v" ~ btduVersion ~ " ~ Use the arrow keys to navigate");
+			mvprintw(0, 0, "btdu v" ~ btduVersion ~ " @ %s", fsPath.toStringz());
 			mvhline(h - 1, 0, ' ', w);
 			if (message && MonoTime.currTime < showMessageUntil)
 				mvprintw(h - 1, 0, " %s", message.toStringz);
@@ -353,7 +353,7 @@ struct Browser
 			}
 			attroff(A_REVERSE);
 
-			auto displayedPath = text(fsPath.asNormalizedPath, currentPath.pointerWriter);
+			auto displayedPath = currentPath is &browserRoot ? "/" : currentPath.pointerWriter.text;
 			auto prefix = ["", "INFO: "][mode];
 			auto maxPathWidth = w - 8 - prefix.length;
 			if (displayedPath.length > maxPathWidth)
