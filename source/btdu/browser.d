@@ -57,6 +57,7 @@ struct Browser
 	{
 		browser,
 		info,
+		help,
 	}
 	Mode mode;
 
@@ -123,6 +124,7 @@ struct Browser
 			mode = Mode.info;
 
 		// Build info
+		if (mode.among(Mode.browser, Mode.info))
 		{
 			info = null;
 
@@ -174,7 +176,7 @@ struct Browser
 							"Welcome to btdu. You are in the hierarchy root; " ~
 							"results will be arranged according to their block group and profile, and then by path." ~
 							"\n\n" ~
-							"Use the arrow keys to navigate.";
+							"Use the arrow keys to navigate, press ? for help.";
 
 					string name = currentPath.name;
 					if (name.skipOver("\0"))
@@ -320,6 +322,9 @@ struct Browser
 				case Mode.info:
 					contentHeight = info.length;
 					break;
+				case Mode.help:
+					contentHeight = help.length;
+					break;
 			}
 
 			// Ensure there is no unnecessary space at the bottom
@@ -342,6 +347,7 @@ struct Browser
 					break;
 				}
 				case Mode.info:
+				case Mode.help:
 					break;
 			}
 		}
@@ -379,18 +385,21 @@ struct Browser
 			}
 			attroff(A_REVERSE);
 
-			auto displayedPath = currentPath is &browserRoot ? "/" : currentPath.pointerWriter.text;
-			auto prefix = ["", "INFO: "][mode];
-			auto maxPathWidth = w - 8 - prefix.length;
-			if (displayedPath.length > maxPathWidth)
-				displayedPath = "..." ~ displayedPath[$ - (maxPathWidth - 3) .. $];
+			if (mode.among(Mode.browser, Mode.info))
+			{
+				auto displayedPath = currentPath is &browserRoot ? "/" : currentPath.pointerWriter.text;
+				auto prefix = ["", "INFO: "][mode];
+				auto maxPathWidth = w - 8 - prefix.length;
+				if (displayedPath.length > maxPathWidth)
+					displayedPath = "..." ~ displayedPath[$ - (maxPathWidth - 3) .. $];
 
-			mvhline(1, 0, '-', w);
-			mvprintw(1, 3,
-				" %s%s ",
-				prefix.ptr,
-				displayedPath.toStringz()
-			);
+				mvhline(1, 0, '-', w);
+				mvprintw(1, 3,
+					" %s%s ",
+					prefix.ptr,
+					displayedPath.toStringz()
+				);
+			}
 		}
 
 		final switch (mode)
@@ -464,7 +473,8 @@ struct Browser
 			}
 
 			case Mode.info:
-				foreach (i, line; info)
+			case Mode.help:
+				foreach (i, line; mode == Mode.info ? info : help)
 				{
 					auto y = cast(int)(i - top);
 					if (y < 0 || y >= contentAreaHeight)
@@ -529,6 +539,11 @@ struct Browser
 			case 'p':
 				togglePause();
 				return true;
+			case '?':
+			case KEY_F0 + 1:
+				mode = Mode.help;
+				top = 0;
+				break;
 			default:
 				// Proceed according to mode
 		}
@@ -648,6 +663,40 @@ struct Browser
 						break;
 				}
 				break;
+
+			case Mode.help:
+				switch (ch)
+				{
+					case 'q':
+						mode = Mode.browser;
+						top = 0;
+						break;
+
+					case KEY_UP:
+					case 'k':
+						top += -1;
+						break;
+					case KEY_DOWN:
+					case 'j':
+						top += +1;
+						break;
+					case KEY_PPAGE:
+						top += -contentAreaHeight;
+						break;
+					case KEY_NPAGE:
+						top += +contentAreaHeight;
+						break;
+					case KEY_HOME:
+						top -= help.length;
+						break;
+					case KEY_END:
+						top += help.length;
+						break;
+					default:
+						// TODO: show message
+						break;
+				}
+				break;
 		}
 
 		return true;
@@ -689,3 +738,24 @@ string errnoString(string s, int errno)()
 		result = new ErrnoException(s, errno).msg;
 	return result;
 }
+
+static immutable string[] help = q"EOF
+btdu - the sampling disk usage profiler for btrfs
+-------------------------------------------------
+
+Keys:
+
+      F1, ? - Show this help screen
+      Up, k - Move cursor up
+    Down, j - Move cursor down
+Right/Enter - Open selected node
+ Left, <, h - Return to parent node
+          p - Pause/resume
+          n - Sort by name (ascending/descending)
+          s - Sort by size (ascending/descending)
+          i - Expand/collapse information panel
+          q - Close information panel or quit btdu
+
+https://github.com/CyberShadow/btdu
+Created by: Vladimir Panteleev
+EOF".splitLines;
