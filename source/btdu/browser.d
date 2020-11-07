@@ -21,6 +21,7 @@ module btdu.browser;
 
 import core.stdc.config;
 import core.stdc.errno;
+import core.sys.posix.locale;
 import core.time;
 
 import std.algorithm.comparison;
@@ -59,6 +60,7 @@ struct Browser
 
 	void start()
 	{
+		setlocale(LC_CTYPE, "");
 		initscr();
 
 		timeout(0); // Use non-blocking read
