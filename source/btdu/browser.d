@@ -539,6 +539,8 @@ struct Browser
 				switch (ch)
 				{
 					case KEY_LEFT:
+					case 'h':
+					case '<':
 						if (currentPath.parent)
 						{
 							selection = currentPath.name;
@@ -549,6 +551,7 @@ struct Browser
 							showMessage("Already at top-level");
 						break;
 					case KEY_RIGHT:
+					case '\n':
 						if (selection)
 						{
 							currentPath = currentPath.children[selection];
@@ -559,9 +562,11 @@ struct Browser
 							showMessage("Nowhere to descend into");
 						break;
 					case KEY_UP:
+					case 'k':
 						moveCursor(-1);
 						break;
 					case KEY_DOWN:
+					case 'j':
 						moveCursor(+1);
 						break;
 					case KEY_PPAGE:
@@ -599,6 +604,8 @@ struct Browser
 				switch (ch)
 				{
 					case KEY_LEFT:
+					case 'h':
+					case '<':
 						mode = Mode.browser;
 						if (currentPath.parent)
 						{
@@ -617,9 +624,11 @@ struct Browser
 						top = 0;
 						break;
 					case KEY_UP:
+					case 'k':
 						top += -1;
 						break;
 					case KEY_DOWN:
+					case 'j':
 						top += +1;
 						break;
 					case KEY_PPAGE:
