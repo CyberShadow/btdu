@@ -75,11 +75,16 @@ void runBrowser()
 			if (message && MonoTime.currTime < showMessageUntil)
 				mvprintw(h - 1, 0, " %s", message.toStringz);
 			else
+			{
+				auto resolution = g.browserRoot.samples
+					? (globalParams.totalSize / g.browserRoot.samples).humanSize()
+					: "-";
 				mvprintw(h - 1, 0,
 					" Samples: %lld  Resolution: ~%s",
 					cast(cpp_longlong)currentPath.samples,
-					(globalParams.totalSize / (1 + g.browserRoot.samples)).humanSize().toStringz()
+					resolution.toStringz()
 				);
+			}
 			attroff(A_REVERSE);
 
 			mvhline(1, 0, '-', w);
@@ -108,13 +113,21 @@ void runBrowser()
 
 				auto child = children[item];
 				char[10] bar;
-				auto barPos = 10 * child.samples / mostSamples;
-				bar[0 .. barPos] = '#';
-				bar[barPos .. $] = ' ';
+				if (mostSamples)
+				{
+					auto barPos = 10 * child.samples / mostSamples;
+					bar[0 .. barPos] = '#';
+					bar[barPos .. $] = ' ';
+				}
+				else
+					bar[] = '-';
 
+				auto size = g.browserRoot.samples
+					? "~" ~ humanSize(child.samples * globalParams.totalSize / g.browserRoot.samples)
+					: "?";
 				mvprintw(y, 0,
 					"%12s [%.10s] %c%s",
-					("~" ~ humanSize(child.samples * globalParams.totalSize / g.browserRoot.samples)).toStringz(),
+					size.toStringz(),
 					bar.ptr,
 					child.getChildren(g) is null ? ' ' : '/',
 					item.toStringz(),
