@@ -278,12 +278,12 @@ struct Browser
 		selection = items[pos];
 	}
 
-	void handleInput()
+	bool handleInput()
 	{
 		auto ch = getch();
 
 		if (ch == ERR)
-			return; // timeout - refresh only
+			return false; // no events - would have blocked
 		else
 			message = null;
 
@@ -388,6 +388,8 @@ struct Browser
 				}
 				break;
 		}
+
+		return true;
 	}
 }
 

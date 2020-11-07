@@ -105,9 +105,9 @@ void program(
 		Socket.select(readSet, null, exceptSet);
 		auto now = MonoTime.currTime();
 
-		if (stdinSocket && (readSet.isSet(stdinSocket) || exceptSet.isSet(stdinSocket)))
+		if (stdinSocket && browser.handleInput())
 		{
-			browser.handleInput();
+			do {} while (browser.handleInput()); // Process all input
 			if (browser.done)
 				break;
 			browser.update();
