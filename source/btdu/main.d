@@ -29,6 +29,7 @@ import std.stdio;
 
 import ae.utils.funopt;
 import ae.utils.main;
+import ae.utils.time.parsedur;
 
 import btdu.browser;
 import btdu.common;
@@ -43,6 +44,7 @@ void program(
 	Option!(uint, "Number of sampling subprocesses\n (default is number of logical CPUs for this system)", "N", 'j') procs = 0,
 	Option!(Seed, "Random seed used to choose samples") seed = 0,
 	Switch!hiddenOption subprocess = false,
+	Option!(string, hiddenOption) benchmark = null,
 )
 {
 	rndGen = Random(seed);
@@ -54,19 +56,35 @@ void program(
 	if (procs == 0)
 		procs = totalCPUs;
 
+	bool headless;
+	Duration benchmarkTime;
+	if (benchmark)
+	{
+		headless = true;
+		benchmarkTime = parseDuration(benchmark);
+	}
+
 	auto subprocesses = new Subprocess[procs];
 	foreach (ref subproc; subprocesses)
 		subproc.start();
 
-	auto stdinSocket = new Socket(cast(socket_t)stdin.fileno, AddressFamily.UNSPEC);
-	stdinSocket.blocking = false;
+	Socket stdinSocket;
+	if (!headless)
+	{
+		stdinSocket = new Socket(cast(socket_t)stdin.fileno, AddressFamily.UNSPEC);
+		stdinSocket.blocking = false;
+	}
 
 	Browser browser;
-	browser.start();
-	browser.update();
+	if (!headless)
+	{
+		browser.start();
+		browser.update();
+	}
 
+	auto startTime = MonoTime.currTime();
 	enum refreshInterval = 500.msecs;
-	auto nextRefresh = MonoTime.currTime() + refreshInterval;
+	auto nextRefresh = startTime + refreshInterval;
 
 	SocketSet[2] sets;
 	foreach (ref set; sets)
@@ -78,7 +96,8 @@ void program(
 		foreach (set; sets)
 		{
 			set.reset();
-			set.add(stdinSocket);
+			if (stdinSocket)
+				set.add(stdinSocket);
 			foreach (ref subproc; subprocesses)
 				set.add(subproc.socket);
 		}
@@ -86,11 +105,12 @@ void program(
 		Socket.select(sets[0], null, sets[1]);
 		auto now = MonoTime.currTime();
 
-		enforce(!sets[1].isSet(stdinSocket), "stdin socket error");
+		if (stdinSocket)
+			enforce(!sets[1].isSet(stdinSocket), "stdin socket error");
 		foreach (ref subproc; subprocesses)
 			enforce(!sets[1].isSet(subproc.socket), "Subprocess socket error");
 
-		if (sets[0].isSet(stdinSocket))
+		if (stdinSocket && sets[0].isSet(stdinSocket))
 		{
 			browser.handleInput();
 			if (browser.done)
@@ -101,16 +121,17 @@ void program(
 		foreach (ref subproc; subprocesses)
 			if (sets[0].isSet(subproc.socket))
 				subproc.handleInput();
-		if (now > nextRefresh)
+		if (!headless && now > nextRefresh)
 		{
 			browser.update();
 			nextRefresh = now + refreshInterval;
 		}
+		if (benchmark && now > startTime + benchmarkTime)
+			break;
 	}
 
-	// if (!quiet) stderr.writeln("Stopping sampling threads...");
-	// foreach (sampler; samplers)
-	// 	sampler.join();
+	if (benchmark)
+		writeln(browserRoot.samples);
 }
 
 void usageFun(string usage)
