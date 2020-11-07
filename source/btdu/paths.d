@@ -118,7 +118,7 @@ mixin template PathCmp()
 {
 	/// Returns the total length of this path chain,
 	/// including this instance.
-	size_t chainLength() const
+	private size_t chainLength() const
 	{
 		return 1 + (parent ? parent.chainLength() : 0);
 	}
