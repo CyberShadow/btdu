@@ -125,6 +125,8 @@ struct Subprocess
 		BrowserPath* browserPath;
 		GlobalPath* inodeRoot;
 		GlobalPath[] allPaths;
+		bool haveInode, havePath;
+		bool ignoringOffset;
 	}
 	private Result result;
 
@@ -147,11 +149,16 @@ struct Subprocess
 		foreach_reverse (b; 0 .. flagNames.length)
 			if (m.chunkFlags & (1UL << b))
 				result.browserPath = result.browserPath.appendName(flagNames[b]);
+		if ((m.chunkFlags & BTRFS_BLOCK_GROUP_DATA) == 0)
+			result.haveInode = true; // Sampler won't even try
 	}
 
 	void handleMessage(ResultInodeStartMessage m)
 	{
+		result.haveInode = true;
+		result.havePath = false;
 		result.inodeRoot = *(m.rootID in globalRoots).enforce("Unknown inode root");
+		result.ignoringOffset = m.ignoringOffset; // Will be the same for all inodes
 	}
 
 	void handleMessage(ResultInodeErrorMessage m)
@@ -161,16 +168,29 @@ struct Subprocess
 
 	void handleMessage(ResultMessage m)
 	{
+		result.havePath = true;
 		result.allPaths ~= GlobalPath(result.inodeRoot, subPathRoot.appendPath(m.path));
+	}
+
+	void handleMessage(ResultInodeEndMessage m)
+	{
+		cast(void) m; // empty message
+		if (!result.havePath)
+			result.allPaths ~= GlobalPath(result.inodeRoot, subPathRoot.appendPath("\0NO_PATH"));
 	}
 
 	void handleMessage(ResultErrorMessage m)
 	{
 		result.allPaths ~= GlobalPath(null, subPathRoot.appendName("\0ERROR").appendPath(m.msg));
+		result.haveInode = true;
 	}
 
 	void handleMessage(ResultEndMessage m)
 	{
+		if (result.ignoringOffset)
+			result.browserPath = result.browserPath.appendName("\0UNREACHABLE");
+		if (!result.haveInode)
+			result.browserPath = result.browserPath.appendName("\0NO_INODE");
 		if (result.allPaths)
 		{
 			auto canonicalPath = result.allPaths.fold!((a, b) {

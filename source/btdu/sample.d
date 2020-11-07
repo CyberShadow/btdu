@@ -19,6 +19,7 @@
 /// Sampling subprocess implementation
 module btdu.sample;
 
+import core.stdc.errno;
 import core.sys.posix.fcntl;
 import core.sys.posix.unistd;
 import core.thread;
@@ -78,57 +79,67 @@ void subprocessMain(string fsPath)
 					if (chunk.chunk.type & BTRFS_BLOCK_GROUP_DATA)
 					{
 						auto offset = chunk.offset + (targetPos - pos);
-						try
+						foreach (ignoringOffset; [false, true])
 						{
-							logicalIno(fd, offset,
-								(u64 inode, u64 offset, u64 rootID)
-								{
-									// writeln("- ", inode, " ", offset, " ", root);
-									cast(void) offset; // unused
-
-									// Send new roots before the inode start
-									cast(void)getRoot(fd, rootID);
-
-									send(ResultInodeStartMessage(rootID));
-
-									try
+							try
+							{
+								bool called;
+								logicalIno(fd, offset,
+									(u64 inode, u64 offset, u64 rootID)
 									{
-										static Appender!(char[]) pathBuf;
-										pathBuf.clear();
-										pathBuf.put(fsPath);
+										called = true;
 
-										void putRoot(u64 rootID)
+										// writeln("- ", inode, " ", offset, " ", root);
+										cast(void) offset; // unused
+
+										// Send new roots before the inode start
+										cast(void)getRoot(fd, rootID);
+
+										send(ResultInodeStartMessage(rootID, ignoringOffset));
+
+										try
 										{
-											auto root = getRoot(fd, rootID);
-											if (root is Root.init)
-												enforce(rootID == BTRFS_FS_TREE_OBJECTID, "Unresolvable root");
-											else
-												putRoot(root.parent);
-											if (root.path)
+											static Appender!(char[]) pathBuf;
+											pathBuf.clear();
+											pathBuf.put(fsPath);
+
+											void putRoot(u64 rootID)
 											{
-												pathBuf.put('/');
-												pathBuf.put(root.path);
+												auto root = getRoot(fd, rootID);
+												if (root is Root.init)
+													enforce(rootID == BTRFS_FS_TREE_OBJECTID, "Unresolvable root");
+												else
+													putRoot(root.parent);
+												if (root.path)
+												{
+													pathBuf.put('/');
+													pathBuf.put(root.path);
+												}
 											}
+											putRoot(rootID);
+											pathBuf.put('\0');
+
+											int rootFD = open(pathBuf.data.ptr, O_RDONLY);
+											if (rootFD < 0)
+												throw new Exception(new ErrnoException("open").msg ~ cast(string)pathBuf.data[0 .. $-1]);
+											scope(exit) close(rootFD);
+
+											inoPaths(rootFD, inode, (char[] fn) {
+												send(ResultMessage(fn));
+											});
+											send(ResultInodeEndMessage());
 										}
-										putRoot(rootID);
-										pathBuf.put('\0');
-
-										int rootFD = open(pathBuf.data.ptr, O_RDONLY);
-										if (rootFD < 0)
-											throw new Exception(new ErrnoException("open").msg ~ cast(string)pathBuf.data[0 .. $-1]);
-										scope(exit) close(rootFD);
-
-										inoPaths(rootFD, inode, (char[] fn) {
-											send(ResultMessage(fn));
-										});
-									}
-									catch (Exception e)
-										send(ResultInodeErrorMessage(e.msg));
-								});
-						}
-						catch (Exception e)
-						{
-							send(ResultErrorMessage(e.msg));
+										catch (Exception e)
+											send(ResultInodeErrorMessage(e.msg));
+									},
+									ignoringOffset,
+								);
+								if (!called && !ignoringOffset)
+									continue;
+							}
+							catch (Exception e)
+								send(ResultErrorMessage(e.msg));
+							break;
 						}
 					}
 					send(ResultEndMessage(sw.peek.stdTime));

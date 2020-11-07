@@ -197,6 +197,23 @@ struct Browser
 									"\n\n" ~
 									"These samples are not resolvable to paths, and most likely indicate some kind of metadata. " ~
 									"(If you know, please tell me!)";
+							case "NO_INODE":
+								return
+									"This node represents sample points for which btrfs successfully completed our request " ~
+									"to look up inodes at the given logical offset, but did not actually return any inodes.";
+							case "NO_PATH":
+								return
+									"This node represents sample points for which btrfs successfully completed our request " ~
+									"to look up filesystem paths for the given inode, but did not actually return any paths.";
+							case "UNREACHABLE":
+								return
+									"This node represents sample points in extents which are not used by any files.\n" ~
+									"Despite not being directly used, these blocks are kept because another part of the extent they belong to is actually used by files." ~
+									"\n\n" ~
+									"This can happen if a large file is written in one go, and then later one block is overwritten - " ~
+									"btrfs may keep the old extent which still contains the old copy of the overwritten block." ~
+									"\n\n" ~
+									"Defragmentation may reduce the amount of such unreachable blocks.";
 							default:
 								if (name.skipOver("TREE_"))
 									return

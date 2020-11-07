@@ -49,9 +49,15 @@ struct ResultStartMessage
 struct ResultInodeStartMessage
 {
 	u64 rootID;
+	bool ignoringOffset;
 }
 
 struct ResultInodeErrorMessage
+{
+	const(char)[] msg;
+}
+
+struct ResultInodeEndMessage
 {
 	const(char)[] msg;
 }
@@ -82,6 +88,7 @@ alias AllMessages = AliasSeq!(
 	ResultStartMessage,
 	ResultInodeStartMessage,
 	ResultInodeErrorMessage,
+	ResultInodeEndMessage,
 	ResultMessage,
 	ResultErrorMessage,
 	ResultEndMessage,
