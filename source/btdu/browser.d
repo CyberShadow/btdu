@@ -37,6 +37,7 @@ import std.string;
 import deimos.ncurses;
 
 import ae.utils.text;
+import ae.utils.time : stdDur;
 
 import btdu.common;
 import btdu.state;
@@ -134,6 +135,9 @@ struct Browser
 				info ~= "- Full path: " ~ cast(string)fullPath;
 			info ~= "- Size: " ~ (browserRoot.samples
 				? "~" ~ humanSize(currentPath.samples * totalSize / browserRoot.samples)
+				: "-");
+			info ~= "- Average query duration: " ~ (currentPath.samples
+				? stdDur(currentPath.duration / currentPath.samples).toString()
 				: "-");
 
 			{

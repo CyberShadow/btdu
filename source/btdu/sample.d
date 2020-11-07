@@ -25,10 +25,13 @@ import core.thread;
 
 import std.algorithm.iteration;
 import std.array;
+import std.datetime.stopwatch;
 import std.exception;
 import std.format;
 import std.random;
 import std.string;
+
+import ae.utils.time : stdTime;
 
 import btrfs;
 import btrfs.c.kerncompat;
@@ -70,6 +73,7 @@ void subprocessMain(string fsPath)
 				if (end > targetPos)
 				{
 					send(ResultStartMessage(chunk.chunk.type));
+					auto sw = StopWatch(AutoStart.yes);
 
 					if (chunk.chunk.type & BTRFS_BLOCK_GROUP_DATA)
 					{
@@ -127,7 +131,7 @@ void subprocessMain(string fsPath)
 							send(ResultErrorMessage(e.msg));
 						}
 					}
-					send(ResultEndMessage());
+					send(ResultEndMessage(sw.peek.stdTime));
 					break;
 				}
 				pos = end;

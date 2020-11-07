@@ -171,8 +171,6 @@ struct Subprocess
 
 	void handleMessage(ResultEndMessage m)
 	{
-		cast(void)m; // Empty message
-
 		if (result.allPaths)
 		{
 			auto canonicalPath = result.allPaths.fold!((a, b) {
@@ -186,7 +184,7 @@ struct Subprocess
 			})();
 			result.browserPath = result.browserPath.appendPath(&canonicalPath);
 		}
-		result.browserPath.addSample();
+		result.browserPath.addSample(m.duration);
 		foreach (path; result.allPaths)
 			result.browserPath.seenAs.add(path);
 		result = Result.init;

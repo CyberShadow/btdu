@@ -68,6 +68,7 @@ struct ResultErrorMessage
 
 struct ResultEndMessage
 {
+	ulong duration;
 }
 
 struct FatalErrorMessage

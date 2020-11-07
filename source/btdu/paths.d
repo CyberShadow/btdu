@@ -249,12 +249,14 @@ struct BrowserPath
 	mixin SimplePath;
 
 	ulong samples; /// For non-leaves, sum of leaves
+	ulong duration; /// Total hnsecs
 
-	void addSample()
+	void addSample(ulong duration)
 	{
 		samples++;
+		this.duration += duration;
 		if (parent)
-			parent.addSample();
+			parent.addSample(duration);
 	}
 
 	/// Other paths this address is reachable via
