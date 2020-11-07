@@ -26,6 +26,7 @@ import core.time;
 
 import std.algorithm.comparison;
 import std.algorithm.iteration;
+import std.algorithm.mutation;
 import std.algorithm.searching;
 import std.algorithm.sorting;
 import std.array;
@@ -58,6 +59,14 @@ struct Browser
 		info,
 	}
 	Mode mode;
+
+	enum SortMode
+	{
+		name,
+		size,
+	}
+	SortMode sortMode;
+	bool reverseSort;
 
 	void start()
 	{
@@ -93,7 +102,21 @@ struct Browser
 		getmaxyx(stdscr, h, w); h++; w++;
 
 		items = currentPath.children.keys;
-		items.sort();
+		final switch (sortMode)
+		{
+			case SortMode.name:
+				items.sort();
+				break;
+			case SortMode.size:
+				items.multiSort!(
+					(a, b) => currentPath.children[a].samples > currentPath.children[b].samples,
+					(a, b) => a < b,
+				);
+				break;
+		}
+		if (reverseSort)
+			items.reverse();
+
 		if (!selection && items.length)
 			selection = items[0];
 		if (!items.length && mode == Mode.browser && currentPath !is &browserRoot)
@@ -481,6 +504,17 @@ struct Browser
 			subprocess.pause(paused);
 	}
 
+	void setSort(SortMode mode)
+	{
+		if (sortMode == mode)
+			reverseSort = !reverseSort;
+		else
+		{
+			sortMode = mode;
+			reverseSort = false;
+		}
+	}
+
 	bool handleInput()
 	{
 		auto ch = getch();
@@ -548,6 +582,12 @@ struct Browser
 						break;
 					case 'q':
 						done = true;
+						break;
+					case 'n':
+						setSort(SortMode.name);
+						break;
+					case 's':
+						setSort(SortMode.size);
 						break;
 					default:
 						// TODO: show message
