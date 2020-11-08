@@ -53,7 +53,7 @@ struct Subprocess
 	void start()
 	{
 		pipe = .pipe();
-		socket = new Socket(cast(socket_t)pipe.readEnd.fileno, AddressFamily.UNSPEC);
+		socket = new Socket(cast(socket_t)pipe.readEnd.fileno.dup, AddressFamily.UNSPEC);
 		socket.blocking = false;
 
 		pid = spawnProcess(
