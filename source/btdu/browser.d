@@ -767,5 +767,5 @@ Right/Enter - Open selected node
           q - Close information panel or quit btdu
 
 https://github.com/CyberShadow/btdu
-Created by: Vladimir Panteleev
+Created by: Vladimir Panteleev <https://cy.md/>
 EOF".splitLines;
