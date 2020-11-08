@@ -29,6 +29,16 @@ It differs from classic analyzers through the following properties:
 - Because it queries raw filesystem metadata, btdu requires root privileges to run.
 
 
+Installation
+------------
+
+btdu can be installed in one of the following ways:
+
+- An [AUR package is available](https://aur.archlinux.org/packages/btdu) for Arch Linux and derivatives.
+- Download a static binary from [the releases page](https://github.com/CyberShadow/btdu/releases).
+- Clone this repository and build from source (see below).
+
+
 Building
 --------
 
