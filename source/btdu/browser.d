@@ -145,6 +145,7 @@ struct Browser
 						switch (name)
 						{
 							case "DATA":
+							case "UNREACHABLE":
 								return true;
 							default:
 								return false;
