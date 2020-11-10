@@ -396,22 +396,22 @@ struct Browser
 
 			attron(A_REVERSE);
 			mvhline(0, 0, ' ', w);
-			mvprintw(0, 0, " btdu v" ~ btduVersion ~ " @ %s", fsPath.toStringz());
+			mvprintw(0, 0, " btdu v" ~ btduVersion ~ " @ %.*s", fsPath.length, fsPath.ptr);
 			if (paused)
 				mvprintw(0, w - 10, " [PAUSED] ");
 
 			mvhline(h - 1, 0, ' ', w);
 			if (message && MonoTime.currTime < showMessageUntil)
-				mvprintw(h - 1, 0, " %s", message.toStringz);
+				mvprintw(h - 1, 0, " %.*s", message.length, message.ptr);
 			else
 			{
 				auto resolution = browserRoot.samples
 					? "~" ~ (totalSize / browserRoot.samples).humanSize()
 					: "-";
 				mvprintw(h - 1, 0,
-					" Samples: %lld  Resolution: %s",
+					" Samples: %lld  Resolution: %.*s",
 					cast(cpp_longlong)browserRoot.samples,
-					resolution.toStringz()
+					resolution.length, resolution.ptr,
 				);
 			}
 			attroff(A_REVERSE);
@@ -426,9 +426,9 @@ struct Browser
 
 				mvhline(1, 0, '-', w);
 				mvprintw(1, 3,
-					" %s%s ",
+					" %s%.*s ",
 					prefix.ptr,
-					displayedPath.toStringz()
+					displayedPath.length, displayedPath.ptr,
 				);
 			}
 		}
@@ -522,7 +522,7 @@ struct Browser
 						break;
 					}
 					mvhline(y, 0, i != 1 ? ' ' : '-', w);
-					mvprintw(y, 0, "%s", line.toStringz());
+					mvprintw(y, 0, "%.*s", line.length, line.ptr);
 				}
 				break;
 			}
@@ -535,7 +535,7 @@ struct Browser
 					if (y < 0 || y >= contentAreaHeight)
 						continue;
 					y += 2;
-					mvprintw(y, 0, "%s", line.toStringz());
+					mvprintw(y, 0, "%.*s", line.length, line.ptr);
 				}
 				break;
 		}
