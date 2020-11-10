@@ -54,6 +54,8 @@ void program(
 	if (subprocess)
 		return subprocessMain(path);
 
+	checkBtrfs(fsPath);
+
 	if (procs == 0)
 		procs = totalCPUs;
 
@@ -130,6 +132,26 @@ void program(
 
 	if (benchmark)
 		writeln(browserRoot.samples);
+}
+
+void checkBtrfs(string fsPath)
+{
+	import core.sys.posix.fcntl : open, O_RDONLY;
+	import std.string : toStringz;
+	import btrfs : isBTRFS, isSubvolume, getSubvolumeID;
+	import btrfs.c.kernel_shared.ctree : BTRFS_FS_TREE_OBJECTID;
+
+	int fd = open(fsPath.toStringz, O_RDONLY);
+	errnoEnforce(fd >= 0, "open");
+
+	enforce(fd.isBTRFS,
+		fsPath ~ " is not a btrfs filesystem");
+
+	enforce(fd.isSubvolume,
+		fsPath ~ " is not the root of a btrfs subvolume - please specify the path to the subvolume root");
+
+	enforce(fd.getSubvolumeID() == BTRFS_FS_TREE_OBJECTID,
+		fsPath ~ " is not the root btrfs subvolume - please specify the path to a mountpoint mounted with subvol=/ or subvolid=5");
 }
 
 void usageFun(string usage)

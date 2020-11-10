@@ -2,7 +2,7 @@
 	"fileVersion": 1,
 	"versions": {
 		"ae": "0.0.2833",
-		"btrfs": "0.0.10",
+		"btrfs": "0.0.11",
 		"ncurses": "0.0.148"
 	}
 }
