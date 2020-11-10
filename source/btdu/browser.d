@@ -32,11 +32,13 @@ import std.algorithm.sorting;
 import std.array;
 import std.conv;
 import std.exception;
+import std.format;
 import std.path;
 import std.string;
 
 import deimos.ncurses;
 
+import ae.utils.meta;
 import ae.utils.text;
 import ae.utils.time : stdDur;
 
@@ -69,6 +71,15 @@ struct Browser
 	SortMode sortMode;
 	bool reverseSort, dirsFirst;
 
+	enum RatioDisplayMode
+	{
+		none,
+		graph,
+		percentage,
+		both,
+	}
+	RatioDisplayMode ratioDisplayMode = RatioDisplayMode.graph;
+
 	void start()
 	{
 		setlocale(LC_CTYPE, "");
@@ -96,6 +107,8 @@ struct Browser
 		message = s;
 		showMessageUntil = MonoTime.currTime() + (100.msecs * s.length);
 	}
+
+	private static Appender!(char[]) buf; // Reusable buffer
 
 	void update()
 	{
@@ -135,7 +148,6 @@ struct Browser
 
 			char[] fullPath;
 			{
-				static Appender!(char[]) buf;
 				buf.clear();
 				buf.put(fsPath);
 				bool recurse(BrowserPath *path)
@@ -360,10 +372,22 @@ struct Browser
 		}
 
 		// Rendering
+		sizediff_t minWidth;
 		{
 			erase();
 
-			if (h < 10 || w < 32)
+			minWidth =
+				"  100.0 KiB ".length +
+				[
+					""                    .length,
+					"[##########] "       .length,
+					"[100.0%] "           .length,
+					"[100.0% ##########] ".length,
+				][ratioDisplayMode] +
+				"/".length +
+				6;
+
+			if (h < 10 || w < minWidth)
 			{
 				mvprintw(0, 0, "Window too small");
 				refresh();
@@ -429,38 +453,62 @@ struct Browser
 					mvhline(y, 0, ' ', w);
 
 					auto child = currentPath.children[item];
-					char[10] bar;
-					if (mostSamples)
-					{
-						auto barPos = 10 * child.samples / mostSamples;
-						bar[0 .. barPos] = '#';
-						bar[barPos .. $] = ' ';
-					}
-					else
-						bar[] = '-';
 
-					auto size = browserRoot.samples
-						? "~" ~ humanSize(child.samples * totalSize / browserRoot.samples)
-						: "?";
-					auto displayedItem = child.humanName;
-					if (child.name.startsWith("\0"))
-						displayedItem = "<" ~ displayedItem ~ ">";
-					auto maxItemWidth = w - 27;
-					if (displayedItem.length > maxItemWidth)
+					buf.clear();
 					{
-						auto leftLength = (maxItemWidth - "...".length) / 2;
-						auto rightLength = maxItemWidth - "...".length - leftLength;
-						displayedItem =
-							displayedItem[0 .. leftLength] ~ "..." ~
-							displayedItem[$ - rightLength .. $];
+						auto size = browserRoot.samples
+							? "~" ~ humanSize(child.samples * totalSize / browserRoot.samples)
+							: "?";
+						buf.formattedWrite!"%12s "(size);
 					}
-					mvprintw(y, 0,
-						"%12s [%.10s] %c%s",
-						size.toStringz(),
-						bar.ptr,
-						child.children is null ? ' ' : '/',
-						displayedItem.toStringz(),
-					);
+
+					if (ratioDisplayMode)
+					{
+						buf.put('[');
+						if (ratioDisplayMode & RatioDisplayMode.percentage)
+						{
+							if (currentPath.samples)
+								buf.formattedWrite!"%5.1f%%"(100.0 * child.samples / currentPath.samples);
+							else
+								buf.put("    -%");
+						}
+						if (ratioDisplayMode == RatioDisplayMode.both)
+							buf.put(' ');
+						if (ratioDisplayMode & RatioDisplayMode.graph)
+						{
+							char[10] bar;
+							if (mostSamples)
+							{
+								auto barPos = 10 * child.samples / mostSamples;
+								bar[0 .. barPos] = '#';
+								bar[barPos .. $] = ' ';
+							}
+							else
+								bar[] = '-';
+							buf.put(bar[]);
+						}
+						buf.put("] ");
+					}
+					buf.put(child.children is null ? ' ' : '/');
+
+					{
+						auto displayedItem = child.humanName;
+						if (child.name.startsWith("\0"))
+							displayedItem = "<" ~ displayedItem ~ ">";
+						auto maxItemWidth = w - (minWidth - 5);
+						if (displayedItem.length > maxItemWidth)
+						{
+							auto leftLength = (maxItemWidth - "...".length) / 2;
+							auto rightLength = maxItemWidth - "...".length - leftLength;
+							displayedItem =
+								displayedItem[0 .. leftLength] ~ "..." ~
+								displayedItem[$ - rightLength .. $];
+						}
+						buf.put(displayedItem);
+					}
+
+					buf.put('\0');
+					mvprintw(y, 0, "%s", buf.data.ptr);
 				}
 				attroff(A_REVERSE);
 
@@ -630,6 +678,11 @@ struct Browser
 						showMessage(format("%s directories before files",
 								dirsFirst ? "Sorting" : "Not sorting"));
 						break;
+					case 'g':
+						ratioDisplayMode++;
+						ratioDisplayMode %= enumLength!RatioDisplayMode;
+						showMessage(format("Showing %s", ratioDisplayMode));
+						break;
 					default:
 						// TODO: show message
 						break;
@@ -775,6 +828,7 @@ Right/Enter - Open selected node
           n - Sort by name (ascending/descending)
           s - Sort by size (ascending/descending)
           t - Toggle dirs before files when sorting
+          g - Show percentage and/or graph
           i - Expand/collapse information panel
           q - Close information panel or quit btdu
 
