@@ -34,6 +34,7 @@ import std.conv;
 import std.exception;
 import std.format;
 import std.path;
+import std.range;
 import std.string;
 
 import deimos.ncurses;
@@ -52,7 +53,7 @@ struct Browser
 	sizediff_t top; // Scroll offset (row number, in the content, corresponding to the topmost displayed line)
 	sizediff_t contentAreaHeight; // Number of rows where scrolling content is displayed
 	string selection;
-	string[] items, info;
+	string[] items, textLines;
 	bool done;
 
 	enum Mode
@@ -142,191 +143,206 @@ struct Browser
 			mode = Mode.info;
 
 		// Build info
-		if (mode.among(Mode.browser, Mode.info))
+		final switch (mode)
 		{
-			info = null;
-
-			char[] fullPath;
+			case Mode.browser:
+			case Mode.info:
 			{
-				buf.clear();
-				buf.put(fsPath);
-				bool recurse(BrowserPath *path)
+				string[][] info;
+
+				char[] fullPath;
 				{
-					string name = path.name;
-					if (name.skipOver("\0"))
-						switch (name)
-						{
-							case "DATA":
-							case "UNREACHABLE":
-								return true;
-							default:
+					buf.clear();
+					buf.put(fsPath);
+					bool recurse(BrowserPath *path)
+					{
+						string name = path.name;
+						if (name.skipOver("\0"))
+							switch (name)
+							{
+								case "DATA":
+								case "UNREACHABLE":
+									return true;
+								default:
+									return false;
+							}
+						if (path.parent)
+							if (!recurse(path.parent))
 								return false;
-						}
-					if (path.parent)
-						if (!recurse(path.parent))
-							return false;
-					buf.put('/');
-					buf.put(name);
-					return true;
+						buf.put('/');
+						buf.put(name);
+						return true;
+					}
+					if (recurse(currentPath))
+						fullPath = buf.data;
 				}
-				if (recurse(currentPath))
-					fullPath = buf.data;
-			}
 
-			info ~= ["", "--- Details: "];
-			if (fullPath)
-				info ~= "- Full path: " ~ cast(string)fullPath;
-			info ~= "- Size: " ~ (browserRoot.samples
-				? format!"~%s (%d sample%s)"(
-					humanSize(currentPath.samples * totalSize / browserRoot.samples),
-					currentPath.samples,
-					currentPath.samples == 1 ? "" : "s",
-				)
-				: "-");
-			info ~= "- Average query duration: " ~ (currentPath.samples
-				? stdDur(currentPath.duration / currentPath.samples).toString()
-				: "-");
+				info ~= chain(
+					["--- Details: "],
 
-			{
-				string explanation = {
-					if (currentPath is &browserRoot)
-						return
-							"Welcome to btdu. You are in the hierarchy root; " ~
-							"results will be arranged according to their block group and profile, and then by path." ~
-							"\n\n" ~
-							"Use the arrow keys to navigate, press ? for help.";
+					fullPath ? ["- Full path: " ~ cast(string)fullPath] : [],
 
-					string name = currentPath.name;
-					if (name.skipOver("\0"))
-					{
-						switch (name)
+					["- Size: " ~ (browserRoot.samples
+							? format!"~%s (%d sample%s)"(
+								humanSize(currentPath.samples * totalSize / browserRoot.samples),
+								currentPath.samples,
+								currentPath.samples == 1 ? "" : "s",
+							)
+						: "-")],
+
+					["- Average query duration: " ~ (currentPath.samples
+							? stdDur(currentPath.duration / currentPath.samples).toString()
+							: "-")],
+				).array;
+
+				{
+					string explanation = {
+						if (currentPath is &browserRoot)
+							return
+								"Welcome to btdu. You are in the hierarchy root; " ~
+								"results will be arranged according to their block group and profile, and then by path." ~
+								"\n\n" ~
+								"Use the arrow keys to navigate, press ? for help.";
+
+						string name = currentPath.name;
+						if (name.skipOver("\0"))
 						{
-							case "DATA":
-								return
-									"This node holds samples from chunks in the DATA block group, " ~
-									"which mostly contains file data.";
-							case "METADATA":
-								return
-									"This node holds samples from chunks in the METADATA block group, " ~
-									"which contains btrfs internal metadata arranged in b-trees." ~
-									"\n\n" ~
-									"The contents of small files may be stored here, in line with their metadata." ~
-									"\n\n" ~
-									"The contents of METADATA chunks is opaque to btdu, so this node does not have children.";
-							case "SYSTEM":
-								return
-									"This node holds samples from chunks in the SYSTEM block group " ~
-									"which contains some core btrfs information, such as how to map physical device space to linear logical space or vice-versa." ~
-									"\n\n" ~
-									"The contents of SYSTEM chunks is opaque to btdu, so this node does not have children.";
-							case "RAID0":
-							case "RAID1":
-							case "DUP":
-							case "RAID10":
-							case "RAID5":
-							case "RAID6":
-							case "RAID1C3":
-							case "RAID1C4":
-								return
-									"This node holds samples from chunks in the " ~ name ~ " profile.";
-							case "ERROR":
-								return
-									"This node represents sample points for which btdu encountered an error when attempting to query them." ~
-									"\n\n" ~
-									"Children of this node indicate the encountered error, and may have a more detailed explanation attached.";
-							case "ROOT_TREE":
-								return
-									"This node holds samples with inodes contained in the BTRFS_ROOT_TREE_OBJECTID object." ~
-									"\n\n" ~
-									"These samples are not resolvable to paths, and most likely indicate some kind of metadata. " ~
-									"(If you know, please tell me!)";
-							case "NO_INODE":
-								return
-									"This node represents sample points for which btrfs successfully completed our request " ~
-									"to look up inodes at the given logical offset, but did not actually return any inodes.";
-							case "NO_PATH":
-								return
-									"This node represents sample points for which btrfs successfully completed our request " ~
-									"to look up filesystem paths for the given inode, but did not actually return any paths.";
-							case "UNREACHABLE":
-								return
-									"This node represents sample points in extents which are not used by any files.\n" ~
-									"Despite not being directly used, these blocks are kept because another part of the extent they belong to is actually used by files." ~
-									"\n\n" ~
-									"This can happen if a large file is written in one go, and then later one block is overwritten - " ~
-									"btrfs may keep the old extent which still contains the old copy of the overwritten block." ~
-									"\n\n" ~
-									"Children of this node indicate the path of files using the extent containing the unreachable samples." ~
-									"Defragmentation of these files may reduce the amount of such unreachable blocks.";
-							default:
-								if (name.skipOver("TREE_"))
+							switch (name)
+							{
+								case "DATA":
 									return
-										"This node holds samples with inodes contained in the tree #" ~ name ~ ", " ~
-										"but btdu failed to resolve this tree number to an absolute path.";
-								debug assert(false, "Unknown special node: " ~ name);
+										"This node holds samples from chunks in the DATA block group, " ~
+										"which mostly contains file data.";
+								case "METADATA":
+									return
+										"This node holds samples from chunks in the METADATA block group, " ~
+										"which contains btrfs internal metadata arranged in b-trees." ~
+										"\n\n" ~
+										"The contents of small files may be stored here, in line with their metadata." ~
+										"\n\n" ~
+										"The contents of METADATA chunks is opaque to btdu, so this node does not have children.";
+								case "SYSTEM":
+									return
+										"This node holds samples from chunks in the SYSTEM block group " ~
+										"which contains some core btrfs information, such as how to map physical device space to linear logical space or vice-versa." ~
+										"\n\n" ~
+										"The contents of SYSTEM chunks is opaque to btdu, so this node does not have children.";
+								case "RAID0":
+								case "RAID1":
+								case "DUP":
+								case "RAID10":
+								case "RAID5":
+								case "RAID6":
+								case "RAID1C3":
+								case "RAID1C4":
+									return
+										"This node holds samples from chunks in the " ~ name ~ " profile.";
+								case "ERROR":
+									return
+										"This node represents sample points for which btdu encountered an error when attempting to query them." ~
+										"\n\n" ~
+										"Children of this node indicate the encountered error, and may have a more detailed explanation attached.";
+								case "ROOT_TREE":
+									return
+										"This node holds samples with inodes contained in the BTRFS_ROOT_TREE_OBJECTID object." ~
+										"\n\n" ~
+										"These samples are not resolvable to paths, and most likely indicate some kind of metadata. " ~
+										"(If you know, please tell me!)";
+								case "NO_INODE":
+									return
+										"This node represents sample points for which btrfs successfully completed our request " ~
+										"to look up inodes at the given logical offset, but did not actually return any inodes.";
+								case "NO_PATH":
+									return
+										"This node represents sample points for which btrfs successfully completed our request " ~
+										"to look up filesystem paths for the given inode, but did not actually return any paths.";
+								case "UNREACHABLE":
+									return
+										"This node represents sample points in extents which are not used by any files.\n" ~
+										"Despite not being directly used, these blocks are kept because another part of the extent they belong to is actually used by files." ~
+										"\n\n" ~
+										"This can happen if a large file is written in one go, and then later one block is overwritten - " ~
+										"btrfs may keep the old extent which still contains the old copy of the overwritten block." ~
+										"\n\n" ~
+										"Children of this node indicate the path of files using the extent containing the unreachable samples." ~
+										"Defragmentation of these files may reduce the amount of such unreachable blocks.";
+								default:
+									if (name.skipOver("TREE_"))
+										return
+											"This node holds samples with inodes contained in the tree #" ~ name ~ ", " ~
+											"but btdu failed to resolve this tree number to an absolute path.";
+									debug assert(false, "Unknown special node: " ~ name);
+							}
 						}
-					}
 
-					if (currentPath.parent && currentPath.parent.name == "\0ERROR")
-					{
-						switch (name)
+						if (currentPath.parent && currentPath.parent.name == "\0ERROR")
 						{
-							case "Unresolvable root":
-								return
-									"btdu failed to resolve this tree number to an absolute path.";
-							default:
-								if (name == errnoString!("logical ino", ENOENT))
+							switch (name)
+							{
+								case "Unresolvable root":
 									return
-										"btrfs reports that there is nothing at the random sample location that btdu picked." ~
-										"\n\n" ~
-										"This most likely represents allocated but unused space, " ~
-										"which could be reduced by running a balance on the DATA block group.";
-								if (name == errnoString!("open", ENOENT))
-									return
-										"btdu failed to open the filesystem root containing an inode." ~
-										"\n\n" ~
-										"The most likely reason for this is that you didn't specify the path to the volume root when starting btdu, " ~
-										"and instead specified the path to a subvolume or subdirectory." ~
-										"\n\n" ~
-										"You can descend into this node to see the path that btdu failed to open.";
+										"btdu failed to resolve this tree number to an absolute path.";
+								default:
+									if (name == errnoString!("logical ino", ENOENT))
+										return
+											"btrfs reports that there is nothing at the random sample location that btdu picked." ~
+											"\n\n" ~
+											"This most likely represents allocated but unused space, " ~
+											"which could be reduced by running a balance on the DATA block group.";
+									if (name == errnoString!("open", ENOENT))
+										return
+											"btdu failed to open the filesystem root containing an inode." ~
+											"\n\n" ~
+											"The most likely reason for this is that you didn't specify the path to the volume root when starting btdu, " ~
+											"and instead specified the path to a subvolume or subdirectory." ~
+											"\n\n" ~
+											"You can descend into this node to see the path that btdu failed to open.";
+							}
 						}
-					}
 
-					return null;
-				}();
+						return null;
+					}();
 
-				if (explanation)
-					info ~= ["", "--- Explanation: "] ~ explanation.verbatimWrap(w).replace("\n ", "\n").strip().split("\n");
-			}
+					if (explanation)
+						info ~= ["--- Explanation: "] ~ explanation.verbatimWrap(w).replace("\n ", "\n").strip().split("\n");
+				}
 
-			bool showSeenAs;
-			if (currentPath.seenAs.empty)
-				showSeenAs = false;
-			else
-			if (fullPath is null && currentPath.seenAs.length == 1)
-				showSeenAs = false; // Not a real file
-			else
-				showSeenAs = true;
-
-			if (showSeenAs)
-			{
-				info ~= ["", "--- Shares data with: "];
-				foreach (path; currentPath.seenAs.keys.sort)
-					info ~= "- " ~ path.text;
-			}
-
-			if (mode == Mode.info && !info.length)
-			{
-				if (items.length)
-					info ~= "  (no info for this node - press i or q to exit)";
+				bool showSeenAs;
+				if (currentPath.seenAs.empty)
+					showSeenAs = false;
 				else
-					info ~= "  (empty node)";
-			}
+				if (fullPath is null && currentPath.seenAs.length == 1)
+					showSeenAs = false; // Not a real file
+				else
+					showSeenAs = true;
 
-			for (size_t i = 0; i < info.length; i++)
-				if (info[i].length > w)
-					info = info[0 .. i] ~ info[i][0 .. w] ~ info[i][w .. $] ~ info[i + 1 .. $];
+				if (showSeenAs)
+					info ~= ["--- Shares data with: "] ~
+						currentPath.seenAs.keys.sort.map!(path => "- " ~ path.text).array;
+
+				textLines = info.join([""]);
+				if (mode == Mode.info)
+				{
+					if (!textLines.length)
+					{
+						if (items.length)
+							textLines = ["  (no info for this node - press i or q to exit)"];
+						else
+							textLines = ["  (empty node)"];
+					}
+					textLines = [""] ~ textLines;
+				}
+				break;
+			}
+			case Mode.help:
+				textLines = help.dup;
+				break;
 		}
+
+		// Hard-wrap
+		for (size_t i = 0; i < textLines.length; i++)
+			if (textLines[i].length > w)
+				textLines = textLines[0 .. i] ~ textLines[i][0 .. w] ~ textLines[i][w .. $] ~ textLines[i + 1 .. $];
 
 		// Scrolling and cursor upkeep
 		{
@@ -336,13 +352,12 @@ struct Browser
 			{
 				case Mode.browser:
 					contentHeight = items.length;
-					contentAreaHeight -= min(info.length, contentAreaHeight / 2);
+					contentAreaHeight -= min(textLines.length, contentAreaHeight / 2);
+					contentAreaHeight = min(contentAreaHeight, contentHeight + 1);
 					break;
 				case Mode.info:
-					contentHeight = info.length;
-					break;
 				case Mode.help:
-					contentHeight = help.length;
+					contentHeight = textLines.length;
 					break;
 			}
 
@@ -416,20 +431,27 @@ struct Browser
 			}
 			attroff(A_REVERSE);
 
-			if (mode.among(Mode.browser, Mode.info))
+			string prefix = "";
+			final switch (mode)
 			{
-				auto displayedPath = currentPath is &browserRoot ? "/" : currentPath.pointerWriter.text;
-				auto prefix = ["", "INFO: "][mode];
-				auto maxPathWidth = w - 8 - prefix.length;
-				if (displayedPath.length > maxPathWidth)
-					displayedPath = "..." ~ displayedPath[$ - (maxPathWidth - 3) .. $];
+				case Mode.info:
+					prefix = "INFO: ";
+					goto case;
+				case Mode.browser:
+					auto displayedPath = currentPath is &browserRoot ? "/" : currentPath.pointerWriter.text;
+					auto maxPathWidth = w - 8 - prefix.length;
+					if (displayedPath.length > maxPathWidth)
+						displayedPath = "..." ~ displayedPath[$ - (maxPathWidth - 3) .. $];
 
-				mvhline(1, 0, '-', w);
-				mvprintw(1, 3,
-					" %s%.*s ",
-					prefix.ptr,
-					displayedPath.length, displayedPath.ptr,
-				);
+					mvhline(1, 0, '-', w);
+					mvprintw(1, 3,
+						" %s%.*s ",
+						prefix.ptr,
+						displayedPath.length, displayedPath.ptr,
+					);
+					break;
+				case Mode.help:
+					break;
 			}
 		}
 
@@ -512,16 +534,16 @@ struct Browser
 				}
 				attroff(A_REVERSE);
 
-				foreach (i, line; info)
+				foreach (i, line; textLines)
 				{
 					auto y = cast(int)(contentAreaHeight + i);
 					y += 2;
-					if (y == h - 2 && i + 1 < info.length)
+					if (y == h - 2 && i + 1 < textLines.length)
 					{
 						mvprintw(y, 0, " --- more - press i to view --- ");
 						break;
 					}
-					mvhline(y, 0, i != 1 ? ' ' : '-', w);
+					mvhline(y, 0, i ? ' ' : '-', w);
 					mvprintw(y, 0, "%.*s", line.length, line.ptr);
 				}
 				break;
@@ -529,7 +551,7 @@ struct Browser
 
 			case Mode.info:
 			case Mode.help:
-				foreach (i, line; mode == Mode.info ? info : help)
+				foreach (i, line; textLines)
 				{
 					auto y = cast(int)(i - top);
 					if (y < 0 || y >= contentAreaHeight)
@@ -713,29 +735,9 @@ struct Browser
 						mode = Mode.browser;
 						top = 0;
 						break;
-					case KEY_UP:
-					case 'k':
-						top += -1;
-						break;
-					case KEY_DOWN:
-					case 'j':
-						top += +1;
-						break;
-					case KEY_PPAGE:
-						top += -contentAreaHeight;
-						break;
-					case KEY_NPAGE:
-						top += +contentAreaHeight;
-						break;
-					case KEY_HOME:
-						top -= info.length;
-						break;
-					case KEY_END:
-						top += info.length;
-						break;
+
 					default:
-						// TODO: show message
-						break;
+						goto textScroll;
 				}
 				break;
 
@@ -748,6 +750,14 @@ struct Browser
 						top = 0;
 						break;
 
+					default:
+						goto textScroll;
+				}
+				break;
+
+			textScroll:
+				switch (ch)
+				{
 					case KEY_UP:
 					case 'k':
 						top += -1;
@@ -763,10 +773,10 @@ struct Browser
 						top += +contentAreaHeight;
 						break;
 					case KEY_HOME:
-						top -= help.length;
+						top -= textLines.length;
 						break;
 					case KEY_END:
-						top += help.length;
+						top += textLines.length;
 						break;
 					default:
 						// TODO: show message
