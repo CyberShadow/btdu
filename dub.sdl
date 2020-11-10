@@ -5,4 +5,4 @@ targetType "executable"
 
 dependency "btrfs" version="~>0.0.11"
 dependency "ae" version="~>0.0.2833"
-dependency "ncurses" version="~>0.0.148"
+dependency "ncurses" version="~>0.0.149"
