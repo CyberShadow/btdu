@@ -530,6 +530,15 @@ struct Browser
 			sortMode = mode;
 			reverseSort = false;
 		}
+
+		bool ascending;
+		final switch (sortMode)
+		{
+			case SortMode.name: ascending = !reverseSort; break;
+			case SortMode.size: ascending =  reverseSort; break;
+		}
+
+		showMessage(format("Sorting by %s (%s)", mode, ["descending", "ascending"][ascending]));
 	}
 
 	bool handleInput()
@@ -618,6 +627,8 @@ struct Browser
 						break;
 					case 't':
 						dirsFirst = !dirsFirst;
+						showMessage(format("%s directories before files",
+								dirsFirst ? "Sorting" : "Not sorting"));
 						break;
 					default:
 						// TODO: show message
