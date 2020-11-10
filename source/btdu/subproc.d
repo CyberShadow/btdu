@@ -99,7 +99,10 @@ struct Subprocess
 					bufStart -= bufStart;
 				}
 				if (buf.length < bufEnd + bytesNeeded)
+				{
 					buf.length = bufEnd + bytesNeeded;
+					buf.length = buf.capacity;
+				}
 			}
 			auto received = read(pipe.readEnd.fileno, buf.ptr + bufEnd, buf.length - bufEnd);
 			enforce(received != 0, "Unexpected subprocess termination");
