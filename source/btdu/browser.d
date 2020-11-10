@@ -834,4 +834,6 @@ Right/Enter - Open selected node
 
 https://github.com/CyberShadow/btdu
 Created by: Vladimir Panteleev <https://cy.md/>
+
+Press q to exit this help screen and return to btdu.
 EOF".splitLines;
