@@ -19,8 +19,6 @@
 /// Subprocess management
 module btdu.subproc;
 
-import ae.utils.array;
-
 import core.sys.posix.signal;
 import core.sys.posix.unistd;
 
@@ -35,8 +33,9 @@ import std.socket;
 import std.stdio;
 import std.string;
 
-import btrfs.c.kernel_shared.ctree;
+import ae.utils.array;
 
+import btrfs.c.kernel_shared.ctree;
 
 import btdu.common;
 import btdu.paths;
