@@ -85,7 +85,7 @@ void program(
 
 	auto startTime = MonoTime.currTime();
 	enum refreshInterval = 500.msecs;
-	auto nextRefresh = startTime + refreshInterval;
+	auto nextRefresh = startTime;
 
 	auto readSet = new SocketSet;
 	auto exceptSet = new SocketSet;
