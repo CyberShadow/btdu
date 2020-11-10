@@ -244,7 +244,8 @@ struct Browser
 									"This can happen if a large file is written in one go, and then later one block is overwritten - " ~
 									"btrfs may keep the old extent which still contains the old copy of the overwritten block." ~
 									"\n\n" ~
-									"Defragmentation may reduce the amount of such unreachable blocks.";
+									"Children of this node indicate the path of files using the extent containing the unreachable samples." ~
+									"Defragmentation of these files may reduce the amount of such unreachable blocks.";
 							default:
 								if (name.skipOver("TREE_"))
 									return
