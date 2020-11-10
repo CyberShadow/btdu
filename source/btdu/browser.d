@@ -372,7 +372,7 @@ struct Browser
 
 			attron(A_REVERSE);
 			mvhline(0, 0, ' ', w);
-			mvprintw(0, 0, "btdu v" ~ btduVersion ~ " @ %s", fsPath.toStringz());
+			mvprintw(0, 0, " btdu v" ~ btduVersion ~ " @ %s", fsPath.toStringz());
 			if (paused)
 				mvprintw(0, w - 10, " [PAUSED] ");
 
