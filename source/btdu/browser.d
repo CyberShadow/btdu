@@ -704,6 +704,7 @@ struct Browser
 						}
 						break;
 					case 'q':
+					case 27: // ESC
 						if (items.length)
 							goto case 'i';
 						else
@@ -742,6 +743,7 @@ struct Browser
 				switch (ch)
 				{
 					case 'q':
+					case 27: // ESC
 						mode = Mode.browser;
 						top = 0;
 						break;
