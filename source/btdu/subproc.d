@@ -23,6 +23,7 @@ import core.sys.posix.signal;
 import core.sys.posix.unistd;
 
 import std.algorithm.iteration;
+import std.algorithm.mutation;
 import std.conv;
 import std.exception;
 import std.file;
@@ -88,7 +89,18 @@ struct Subprocess
 			if (bufStart == bufEnd)
 				bufStart = bufEnd = 0;
 			if (buf.length < bufEnd + bytesNeeded)
-				buf.length = bufEnd + bytesNeeded;
+			{
+				// Moving remaining data to the start of the buffer
+				// may allow us to avoid an allocation.
+				if (bufStart > 0)
+				{
+					copy(buf[bufStart .. bufEnd], buf[0 .. bufEnd - bufStart]);
+					bufEnd -= bufStart;
+					bufStart -= bufStart;
+				}
+				if (buf.length < bufEnd + bytesNeeded)
+					buf.length = bufEnd + bytesNeeded;
+			}
 			auto received = read(pipe.readEnd.fileno, buf.ptr + bufEnd, buf.length - bufEnd);
 			enforce(received != 0, "Unexpected subprocess termination");
 			if (received == Socket.ERROR)
