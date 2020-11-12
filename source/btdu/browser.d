@@ -581,7 +581,7 @@ struct Browser
 	}
 
 	/// Pausing has the following effects:
-	/// 1. We sent a SIGSTOP to subprocesses, so that they stop working ASAP.
+	/// 1. We send a SIGSTOP to subprocesses, so that they stop working ASAP.
 	/// 2. We immediately stop reading subprocess output, so that the UI stops updating.
 	/// 3. We display the paused state in the UI.
 	void togglePause()
