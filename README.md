@@ -29,6 +29,26 @@ It differs from classic analyzers through the following properties:
 - Because it queries raw filesystem metadata, btdu requires root privileges to run.
 
 
+Use cases
+---------
+
+- **Quickly summarize space usage**
+
+  btdu needs to collect only 100 samples to achieve a ~1% resolution, which means it can identify space hogs very quickly. This is useful if the disk is full and some space must be freed ASAP to get things back up and running.
+
+- **Estimate snapshot size**
+
+  When an extent is in use by multiple files or snapshots, to decide where to place it in the browsable tree, btdu picks the path with the shortest length, or the lexicographically smaller path if the length is the same. An emergent effect of this property is that it can be used to estimate snapshot size, if your snapshots use a fixed-length lexicographically-ordered naming scheme (such as e.g. YYYY-MM-DD-HH-MM-SS): the size of snapshots displayed in btdu will thus indicate data that occurs in that snapshot or any later one, i.e. the amount of "new" data in that snapshot.
+
+- **Estimate compressed data size**
+
+  If you use btrfs data compression (whether to save space / improve performance / conserve flash writes), btdu can be used to estimate how much real disk space compressed data uses.
+
+- **Estimate unreachable extent size**
+
+  A feature unique to btdu is the ability to estimate the amount of space used by unreachable parts of extents, i.e. data in extents containing older versions of file content which has since been overwritten. This btrfs "dark matter" can be an easy to overlook space hog, which could be eliminated by rewriting or defragmentating affected files.
+
+
 Installation
 ------------
 
