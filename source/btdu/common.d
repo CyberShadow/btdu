@@ -22,6 +22,6 @@ module btdu.common;
 import std.format;
 import std.random : Random;
 
-enum btduVersion = "0.2.0";
+enum btduVersion = "0.2.1";
 
 alias Seed = typeof(Random.defaultSeed);
