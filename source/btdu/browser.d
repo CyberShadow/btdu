@@ -184,7 +184,7 @@ struct Browser
 
 					["- Size: " ~ (browserRoot.samples
 							? format!"~%s (%d sample%s)"(
-								humanSize(currentPath.samples * totalSize / browserRoot.samples),
+								humanSize(currentPath.samples * real(totalSize) / browserRoot.samples),
 								currentPath.samples,
 								currentPath.samples == 1 ? "" : "s",
 							)
@@ -479,7 +479,7 @@ struct Browser
 					buf.clear();
 					{
 						auto size = browserRoot.samples
-							? "~" ~ humanSize(child.samples * totalSize / browserRoot.samples)
+							? "~" ~ humanSize(child.samples * real(totalSize) / browserRoot.samples)
 							: "?";
 						buf.formattedWrite!"%12s "(size);
 					}
@@ -791,17 +791,16 @@ struct Browser
 
 private:
 
-string humanSize(ulong size)
+string humanSize(real size)
 {
 	static immutable prefixChars = " KMGTPEZY";
-	double fpSize = size;
 	size_t power = 0;
-	while (fpSize > 1024 && power + 1 < prefixChars.length)
+	while (size > 1024 && power + 1 < prefixChars.length)
 	{
-		fpSize /= 1024;
+		size /= 1024;
 		power++;
 	}
-	return format("%3.1f %s%sB", fpSize, prefixChars[power], prefixChars[power] == ' ' ? ' ' : 'i');
+	return format("%3.1f %s%sB", size, prefixChars[power], prefixChars[power] == ' ' ? ' ' : 'i');
 }
 
 /// Helper type for formatting pointers without passing their contents by-value.
