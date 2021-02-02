@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020  Vladimir Panteleev <btdu@cy.md>
+ * Copyright (C) 2020, 2021  Vladimir Panteleev <btdu@cy.md>
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public
@@ -264,7 +264,7 @@ struct Browser
 										"This can happen if a large file is written in one go, and then later one block is overwritten - " ~
 										"btrfs may keep the old extent which still contains the old copy of the overwritten block." ~
 										"\n\n" ~
-										"Children of this node indicate the path of files using the extent containing the unreachable samples." ~
+										"Children of this node indicate the path of files using the extent containing the unreachable samples. " ~
 										"Defragmentation of these files may reduce the amount of such unreachable blocks.";
 								default:
 									if (name.skipOver("TREE_"))
