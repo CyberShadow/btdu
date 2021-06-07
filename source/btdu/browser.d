@@ -251,7 +251,9 @@ struct Browser
 								case "NO_INODE":
 									return
 										"This node represents sample points for which btrfs successfully completed our request " ~
-										"to look up inodes at the given logical offset, but did not actually return any inodes.";
+										"to look up inodes at the given logical offset, but did not actually return any inodes." ~
+										"\n\n" ~
+										"One possible cause is data which was deleted recently.";
 								case "NO_PATH":
 									return
 										"This node represents sample points for which btrfs successfully completed our request " ~
@@ -270,7 +272,9 @@ struct Browser
 									if (name.skipOver("TREE_"))
 										return
 											"This node holds samples with inodes contained in the tree #" ~ name ~ ", " ~
-											"but btdu failed to resolve this tree number to an absolute path.";
+											"but btdu failed to resolve this tree number to an absolute path." ~
+											"\n\n" ~
+											"One possible cause is subvolumes which were deleted recently.";
 									debug assert(false, "Unknown special node: " ~ name);
 							}
 						}
