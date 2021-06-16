@@ -293,6 +293,12 @@ struct Browser
 											"\n\n" ~
 											"This most likely represents allocated but unused space, " ~
 											"which could be reduced by running a balance on the DATA block group.";
+									if (name == errnoString!("logical ino", ENOTTY))
+										return
+											"An \"Inappropriate ioctl for device\" error means that btdu issued an ioctl which the kernel btrfs code does not understand." ~
+											"\n\n" ~
+											"The most likely cause is that you are running an old kernel version. " ~
+											"If you update your kernel, btdu might be able to show more information instead of this error.";
 									if (name == errnoString!("open", ENOENT))
 										return
 											"btdu failed to open the filesystem root containing an inode." ~
