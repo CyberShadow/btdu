@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020  Vladimir Panteleev <btdu@cy.md>
+ * Copyright (C) 2020, 2021  Vladimir Panteleev <btdu@cy.md>
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public
@@ -24,6 +24,7 @@ import core.sys.posix.unistd;
 
 import std.algorithm.iteration;
 import std.algorithm.mutation;
+import std.algorithm.searching;
 import std.conv;
 import std.exception;
 import std.file;
@@ -214,6 +215,11 @@ struct Subprocess
 		if (result.allPaths)
 		{
 			auto canonicalPath = result.allPaths.fold!((a, b) {
+				// Prefer paths with resolved roots
+				auto aResolved = a.isResolved();
+				auto bResolved = b.isResolved();
+				if (aResolved != bResolved)
+					return aResolved ? a : b;
 				// Shortest path always wins
 				auto aLength = a.length;
 				auto bLength = b.length;
@@ -234,4 +240,12 @@ struct Subprocess
 	{
 		throw new Exception("Subprocess encountered a fatal error:\n" ~ cast(string)m.msg);
 	}
+}
+
+private bool isResolved(ref GlobalPath p)
+{
+	return p.range
+		.map!(g => g.range)
+		.joiner
+		.canFind!(n => n.startsWith("\0TREE_"));
 }
