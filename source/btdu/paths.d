@@ -113,7 +113,7 @@ mixin template SimplePath()
 		static struct Range
 		{
 			This p;
-			bool empty() const { return !!p; }
+			bool empty() const { return !p; }
 			string front() { return p.name; }
 			void popFront() { p = p.parent; }
 		}
@@ -262,7 +262,7 @@ struct GlobalPath
 		static struct Range
 		{
 			const(GlobalPath)* p;
-			bool empty() const { return !!p; }
+			bool empty() const { return !p; }
 			const(SubPath)* front() { return p.subPath; }
 			void popFront() { p = p.parent; }
 		}
