@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020  Vladimir Panteleev <btdu@cy.md>
+ * Copyright (C) 2020, 2021  Vladimir Panteleev <btdu@cy.md>
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public
@@ -103,6 +103,21 @@ mixin template SimplePath()
 		}
 
 		return recurse(&this, path);
+	}
+
+	/// Return an iterator for path fragments.
+	/// Iterates from inner-most to top level.
+	auto range() const
+	{
+		alias This = typeof(this)*;
+		static struct Range
+		{
+			This p;
+			bool empty() const { return !!p; }
+			string front() { return p.name; }
+			void popFront() { p = p.parent; }
+		}
+		return Range(&this);
 	}
 
 	void toString(scope void delegate(const(char)[]) sink) const
@@ -238,6 +253,20 @@ struct GlobalPath
 	private int compareContents(const ref typeof(this) b) const
 	{
 		return subPath.opCmp(*b.subPath);
+	}
+
+	/// Return an iterator for subpaths.
+	/// Iterates from inner-most to top level.
+	auto range() const
+	{
+		static struct Range
+		{
+			const(GlobalPath)* p;
+			bool empty() const { return !!p; }
+			const(SubPath)* front() { return p.subPath; }
+			void popFront() { p = p.parent; }
+		}
+		return Range(&this);
 	}
 
 	mixin PathCmp;
