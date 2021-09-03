@@ -244,7 +244,7 @@ struct Subprocess
 
 private bool isResolved(ref GlobalPath p)
 {
-	return p.range
+	return !p.range
 		.map!(g => g.range)
 		.joiner
 		.canFind!(n => n.startsWith("\0TREE_"));
