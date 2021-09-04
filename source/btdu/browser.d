@@ -274,7 +274,9 @@ struct Browser
 											"This node holds samples with inodes contained in the tree #" ~ name ~ ", " ~
 											"but btdu failed to resolve this tree number to an absolute path." ~
 											"\n\n" ~
-											"One possible cause is subvolumes which were deleted recently.";
+											"One possible cause is subvolumes which were deleted recently." ~
+											"\n\n" ~
+											"Another possible cause is \"ghost subvolumes\", a form of corruption which causes some orphan subvolumes to not get cleaned up.";
 									debug assert(false, "Unknown special node: " ~ name);
 							}
 						}
