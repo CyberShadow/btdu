@@ -187,7 +187,13 @@ struct Browser
 							? stdDur(currentPath.data[SampleType.canonical].duration / currentPath.data[SampleType.canonical].samples).toString()
 							: "-")],
 
-					[EnumMembers!SampleType].map!(type => only(
+					[EnumMembers!SampleType]
+					// Don't show exclusive/shared for metadata nodes
+					.filter!(type => !(type != SampleType.canonical
+						&& currentPath.data[SampleType.canonical].samples == currentPath.data[SampleType.exclusive].samples
+						&& currentPath.data[SampleType.shared_].samples == 0
+					))
+					.map!(type => only(
 						"",
 						"- " ~ [
 							"Canonical data (as in btdu's tree)",
