@@ -212,6 +212,7 @@ struct Subprocess
 			result.browserPath = result.browserPath.appendName("\0UNREACHABLE");
 		if (!result.haveInode)
 			result.browserPath = result.browserPath.appendName("\0NO_INODE");
+		auto canonicalBrowserPath = result.browserPath;
 		if (result.allPaths)
 		{
 			auto canonicalPath = result.allPaths.fold!((a, b) {
@@ -228,11 +229,18 @@ struct Subprocess
 				// If the length is the same, pick the lexicographically smallest one
 				return a < b ? a : b;
 			})();
-			result.browserPath = result.browserPath.appendPath(&canonicalPath);
+			canonicalBrowserPath = result.browserPath.appendPath(&canonicalPath);
 		}
-		result.browserPath.addSample(m.duration);
-		foreach (path; result.allPaths)
-			result.browserPath.seenAs.add(path);
+		canonicalBrowserPath.addSample(SampleType.canonical, m.duration);
+		if (result.allPaths.length <= 1)
+			canonicalBrowserPath.addSample(SampleType.exclusive, m.duration);
+		foreach (ref path; result.allPaths)
+		{
+			canonicalBrowserPath.seenAs.add(path);
+
+			auto browserPath = result.browserPath.appendPath(&path);
+			browserPath.addSample(SampleType.shared_, m.duration);
+		}
 		result = Result.init;
 	}
 

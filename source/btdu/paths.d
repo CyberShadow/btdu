@@ -20,6 +20,7 @@
 module btdu.paths;
 
 import ae.utils.aa;
+import ae.utils.meta;
 
 import std.algorithm.comparison;
 import std.algorithm.searching;
@@ -272,20 +273,27 @@ struct GlobalPath
 	mixin PathCmp;
 }
 
+enum SampleType
+{
+	canonical,
+	exclusive,
+	shared_,
+}
+
 /// Browser path (GUI hierarchy)
 struct BrowserPath
 {
 	mixin SimplePath;
 
-	ulong samples; /// For non-leaves, sum of leaves
-	ulong duration; /// Total hnsecs
+	ulong[enumLength!SampleType] samples; /// For non-leaves, sum of leaves
+	ulong[enumLength!SampleType] duration; /// Total hnsecs
 
-	void addSample(ulong duration)
+	void addSample(SampleType type, ulong duration)
 	{
-		samples++;
-		this.duration += duration;
+		samples[type]++;
+		this.duration[type] += duration;
 		if (parent)
-			parent.addSample(duration);
+			parent.addSample(type, duration);
 	}
 
 	/// Other paths this address is reachable via
