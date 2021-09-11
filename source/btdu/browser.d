@@ -193,6 +193,11 @@ struct Browser
 					["- Average query duration: " ~ (currentPath.data[SampleType.canonical].samples
 							? stdDur(currentPath.data[SampleType.canonical].duration / currentPath.data[SampleType.canonical].samples).toString()
 							: "-")],
+
+					["- Logical offsets: " ~ format!"%s%(%d, %)"(
+							currentPath.data[SampleType.canonical].samples > currentPath.data[SampleType.canonical].logicalOffsets.length ? "..., " : "",
+							currentPath.data[SampleType.canonical].logicalOffsets[].filter!(o => o != ulong.max),
+						)],
 				).array;
 
 				{
