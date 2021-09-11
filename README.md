@@ -77,6 +77,39 @@ Note that the indicated path must be to the root subvolume (otherwise btdu will 
 Run `btdu --help` for more usage information.
 
 
+### Size metrics
+
+btdu shows three size metrics for items:
+
+- **Canonical** size
+  - After picking a logical offset to sample, btdu asks btrfs what is located at that offset. btrfs replies with zero or more locations.
+    Out of these locations, btdu must pick one location where it should place the sample within its tree. (It does so by generally picking the shortest path.)
+  - The canonical size is thus the size of samples whose canonical location matches the currently viewed item.
+  - This metric is most useful in understanding what is using up disk space on a btrfs filesystem.
+  - Adding up the canonical size for all filesystem objects (btdu tree leaves) adds up to the total size of the filesystem.
+
+- **Exclusive** size
+  - The exclusive size represents the samples which are used *only* by the file at this location.
+  - Two files which are perfect clones of each other will thus both have an exclusive size of zero. The same applies to two identical snapshots.
+
+- **Shared** size
+  - The shared size is the total size including all occurrences of a single logical offset at this location.
+  - This size generally correlates with the "visible" size, i.e. the size reported by classic space usage analysis tools, such as `du`.
+  - The total shared size will likely exceed the total size of the filesystem, if snapshots or reflinking is used.
+
+As an illustration, consider a file consisting of unique data (`dd if=/dev/urandom of=a bs=1M count=1`):
+
+| File | Canonical | Exclusive | Shared |
+|------|----------:|----------:|-------:|
+| a    |        1M |        1M |     1M |
+
+Here is what happens if we clone the file (`cp --reflink=always a b`):
+
+| File | Canonical | Exclusive | Shared |
+|------|----------:|----------:|-------:|
+| a    |        1M |         0 |     1M |
+| b    |        0  |         0 |     1M |
+
 License
 -------
 
