@@ -36,6 +36,7 @@ import std.format;
 import std.path;
 import std.range;
 import std.string;
+import std.traits : EnumMembers;
 
 import deimos.ncurses;
 
@@ -182,22 +183,36 @@ struct Browser
 
 					fullPath ? ["- Full path: " ~ cast(string)fullPath] : [],
 
-					["- Size: " ~ (browserRoot.data[SampleType.canonical].samples
-							? format!"~%s (%d sample%s)"(
-								humanSize(currentPath.data[SampleType.canonical].samples * real(totalSize) / browserRoot.data[SampleType.canonical].samples),
-								currentPath.data[SampleType.canonical].samples,
-								currentPath.data[SampleType.canonical].samples == 1 ? "" : "s",
-							)
-						: "-")],
-
 					["- Average query duration: " ~ (currentPath.data[SampleType.canonical].samples
 							? stdDur(currentPath.data[SampleType.canonical].duration / currentPath.data[SampleType.canonical].samples).toString()
 							: "-")],
 
-					["- Logical offsets: " ~ format!"%s%(%d, %)"(
-							currentPath.data[SampleType.canonical].samples > currentPath.data[SampleType.canonical].logicalOffsets.length ? "..., " : "",
-							currentPath.data[SampleType.canonical].logicalOffsets[].filter!(o => o != ulong.max),
-						)],
+					[EnumMembers!SampleType].map!(type => only(
+						"",
+						"- " ~ [
+							"Canonical data (as in btdu's tree)",
+							"Exclusive data (only in this location)",
+							"Shared data (including other locations)",
+						][type] ~ ":",
+						"  - Size: " ~ (browserRoot.data[SampleType.canonical].samples
+							? format!"~%s (%d sample%s)"(
+								humanSize(currentPath.data[type].samples * real(totalSize) / browserRoot.data[SampleType.canonical].samples),
+								currentPath.data[type].samples,
+								currentPath.data[type].samples == 1 ? "" : "s",
+							)
+							: "-"),
+
+						// "  - Average query duration: " ~ (currentPath.data[type].samples
+						// 	? stdDur(currentPath.data[type].duration / currentPath.data[type].samples).toString()
+						// 	: "-"),
+
+						"  - Logical offsets: " ~ (currentPath.data[type].samples
+							? format!"%s%(%d, %)"(
+								currentPath.data[type].samples > currentPath.data[type].logicalOffsets.length ? "..., " : "",
+								currentPath.data[type].logicalOffsets[].filter!(o => o != ulong.max),
+							)
+							: "-"),
+					)).joiner,
 				).array;
 
 				{
