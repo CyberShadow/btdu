@@ -297,8 +297,9 @@ struct BrowserPath
 	{
 		data[type].samples++;
 		data[type].duration += duration;
-		foreach (i, ref l0; data[type].logicalOffsets)
-			l0 = i + 1 == Data.logicalOffsets.length ? logicalOffset : data[type].logicalOffsets[i + 1];
+		if (logicalOffset != data[type].logicalOffsets[$-1])
+			foreach (i, ref l0; data[type].logicalOffsets)
+				l0 = i + 1 == Data.logicalOffsets.length ? logicalOffset : data[type].logicalOffsets[i + 1];
 		if (parent)
 			parent.addSample(type, logicalOffset, duration);
 	}
