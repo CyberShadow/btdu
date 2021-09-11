@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020  Vladimir Panteleev <btdu@cy.md>
+ * Copyright (C) 2020, 2021  Vladimir Panteleev <btdu@cy.md>
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public
@@ -44,6 +44,7 @@ struct NewRootMessage
 struct ResultStartMessage
 {
 	ulong chunkFlags;
+	ulong logicalOffset;
 }
 
 struct ResultInodeStartMessage

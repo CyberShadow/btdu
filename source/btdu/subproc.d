@@ -143,6 +143,7 @@ struct Subprocess
 
 	private struct Result
 	{
+		ulong logicalOffset;
 		BrowserPath* browserPath;
 		GlobalPath* inodeRoot;
 		GlobalPath[] allPaths;
@@ -153,6 +154,7 @@ struct Subprocess
 
 	void handleMessage(ResultStartMessage m)
 	{
+		result.logicalOffset = m.logicalOffset;
 		result.browserPath = &browserRoot;
 		static immutable flagNames = [
 			"DATA",
@@ -231,15 +233,15 @@ struct Subprocess
 			})();
 			canonicalBrowserPath = result.browserPath.appendPath(&canonicalPath);
 		}
-		canonicalBrowserPath.addSample(SampleType.canonical, m.duration);
+		canonicalBrowserPath.addSample(SampleType.canonical, result.logicalOffset, m.duration);
 		if (result.allPaths.length <= 1)
-			canonicalBrowserPath.addSample(SampleType.exclusive, m.duration);
+			canonicalBrowserPath.addSample(SampleType.exclusive, result.logicalOffset, m.duration);
 		foreach (ref path; result.allPaths)
 		{
 			canonicalBrowserPath.seenAs.add(path);
 
 			auto browserPath = result.browserPath.appendPath(&path);
-			browserPath.addSample(SampleType.shared_, m.duration);
+			browserPath.addSample(SampleType.shared_, result.logicalOffset, m.duration);
 		}
 		result = Result.init;
 	}

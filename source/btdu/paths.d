@@ -289,15 +289,18 @@ struct BrowserPath
 	{
 		ulong samples; /// For non-leaves, sum of leaves
 		ulong duration; /// Total hnsecs
+		ulong[3] logicalOffsets = -1; /// Examples (the last 3 seen) of logical offsets
 	}
 	Data[enumLength!SampleType] data;
 
-	void addSample(SampleType type, ulong duration)
+	void addSample(SampleType type, ulong logicalOffset, ulong duration)
 	{
 		data[type].samples++;
 		data[type].duration += duration;
+		foreach (i, ref l0; data[type].logicalOffsets)
+			l0 = i + 1 == Data.logicalOffsets.length ? logicalOffset : data[type].logicalOffsets[i + 1];
 		if (parent)
-			parent.addSample(type, duration);
+			parent.addSample(type, logicalOffset, duration);
 	}
 
 	/// Other paths this address is reachable via
