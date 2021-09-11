@@ -99,16 +99,19 @@ btdu shows three size metrics for items:
 
 As an illustration, consider a file consisting of unique data (`dd if=/dev/urandom of=a bs=1M count=1`):
 
-| File | Canonical | Exclusive | Shared |
-|------|----------:|----------:|-------:|
-| a    |        1M |        1M |     1M |
+| File      | a  |
+|-----------|----|
+| Canonical | 1M |
+| Exclusive | 1M |
+| Shared    | 1M |
 
 Here is what happens if we clone the file (`cp --reflink=always a b`):
 
-| File | Canonical | Exclusive | Shared |
-|------|----------:|----------:|-------:|
-| a    |        1M |         0 |     1M |
-| b    |        0  |         0 |     1M |
+| File      | a  | b  |
+|-----------|----|----|
+| Canonical | 1M | 0  |
+| Exclusive | 0  | 0  |
+| Shared    | 1M | 1M |
 
 License
 -------
