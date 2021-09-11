@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020  Vladimir Panteleev <btdu@cy.md>
+ * Copyright (C) 2020, 2021  Vladimir Panteleev <btdu@cy.md>
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public
@@ -131,7 +131,7 @@ void program(
 	}
 
 	if (benchmark)
-		writeln(browserRoot.samples);
+		writeln(browserRoot.data[SampleType.canonical].samples);
 }
 
 void checkBtrfs(string fsPath)

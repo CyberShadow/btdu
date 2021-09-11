@@ -124,7 +124,7 @@ struct Browser
 				break;
 			case SortMode.size:
 				items.multiSort!(
-					(a, b) => currentPath.children[a].samples > currentPath.children[b].samples,
+					(a, b) => currentPath.children[a].data[SampleType.canonical].samples > currentPath.children[b].data[SampleType.canonical].samples,
 					(a, b) => a < b,
 				);
 				break;
@@ -182,16 +182,16 @@ struct Browser
 
 					fullPath ? ["- Full path: " ~ cast(string)fullPath] : [],
 
-					["- Size: " ~ (browserRoot.samples[SampleType.canonical]
+					["- Size: " ~ (browserRoot.data[SampleType.canonical].samples
 							? format!"~%s (%d sample%s)"(
-								humanSize(currentPath.samples[SampleType.canonical] * real(totalSize) / browserRoot.samples[SampleType.canonical]),
-								currentPath.samples[SampleType.canonical],
-								currentPath.samples[SampleType.canonical] == 1 ? "" : "s",
+								humanSize(currentPath.data[SampleType.canonical].samples * real(totalSize) / browserRoot.data[SampleType.canonical].samples),
+								currentPath.data[SampleType.canonical].samples,
+								currentPath.data[SampleType.canonical].samples == 1 ? "" : "s",
 							)
 						: "-")],
 
-					["- Average query duration: " ~ (currentPath.samples[SampleType.canonical]
-							? stdDur(currentPath.duration[SampleType.canonical] / currentPath.samples[SampleType.canonical]).toString()
+					["- Average query duration: " ~ (currentPath.data[SampleType.canonical].samples
+							? stdDur(currentPath.data[SampleType.canonical].duration / currentPath.data[SampleType.canonical].samples).toString()
 							: "-")],
 				).array;
 
@@ -432,7 +432,7 @@ struct Browser
 				mvprintw(h - 1, 0, " %.*s", message.length, message.ptr);
 			else
 			{
-				auto canonicalSamples = browserRoot.samples[SampleType.canonical];
+				auto canonicalSamples = browserRoot.data[SampleType.canonical].samples;
 				auto resolution = canonicalSamples
 					? "~" ~ (totalSize / canonicalSamples).humanSize()
 					: "-";
@@ -472,7 +472,7 @@ struct Browser
 		{
 			case Mode.browser:
 			{
-				auto mostSamples = currentPath.children.byValue.fold!((a, b) => max(a, b.samples[SampleType.canonical]))(0UL);
+				auto mostSamples = currentPath.children.byValue.fold!((a, b) => max(a, b.data[SampleType.canonical].samples))(0UL);
 
 				foreach (i, item; items)
 				{
@@ -491,8 +491,8 @@ struct Browser
 
 					buf.clear();
 					{
-						auto size = browserRoot.samples[SampleType.canonical]
-							? "~" ~ humanSize(child.samples[SampleType.canonical] * real(totalSize) / browserRoot.samples[SampleType.canonical])
+						auto size = browserRoot.data[SampleType.canonical].samples
+							? "~" ~ humanSize(child.data[SampleType.canonical].samples * real(totalSize) / browserRoot.data[SampleType.canonical].samples)
 							: "?";
 						buf.formattedWrite!"%12s "(size);
 					}
@@ -502,8 +502,8 @@ struct Browser
 						buf.put('[');
 						if (ratioDisplayMode & RatioDisplayMode.percentage)
 						{
-							if (currentPath.samples[SampleType.canonical])
-								buf.formattedWrite!"%5.1f%%"(100.0 * child.samples[SampleType.canonical] / currentPath.samples[SampleType.canonical]);
+							if (currentPath.data[SampleType.canonical].samples)
+								buf.formattedWrite!"%5.1f%%"(100.0 * child.data[SampleType.canonical].samples / currentPath.data[SampleType.canonical].samples);
 							else
 								buf.put("    -%");
 						}
@@ -514,7 +514,7 @@ struct Browser
 							char[10] bar;
 							if (mostSamples)
 							{
-								auto barPos = 10 * child.samples[SampleType.canonical] / mostSamples;
+								auto barPos = 10 * child.data[SampleType.canonical].samples / mostSamples;
 								bar[0 .. barPos] = '#';
 								bar[barPos .. $] = ' ';
 							}

@@ -285,13 +285,17 @@ struct BrowserPath
 {
 	mixin SimplePath;
 
-	ulong[enumLength!SampleType] samples; /// For non-leaves, sum of leaves
-	ulong[enumLength!SampleType] duration; /// Total hnsecs
+	struct Data
+	{
+		ulong samples; /// For non-leaves, sum of leaves
+		ulong duration; /// Total hnsecs
+	}
+	Data[enumLength!SampleType] data;
 
 	void addSample(SampleType type, ulong duration)
 	{
-		samples[type]++;
-		this.duration[type] += duration;
+		data[type].samples++;
+		data[type].duration += duration;
 		if (parent)
 			parent.addSample(type, duration);
 	}
