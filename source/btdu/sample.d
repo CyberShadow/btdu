@@ -130,7 +130,7 @@ void subprocessMain(string fsPath)
 											send(ResultInodeEndMessage());
 										}
 										catch (Exception e)
-											send(ResultInodeErrorMessage(e.msg));
+											send(ResultInodeErrorMessage(e.toError));
 									},
 									ignoringOffset,
 								);
@@ -138,7 +138,7 @@ void subprocessMain(string fsPath)
 									continue;
 							}
 							catch (Exception e)
-								send(ResultErrorMessage(e.msg));
+								send(ResultErrorMessage(e.toError));
 							break;
 						}
 					}
@@ -206,4 +206,9 @@ Root getRoot(int fd, __u64 rootID)
 
 		return result;
 	}());
+}
+
+btdu.proto.Error toError(Exception e)
+{
+	return btdu.proto.Error(e.msg);
 }

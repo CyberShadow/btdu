@@ -30,6 +30,11 @@ import std.traits;
 
 import btrfs.c.kerncompat : u64, __u64;
 
+struct Error
+{
+	const(char)[] msg;
+}
+
 struct StartMessage
 {
 	ulong totalSize;
@@ -55,7 +60,7 @@ struct ResultInodeStartMessage
 
 struct ResultInodeErrorMessage
 {
-	const(char)[] msg;
+	Error error;
 }
 
 struct ResultInodeEndMessage
@@ -69,7 +74,7 @@ struct ResultMessage
 
 struct ResultErrorMessage
 {
-	const(char)[] msg;
+	Error error;
 }
 
 struct ResultEndMessage
