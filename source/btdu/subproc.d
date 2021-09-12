@@ -186,7 +186,7 @@ struct Subprocess
 
 	void handleMessage(ResultInodeErrorMessage m)
 	{
-		result.allPaths ~= GlobalPath(result.inodeRoot, subPathRoot.appendName("\0ERROR").appendPath(m.error.toSegment));
+		result.allPaths ~= GlobalPath(result.inodeRoot, subPathRoot.appendError(m.error));
 	}
 
 	void handleMessage(ResultMessage m)
@@ -204,7 +204,7 @@ struct Subprocess
 
 	void handleMessage(ResultErrorMessage m)
 	{
-		result.allPaths ~= GlobalPath(null, subPathRoot.appendName("\0ERROR").appendPath(m.error.toSegment));
+		result.allPaths ~= GlobalPath(null, subPathRoot.appendError(m.error));
 		result.haveInode = true;
 	}
 
@@ -260,7 +260,10 @@ private bool isResolved(ref GlobalPath p)
 		.canFind!(n => n.startsWith("\0TREE_"));
 }
 
-private const(char)[] toSegment(ref btdu.proto.Error error)
+private SubPath* appendError(ref SubPath path, ref btdu.proto.Error error)
 {
-	return error.msg;
+	auto result = &path;
+	result = result.appendName("\0ERROR");
+	result = result.appendPath(error.msg);
+	return result;
 }
