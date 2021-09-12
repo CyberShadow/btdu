@@ -60,7 +60,6 @@ struct ResultInodeErrorMessage
 
 struct ResultInodeEndMessage
 {
-	const(char)[] msg;
 }
 
 struct ResultMessage
