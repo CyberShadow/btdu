@@ -183,6 +183,22 @@ struct Browser
 
 					fullPath ? ["- Full path: " ~ cast(string)fullPath] : [],
 
+					(){
+						string[] result;
+						if (currentPath.parent && currentPath.parent.parent && currentPath.parent.parent.name == "\0ERROR")
+						{
+							auto errno = currentPath.name in errnoLookup;
+							if (errno)
+							{
+								result ~= "- Error code: " ~ text(*errno);
+								auto description = getErrno(*errno).description;
+								if (description)
+									result ~= "- Error message: " ~ description;
+							}
+						}
+						return result;
+					}(),
+
 					["- Average query duration: " ~ (currentPath.data[SampleType.canonical].samples
 							? stdDur(currentPath.data[SampleType.canonical].duration / currentPath.data[SampleType.canonical].samples).toString()
 							: "-")],
@@ -314,27 +330,57 @@ struct Browser
 								case "Unresolvable root":
 									return
 										"btdu failed to resolve this tree number to an absolute path.";
+								case "logical ino":
+									return
+										"An error occurred while trying to look up which inodes use a particular logical offset." ~
+										"\n\n" ~
+										"Children of this node indicate the encountered error code, and may have a more detailed explanation attached.";
+								case "open":
+									return
+										"btdu failed to open the filesystem root containing an inode." ~
+										"\n\n" ~
+										"Children of this node indicate the encountered error code, and may have a more detailed explanation attached.";
 								default:
-									if (name == errnoString!("logical ino", ENOENT))
-										return
-											"btrfs reports that there is nothing at the random sample location that btdu picked." ~
-											"\n\n" ~
-											"This most likely represents allocated but unused space, " ~
-											"which could be reduced by running a balance on the DATA block group.";
-									if (name == errnoString!("logical ino", ENOTTY))
-										return
-											"An \"Inappropriate ioctl for device\" error means that btdu issued an ioctl which the kernel btrfs code does not understand." ~
-											"\n\n" ~
-											"The most likely cause is that you are running an old kernel version. " ~
-											"If you update your kernel, btdu might be able to show more information instead of this error.";
-									if (name == errnoString!("open", ENOENT))
-										return
-											"btdu failed to open the filesystem root containing an inode." ~
-											"\n\n" ~
-											"The most likely reason for this is that you didn't specify the path to the volume root when starting btdu, " ~
-											"and instead specified the path to a subvolume or subdirectory." ~
-											"\n\n" ~
-											"You can descend into this node to see the path that btdu failed to open.";
+							}
+						}
+
+						if (currentPath.parent && currentPath.parent.parent && currentPath.parent.parent.name == "\0ERROR")
+						{
+							switch (currentPath.parent.name)
+							{
+								case "logical ino":
+									switch (name)
+									{
+										case "ENOENT":
+											return
+												"btrfs reports that there is nothing at the random sample location that btdu picked." ~
+												"\n\n" ~
+												"This most likely represents allocated but unused space, " ~
+												"which could be reduced by running a balance on the DATA block group.";
+										case "ENOTTY":
+											return
+												"An ENOTTY (\"Inappropriate ioctl for device\") error means that btdu issued an ioctl which the kernel btrfs code does not understand." ~
+												"\n\n" ~
+												"The most likely cause is that you are running an old kernel version. " ~
+												"If you update your kernel, btdu might be able to show more information instead of this error.";
+										default:
+									}
+									break;
+								case "open":
+									switch (name)
+									{
+										case "ENOENT":
+											return
+												"btdu failed to open the filesystem root containing an inode." ~
+												"\n\n" ~
+												"The most likely reason for this is that you didn't specify the path to the volume root when starting btdu, " ~
+												"and instead specified the path to a subvolume or subdirectory." ~
+												"\n\n" ~
+												"You can descend into this node to see the path that btdu failed to open.";
+										default:
+									}
+									break;
+								default:
 							}
 						}
 
@@ -853,15 +899,6 @@ struct PointerWriter(T)
 	}
 }
 PointerWriter!T pointerWriter(T)(T* ptr) { return PointerWriter!T(ptr); }
-
-/// Allow matching error messages with strerror strings
-string errnoString(string s, int errno)()
-{
-	static string result;
-	if (!result)
-		result = new ErrnoException(s, errno).msg;
-	return result;
-}
 
 static immutable string[] help = q"EOF
 btdu - the sampling disk usage profiler for btrfs

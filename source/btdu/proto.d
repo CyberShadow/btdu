@@ -33,6 +33,7 @@ import btrfs.c.kerncompat : u64, __u64;
 struct Error
 {
 	const(char)[] msg;
+	int errno;
 }
 
 struct StartMessage

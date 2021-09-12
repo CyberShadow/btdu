@@ -210,5 +210,24 @@ Root getRoot(int fd, __u64 rootID)
 
 btdu.proto.Error toError(Exception e)
 {
-	return btdu.proto.Error(e.msg);
+	btdu.proto.Error error;
+	error.msg = e.msg;
+	if (auto ex = cast(ErrnoException) e)
+	{
+		// Convert to errno + string
+		import core.stdc.string : strlen, strerror_r;
+		char[1024] buf = void;
+		auto s = strerror_r(errno, buf.ptr, buf.length);
+
+		import std.range : chain;
+		auto suffix = chain(" (".representation, s[0 .. s.strlen].representation, ")".representation);
+		if (error.msg.endsWith(suffix))
+		{
+			error.msg = error.msg[0 .. $ - suffix.length];
+			error.errno = ex.errno;
+		}
+		else
+			debug assert(false, "Unexpected ErrnoException message: " ~ error.msg);
+	}
+	return error;
 }
