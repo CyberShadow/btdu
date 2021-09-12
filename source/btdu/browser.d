@@ -269,6 +269,7 @@ struct Browser
 										"which contains some core btrfs information, such as how to map physical device space to linear logical space or vice-versa." ~
 										"\n\n" ~
 										"The contents of SYSTEM chunks is opaque to btdu, so this node does not have children.";
+								case "SINGLE":
 								case "RAID0":
 								case "RAID1":
 								case "DUP":

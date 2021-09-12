@@ -169,6 +169,8 @@ struct Subprocess
 			"RAID1C3",
 			"RAID1C4",
 		].amap!(s => "\0" ~ s);
+		if ((m.chunkFlags & BTRFS_BLOCK_GROUP_PROFILE_MASK) == 0)
+			result.browserPath = result.browserPath.appendName("\0SINGLE");
 		foreach_reverse (b; 0 .. flagNames.length)
 			if (m.chunkFlags & (1UL << b))
 				result.browserPath = result.browserPath.appendName(flagNames[b]);
