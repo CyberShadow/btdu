@@ -89,7 +89,7 @@ One sample is one logical offset chosen at random by btdu. Because we know the t
 After picking a logical offset to sample, btdu asks btrfs what is located at that offset. btrfs replies with zero or more locations.
 Out of these locations, btdu picks one location where it should place the sample within its tree. We call this location the canonical location.
 
-The way in which btdu selects the canonical location aims to prefer better visualization of what the data is used for. For instance, if one location is longer than the other, then the shorter is chosen, as the longer is more likely to point at a snapshot or other redundant clone of the shorter one.
+The way in which btdu selects the canonical location aims to prefer better visualization of what the data is used for, i.e., the simplest explanation for what is using this disk space. For instance, if one location is longer than the other, then the shorter is chosen, as the longer is more likely to point at a snapshot or other redundant clone of the shorter one.
 
 Examples:
 
@@ -103,8 +103,8 @@ btdu shows three size metrics for items:
 
 - **Canonical** size
   - The canonical size of an item is the size of samples whose [canonical location](#canonical-location) matches the currently viewed item.
-  - Essentially, for every logical offset, btdu picks one location out of all locations that reference that logical offset, and assigns the sample's respective disk space usage to that location.
-  - This metric is most useful in understanding what is using up disk space on a btrfs filesystem.
+  - Essentially, for every logical offset, btdu picks one location out of all locations that reference that logical offset, and assigns the sample's respective disk space usage to that location. So, if a directory's canonical size is 1MiB, we can say that this directory is the simplest explanation for what is using that 1MiB of space.
+  - This metric is most useful in understanding what is using up disk space on a btrfs filesystem, and is what's shown in the btdu directory listings.
   - Adding up the canonical size for all filesystem objects (btdu tree leaves) adds up to the total size of the filesystem.
 
 - **Exclusive** size
