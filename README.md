@@ -77,14 +77,33 @@ Note that the indicated path must be to the root subvolume (otherwise btdu will 
 Run `btdu --help` for more usage information.
 
 
+Details
+-------
+
+### Sample size
+
+One sample is one logical offset chosen at random by btdu. Because we know the total size of the filesystem, we can divide this size by the total number of samples to obtain the approximate size of how much data one sample represents. (This size is also shown at the bottom as "Resolution".)
+
+### Canonical location
+
+After picking a logical offset to sample, btdu asks btrfs what is located at that offset. btrfs replies with zero or more locations.
+Out of these locations, btdu picks one location where it should place the sample within its tree. We call this location the canonical location.
+
+The way in which btdu selects the canonical location aims to prefer better visualization of what the data is used for. For instance, if one location is longer than the other, then the shorter is chosen, as the longer is more likely to point at a snapshot or other redundant clone of the shorter one.
+
+Examples:
+
+- For data which is used exactly once, the canonical location will be the path to the file which references that data.
+- For data which is used in `/@root/file.txt` and `/@root-20210203/file.txt`, the canonical location will be `/@root/file.txt`, because it is shorter.
+- For data which is used in `/@root/file1.txt` and `/@root/file2.txt`, the canonical location will be `/@root/file1.txt`, because it is lexicographically smaller.
+
 ### Size metrics
 
 btdu shows three size metrics for items:
 
 - **Canonical** size
-  - After picking a logical offset to sample, btdu asks btrfs what is located at that offset. btrfs replies with zero or more locations.
-    Out of these locations, btdu must pick one location where it should place the sample within its tree. (It does so by generally picking the shortest path.)
-  - The canonical size is thus the size of samples whose canonical location matches the currently viewed item.
+  - The canonical size of an item is the size of samples whose [canonical location](#canonical-location) matches the currently viewed item.
+  - Essentially, for every logical offset, btdu picks one location out of all locations that reference that logical offset, and assigns the sample's respective disk space usage to that location.
   - This metric is most useful in understanding what is using up disk space on a btrfs filesystem.
   - Adding up the canonical size for all filesystem objects (btdu tree leaves) adds up to the total size of the filesystem.
 
@@ -93,8 +112,8 @@ btdu shows three size metrics for items:
   - Two files which are perfect clones of each other will thus both have an exclusive size of zero. The same applies to two identical snapshots.
 
 - **Shared** size
-  - The shared size is the total size including all occurrences of a single logical offset at this location.
-  - This size generally correlates with the "visible" size, i.e. the size reported by classic space usage analysis tools, such as `du`.
+  - The shared size is the total size including all references of a single logical offset at this location.
+  - This size generally correlates with the "visible" size, i.e. the size reported by classic space usage analysis tools, such as `du`. (However, if compression is used, the shown size will still be after compression.)
   - The total shared size will likely exceed the total size of the filesystem, if snapshots or reflinking is used.
 
 As an illustration, consider a file consisting of unique data (`dd if=/dev/urandom of=a bs=1M count=1`):
@@ -112,6 +131,8 @@ Here is what happens if we clone the file (`cp --reflink=always a b`):
 | Canonical | 1M | 0  |
 | Exclusive | 0  | 0  |
 | Shared    | 1M | 1M |
+
+The sizes for directories are the sum of sizes of their children.
 
 License
 -------
