@@ -197,7 +197,7 @@ struct Browser
 						"",
 						"- " ~ [
 							"Canonical data (as in btdu's tree)",
-							"Exclusive data (only in this location)",
+							"Exclusive data (referenced exactly once)",
 							"Shared data (including other locations)",
 						][type] ~ ":",
 						"  - Size: " ~ (browserRoot.data[SampleType.canonical].samples
