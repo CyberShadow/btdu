@@ -34,6 +34,7 @@ struct Error
 {
 	const(char)[] msg;
 	int errno;
+	const(char)[] path;
 }
 
 struct StartMessage

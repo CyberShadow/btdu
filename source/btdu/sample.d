@@ -121,7 +121,10 @@ void subprocessMain(string fsPath)
 
 											int rootFD = open(pathBuf.data.ptr, O_RDONLY);
 											if (rootFD < 0)
-												throw new Exception(new ErrnoException("open").msg ~ cast(string)pathBuf.data[0 .. $-1]);
+											{
+												send(ResultInodeErrorMessage(btdu.proto.Error("open", errno, pathBuf.data[0 .. $-1])));
+												return;
+											}
 											scope(exit) close(rootFD);
 
 											inoPaths(rootFD, inode, (char[] fn) {

@@ -60,7 +60,7 @@ mixin template SimplePath()
 	typeof(this)* appendName(in char[] name)
 	{
 		assert(name.length, "Empty path segment");
-		assert(name.indexOf('/') < 0, "Path segment contains /");
+		assert(name.indexOf('/') < 0, "Path segment contains /: " ~ name);
 		if (auto pnext = name in children)
 			return *pnext;
 		else
