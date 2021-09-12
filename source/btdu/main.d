@@ -131,7 +131,7 @@ void program(
 	}
 
 	if (benchmark)
-		writeln(browserRoot.data[SampleType.canonical].samples);
+		writeln(browserRoot.data[SampleType.represented].samples);
 }
 
 void checkBtrfs(string fsPath)

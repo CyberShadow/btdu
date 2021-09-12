@@ -275,7 +275,7 @@ struct GlobalPath
 
 enum SampleType
 {
-	canonical,
+	represented,
 	exclusive,
 	shared_,
 }

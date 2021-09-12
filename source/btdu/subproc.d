@@ -216,10 +216,10 @@ struct Subprocess
 			result.browserPath = result.browserPath.appendName("\0UNREACHABLE");
 		if (!result.haveInode)
 			result.browserPath = result.browserPath.appendName("\0NO_INODE");
-		auto canonicalBrowserPath = result.browserPath;
+		auto representativeBrowserPath = result.browserPath;
 		if (result.allPaths)
 		{
-			auto canonicalPath = result.allPaths.fold!((a, b) {
+			auto representativePath = result.allPaths.fold!((a, b) {
 				// Prefer paths with resolved roots
 				auto aResolved = a.isResolved();
 				auto bResolved = b.isResolved();
@@ -233,14 +233,14 @@ struct Subprocess
 				// If the length is the same, pick the lexicographically smallest one
 				return a < b ? a : b;
 			})();
-			canonicalBrowserPath = result.browserPath.appendPath(&canonicalPath);
+			representativeBrowserPath = result.browserPath.appendPath(&representativePath);
 		}
-		canonicalBrowserPath.addSample(SampleType.canonical, result.logicalOffset, m.duration);
+		representativeBrowserPath.addSample(SampleType.represented, result.logicalOffset, m.duration);
 		if (result.allPaths.length <= 1)
-			canonicalBrowserPath.addSample(SampleType.exclusive, result.logicalOffset, m.duration);
+			representativeBrowserPath.addSample(SampleType.exclusive, result.logicalOffset, m.duration);
 		foreach (ref path; result.allPaths)
 		{
-			canonicalBrowserPath.seenAs.add(path);
+			representativeBrowserPath.seenAs.add(path);
 
 			auto browserPath = result.browserPath.appendPath(&path);
 			browserPath.addSample(SampleType.shared_, result.logicalOffset, m.duration);

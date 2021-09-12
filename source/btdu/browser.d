@@ -125,7 +125,7 @@ struct Browser
 				break;
 			case SortMode.size:
 				items.multiSort!(
-					(a, b) => currentPath.children[a].data[SampleType.canonical].samples > currentPath.children[b].data[SampleType.canonical].samples,
+					(a, b) => currentPath.children[a].data[SampleType.represented].samples > currentPath.children[b].data[SampleType.represented].samples,
 					(a, b) => a < b,
 				);
 				break;
@@ -199,26 +199,26 @@ struct Browser
 						return result;
 					}(),
 
-					["- Average query duration: " ~ (currentPath.data[SampleType.canonical].samples
-							? stdDur(currentPath.data[SampleType.canonical].duration / currentPath.data[SampleType.canonical].samples).toDecimalString()
+					["- Average query duration: " ~ (currentPath.data[SampleType.represented].samples
+							? stdDur(currentPath.data[SampleType.represented].duration / currentPath.data[SampleType.represented].samples).toDecimalString()
 							: "-")],
 
 					[EnumMembers!SampleType]
 					// Don't show exclusive/shared for metadata nodes
-					.filter!(type => !(type != SampleType.canonical
-						&& currentPath.data[SampleType.canonical].samples == currentPath.data[SampleType.exclusive].samples
+					.filter!(type => !(type != SampleType.represented
+						&& currentPath.data[SampleType.represented].samples == currentPath.data[SampleType.exclusive].samples
 						&& currentPath.data[SampleType.shared_].samples == 0
 					))
 					.map!(type => only(
 						"",
 						"- " ~ [
-							"Canonical data (as in btdu's tree)",
+							"Represented data",
 							"Exclusive data (referenced exactly once)",
 							"Shared data (including other locations)",
 						][type] ~ ":",
-						"  - Size: " ~ (browserRoot.data[SampleType.canonical].samples
+						"  - Size: " ~ (browserRoot.data[SampleType.represented].samples
 							? format!"~%s (%d sample%s)"(
-								humanSize(currentPath.data[type].samples * real(totalSize) / browserRoot.data[SampleType.canonical].samples),
+								humanSize(currentPath.data[type].samples * real(totalSize) / browserRoot.data[SampleType.represented].samples),
 								currentPath.data[type].samples,
 								currentPath.data[type].samples == 1 ? "" : "s",
 							)
@@ -505,13 +505,13 @@ struct Browser
 				mvprintw(h - 1, 0, " %.*s", message.length, message.ptr);
 			else
 			{
-				auto canonicalSamples = browserRoot.data[SampleType.canonical].samples;
-				auto resolution = canonicalSamples
-					? "~" ~ (totalSize / canonicalSamples).humanSize()
+				auto representedSamples = browserRoot.data[SampleType.represented].samples;
+				auto resolution = representedSamples
+					? "~" ~ (totalSize / representedSamples).humanSize()
 					: "-";
 				mvprintw(h - 1, 0,
 					" Samples: %lld  Resolution: %.*s",
-					cast(cpp_longlong)canonicalSamples,
+					cast(cpp_longlong)representedSamples,
 					resolution.length, resolution.ptr,
 				);
 			}
@@ -545,7 +545,7 @@ struct Browser
 		{
 			case Mode.browser:
 			{
-				auto mostSamples = currentPath.children.byValue.fold!((a, b) => max(a, b.data[SampleType.canonical].samples))(0UL);
+				auto mostSamples = currentPath.children.byValue.fold!((a, b) => max(a, b.data[SampleType.represented].samples))(0UL);
 
 				foreach (i, item; items)
 				{
@@ -564,8 +564,8 @@ struct Browser
 
 					buf.clear();
 					{
-						auto size = browserRoot.data[SampleType.canonical].samples
-							? "~" ~ humanSize(child.data[SampleType.canonical].samples * real(totalSize) / browserRoot.data[SampleType.canonical].samples)
+						auto size = browserRoot.data[SampleType.represented].samples
+							? "~" ~ humanSize(child.data[SampleType.represented].samples * real(totalSize) / browserRoot.data[SampleType.represented].samples)
 							: "?";
 						buf.formattedWrite!"%12s "(size);
 					}
@@ -575,8 +575,8 @@ struct Browser
 						buf.put('[');
 						if (ratioDisplayMode & RatioDisplayMode.percentage)
 						{
-							if (currentPath.data[SampleType.canonical].samples)
-								buf.formattedWrite!"%5.1f%%"(100.0 * child.data[SampleType.canonical].samples / currentPath.data[SampleType.canonical].samples);
+							if (currentPath.data[SampleType.represented].samples)
+								buf.formattedWrite!"%5.1f%%"(100.0 * child.data[SampleType.represented].samples / currentPath.data[SampleType.represented].samples);
 							else
 								buf.put("    -%");
 						}
@@ -587,7 +587,7 @@ struct Browser
 							char[10] bar;
 							if (mostSamples)
 							{
-								auto barPos = 10 * child.data[SampleType.canonical].samples / mostSamples;
+								auto barPos = 10 * child.data[SampleType.represented].samples / mostSamples;
 								bar[0 .. barPos] = '#';
 								bar[barPos .. $] = ' ';
 							}
