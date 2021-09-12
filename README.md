@@ -119,19 +119,15 @@ btdu shows three size metrics for tree nodes:
 
 As an illustration, consider a file consisting of unique data (`dd if=/dev/urandom of=a bs=1M count=1`):
 
-| File      | a  |
-|-----------|----|
-| Represented | 1M |
-| Exclusive | 1M |
-| Shared    | 1M |
+![](https://raw.githubusercontent.com/gist/CyberShadow/6b6ecfde854ec7d991f8774bc35bbce5/raw/64ba6d41fb637f03e6aabfe849f5f2689385652c/single.svg)
 
 Here is what happens if we clone the file (`cp --reflink=always a b`):
 
-| File      | a  | b  |
-|-----------|----|----|
-| Represented | 1M | 0  |
-| Exclusive | 0  | 0  |
-| Shared    | 1M | 1M |
+![](https://raw.githubusercontent.com/gist/CyberShadow/6b6ecfde854ec7d991f8774bc35bbce5/raw/64ba6d41fb637f03e6aabfe849f5f2689385652c/clone.svg)
+
+Finally, here is what the sizes would look like for two 2M files which share 1M. Note how the represented size adds up to 3M, the total size of the underlying data.
+
+![](https://raw.githubusercontent.com/gist/CyberShadow/6b6ecfde854ec7d991f8774bc35bbce5/raw/64ba6d41fb637f03e6aabfe849f5f2689385652c/overlap.svg)
 
 The sizes for directories are the sum of sizes of their children.
 
