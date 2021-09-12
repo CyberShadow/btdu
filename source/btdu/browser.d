@@ -42,7 +42,7 @@ import deimos.ncurses;
 
 import ae.utils.meta;
 import ae.utils.text;
-import ae.utils.time : stdDur;
+import ae.utils.time : stdDur, stdTime;
 
 import btdu.common;
 import btdu.state;
@@ -200,7 +200,7 @@ struct Browser
 					}(),
 
 					["- Average query duration: " ~ (currentPath.data[SampleType.canonical].samples
-							? stdDur(currentPath.data[SampleType.canonical].duration / currentPath.data[SampleType.canonical].samples).toString()
+							? stdDur(currentPath.data[SampleType.canonical].duration / currentPath.data[SampleType.canonical].samples).toDecimalString()
 							: "-")],
 
 					[EnumMembers!SampleType]
@@ -887,6 +887,15 @@ string humanSize(real size)
 		power++;
 	}
 	return format("%3.1f %s%sB", size, prefixChars[power], prefixChars[power] == ' ' ? ' ' : 'i');
+}
+
+string toDecimalString(Duration d)
+{
+	assert(d >= Duration.zero);
+	auto ticks = d.stdTime;
+	enum secondsPerTick = 1.seconds / 1.stdDur;
+	static assert(secondsPerTick == 10L ^^ 7);
+	return format!"%d.%07d seconds"(ticks / secondsPerTick, ticks % secondsPerTick);
 }
 
 /// Helper type for formatting pointers without passing their contents by-value.
