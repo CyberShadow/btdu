@@ -46,6 +46,7 @@ void program(
 	Option!(Seed, "Random seed used to choose samples") seed = 0,
 	Switch!hiddenOption subprocess = false,
 	Option!(string, hiddenOption) benchmark = null,
+	Switch!("Expert mode: collect and show additional metrics.\nUses more memory.") expert = false,
 )
 {
 	rndGen = Random(seed);
@@ -77,6 +78,8 @@ void program(
 		stdinSocket = new Socket(cast(socket_t)stdin.fileno, AddressFamily.UNSPEC);
 		stdinSocket.blocking = false;
 	}
+
+	.expert = expert;
 
 	Browser browser;
 	if (!headless)

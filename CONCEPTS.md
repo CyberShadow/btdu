@@ -23,7 +23,7 @@ Examples:
 Size metrics
 ------------
 
-btdu shows four size metrics for tree nodes:
+In `--expert` mode, btdu shows four size metrics for tree nodes:
 
 - **Represented** size
   - The represented size of a node is the amount of disk space that this path is *representing*.

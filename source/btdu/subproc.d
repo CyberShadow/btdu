@@ -237,7 +237,7 @@ struct Subprocess
 			representativeBrowserPath = result.browserPath.appendPath(&representativePath);
 		}
 		representativeBrowserPath.addSample(SampleType.represented, result.logicalOffset, m.duration);
-		if (result.allPaths.length <= 1)
+		if (expert && result.allPaths.length <= 1)
 			representativeBrowserPath.addSample(SampleType.exclusive, result.logicalOffset, m.duration);
 
 		if (result.allPaths.length)
@@ -247,15 +247,21 @@ struct Subprocess
 			{
 				representativeBrowserPath.seenAs.add(path);
 
-				auto browserPath = result.browserPath.appendPath(&path);
-				browserPath.addSample(SampleType.shared_, result.logicalOffset, m.duration);
-				browserPath.addDistributedSample(distributedShare);
+				if (expert)
+				{
+					auto browserPath = result.browserPath.appendPath(&path);
+					browserPath.addSample(SampleType.shared_, result.logicalOffset, m.duration);
+					browserPath.addDistributedSample(distributedShare);
+				}
 			}
 		}
 		else
 		{
-			representativeBrowserPath.addSample(SampleType.shared_, result.logicalOffset, m.duration);
-			representativeBrowserPath.addDistributedSample(1);
+			if (expert)
+			{
+				representativeBrowserPath.addSample(SampleType.shared_, result.logicalOffset, m.duration);
+				representativeBrowserPath.addDistributedSample(1);
+			}
 		}
 
 		result = Result.init;

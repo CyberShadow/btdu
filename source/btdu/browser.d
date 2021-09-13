@@ -197,7 +197,7 @@ struct Browser
 						// 	? stdDur(currentPath.data[type].duration / currentPath.data[type].samples).toString()
 						// 	: "-"),
 
-						"  - Logical offsets: " ~ (currentPath.data[type].samples
+						(expert ? "  " : "") ~ "- Logical offsets: " ~ (currentPath.data[type].samples
 							? format!"%s%(%d, %)"(
 								currentPath.data[type].samples > currentPath.data[type].logicalOffsets.length ? "..., " : "",
 								currentPath.data[type].logicalOffsets[].filter!(o => o != ulong.max),
@@ -232,19 +232,26 @@ struct Browser
 							: "-")],
 				).array;
 
-				info ~= showSampleType(SampleType.represented, "Represented size");
-				info ~= ["- Distributed size: " ~ (totalSamples
-					? format!"~%s (%1.3f sample%s)"(
-						humanSize(currentPath.distributedSamples * real(totalSize) / totalSamples),
-						currentPath.distributedSamples,
-						currentPath.distributedSamples == 1 ? "" : "s",
-					)
-					: "-")];
+				if (expert)
+				{
+					info ~= showSampleType(SampleType.represented, "Represented size");
+					info ~= ["- Distributed size: " ~ (totalSamples
+						? format!"~%s (%1.3f sample%s)"(
+							humanSize(currentPath.distributedSamples * real(totalSize) / totalSamples),
+							currentPath.distributedSamples,
+							currentPath.distributedSamples == 1 ? "" : "s",
+						)
+						: "-")];
 
-				if (currentPath.data[SampleType.represented].samples != currentPath.data[SampleType.exclusive].samples)
-					info ~= showSampleType(SampleType.exclusive, "Exclusive size");
-				if (currentPath.data[SampleType.represented].samples != currentPath.data[SampleType.shared_].samples)
-					info ~= showSampleType(SampleType.shared_, "Shared size");
+					if (currentPath.data[SampleType.represented].samples != currentPath.data[SampleType.exclusive].samples)
+						info ~= showSampleType(SampleType.exclusive, "Exclusive size");
+					if (currentPath.data[SampleType.represented].samples != currentPath.data[SampleType.shared_].samples)
+						info ~= showSampleType(SampleType.shared_, "Shared size");
+				}
+				else
+				{
+					info[$-1] ~= showSampleType(SampleType.represented, "Represented size");
+				}
 
 				{
 					string explanation = {
