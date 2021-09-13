@@ -23,7 +23,7 @@ Examples:
 Size metrics
 ------------
 
-btdu shows three size metrics for tree nodes:
+btdu shows four size metrics for tree nodes:
 
 - **Represented** size
   - The represented size of a node is the amount of disk space that this path is *representing*.
@@ -31,6 +31,11 @@ btdu shows three size metrics for tree nodes:
     - This location is thus chosen to *represent* this disk space. So, if a directory's represented size is 1MiB, we can say that this directory is the simplest explanation for what is using that 1MiB of space.
   - This metric is most useful in understanding what is using up disk space on a btrfs filesystem, and is what's shown in the btdu directory listings.
   - Adding up the represented size for all filesystem objects (btdu tree leaves) adds up to the total size of the filesystem.
+
+- **Distributed** size
+  - To calculate the distributed size, btdu evenly *distributes* a sample's respective disk space usage across all locations which reference data from that logical offset.
+  - Thus, two 1MiB files which share the same 1MiB of data will each have a distributed size of 512KiB.
+  - Adding up the distributed size for all filesystem objects (btdu tree leaves) also adds up to the total size of the filesystem.
 
 - **Exclusive** size
   - The exclusive size represents the samples which are used *only* by the file at this location.
@@ -43,15 +48,15 @@ btdu shows three size metrics for tree nodes:
 
 As an illustration, consider a file consisting of unique data (`dd if=/dev/urandom of=a bs=1M count=1`):
 
-![](https://raw.githubusercontent.com/gist/CyberShadow/6b6ecfde854ec7d991f8774bc35bbce5/raw/64ba6d41fb637f03e6aabfe849f5f2689385652c/single.svg)
+![](https://raw.githubusercontent.com/gist/CyberShadow/6b6ecfde854ec7d991f8774bc35bbce5/raw/2246dafb074b466c89f9cf3f7a62cd88a44b74e4/single.svg)
 
 Here is what happens if we clone the file (`cp --reflink=always a b`):
 
-![](https://raw.githubusercontent.com/gist/CyberShadow/6b6ecfde854ec7d991f8774bc35bbce5/raw/64ba6d41fb637f03e6aabfe849f5f2689385652c/clone.svg)
+![](https://raw.githubusercontent.com/gist/CyberShadow/6b6ecfde854ec7d991f8774bc35bbce5/raw/2246dafb074b466c89f9cf3f7a62cd88a44b74e4/clone.svg)
 
 Finally, here is what the sizes would look like for two 2M files which share 1M. Note how the represented size adds up to 3M, the total size of the underlying data.
 
-![](https://raw.githubusercontent.com/gist/CyberShadow/6b6ecfde854ec7d991f8774bc35bbce5/raw/64ba6d41fb637f03e6aabfe849f5f2689385652c/overlap.svg)
+![](https://raw.githubusercontent.com/gist/CyberShadow/6b6ecfde854ec7d991f8774bc35bbce5/raw/2246dafb074b466c89f9cf3f7a62cd88a44b74e4/overlap.svg)
 
 The sizes for directories are the sum of sizes of their children.
 

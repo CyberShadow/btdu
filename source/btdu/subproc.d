@@ -239,13 +239,25 @@ struct Subprocess
 		representativeBrowserPath.addSample(SampleType.represented, result.logicalOffset, m.duration);
 		if (result.allPaths.length <= 1)
 			representativeBrowserPath.addSample(SampleType.exclusive, result.logicalOffset, m.duration);
-		foreach (ref path; result.allPaths)
-		{
-			representativeBrowserPath.seenAs.add(path);
 
-			auto browserPath = result.browserPath.appendPath(&path);
-			browserPath.addSample(SampleType.shared_, result.logicalOffset, m.duration);
+		if (result.allPaths.length)
+		{
+			auto distributedShare = 1.0 / result.allPaths.length;
+			foreach (ref path; result.allPaths)
+			{
+				representativeBrowserPath.seenAs.add(path);
+
+				auto browserPath = result.browserPath.appendPath(&path);
+				browserPath.addSample(SampleType.shared_, result.logicalOffset, m.duration);
+				browserPath.addDistributedSample(distributedShare);
+			}
 		}
+		else
+		{
+			representativeBrowserPath.addSample(SampleType.shared_, result.logicalOffset, m.duration);
+			representativeBrowserPath.addDistributedSample(1);
+		}
+
 		result = Result.init;
 	}
 

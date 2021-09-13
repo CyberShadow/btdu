@@ -182,6 +182,30 @@ struct Browser
 						fullPath = buf.data;
 				}
 
+				string[] showSampleType(SampleType type, string name)
+				{
+					return [
+						"- " ~ name ~ ": " ~ (totalSamples
+							? format!"~%s (%d sample%s)"(
+								humanSize(currentPath.data[type].samples * real(totalSize) / totalSamples),
+								currentPath.data[type].samples,
+								currentPath.data[type].samples == 1 ? "" : "s",
+							)
+							: "-"),
+
+						// "  - Average query duration: " ~ (currentPath.data[type].samples
+						// 	? stdDur(currentPath.data[type].duration / currentPath.data[type].samples).toString()
+						// 	: "-"),
+
+						"  - Logical offsets: " ~ (currentPath.data[type].samples
+							? format!"%s%(%d, %)"(
+								currentPath.data[type].samples > currentPath.data[type].logicalOffsets.length ? "..., " : "",
+								currentPath.data[type].logicalOffsets[].filter!(o => o != ulong.max),
+							)
+							: "-"),
+					];
+				}
+
 				info ~= chain(
 					["--- Details: "],
 
@@ -206,40 +230,21 @@ struct Browser
 					["- Average query duration: " ~ (currentPath.data[SampleType.represented].samples
 							? stdDur(currentPath.data[SampleType.represented].duration / currentPath.data[SampleType.represented].samples).toDecimalString()
 							: "-")],
-
-					[EnumMembers!SampleType]
-					// Don't show exclusive/shared for metadata nodes
-					.filter!(type => !(type != SampleType.represented
-						&& currentPath.data[SampleType.represented].samples == currentPath.data[SampleType.exclusive].samples
-						&& currentPath.data[SampleType.shared_].samples == 0
-					))
-					.map!(type => only(
-						"",
-						"- " ~ [
-							"Represented data",
-							"Exclusive data (referenced exactly once)",
-							"Shared data (including other locations)",
-						][type] ~ ":",
-						"  - Size: " ~ (totalSamples
-							? format!"~%s (%d sample%s)"(
-								humanSize(currentPath.data[type].samples * real(totalSize) / totalSamples),
-								currentPath.data[type].samples,
-								currentPath.data[type].samples == 1 ? "" : "s",
-							)
-							: "-"),
-
-						// "  - Average query duration: " ~ (currentPath.data[type].samples
-						// 	? stdDur(currentPath.data[type].duration / currentPath.data[type].samples).toString()
-						// 	: "-"),
-
-						"  - Logical offsets: " ~ (currentPath.data[type].samples
-							? format!"%s%(%d, %)"(
-								currentPath.data[type].samples > currentPath.data[type].logicalOffsets.length ? "..., " : "",
-								currentPath.data[type].logicalOffsets[].filter!(o => o != ulong.max),
-							)
-							: "-"),
-					)).joiner,
 				).array;
+
+				info ~= showSampleType(SampleType.represented, "Represented size");
+				info ~= ["- Distributed size: " ~ (totalSamples
+					? format!"~%s (%1.3f sample%s)"(
+						humanSize(currentPath.distributedSamples * real(totalSize) / totalSamples),
+						currentPath.distributedSamples,
+						currentPath.distributedSamples == 1 ? "" : "s",
+					)
+					: "-")];
+
+				if (currentPath.data[SampleType.represented].samples != currentPath.data[SampleType.exclusive].samples)
+					info ~= showSampleType(SampleType.exclusive, "Exclusive size");
+				if (currentPath.data[SampleType.represented].samples != currentPath.data[SampleType.shared_].samples)
+					info ~= showSampleType(SampleType.shared_, "Shared size");
 
 				{
 					string explanation = {

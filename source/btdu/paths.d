@@ -292,6 +292,7 @@ struct BrowserPath
 		ulong[3] logicalOffsets = -1; /// Examples (the last 3 seen) of logical offsets
 	}
 	Data[enumLength!SampleType] data;
+	double distributedSamples = 0;
 
 	void addSample(SampleType type, ulong logicalOffset, ulong duration)
 	{
@@ -302,6 +303,13 @@ struct BrowserPath
 				l0 = i + 1 == Data.logicalOffsets.length ? logicalOffset : data[type].logicalOffsets[i + 1];
 		if (parent)
 			parent.addSample(type, logicalOffset, duration);
+	}
+
+	void addDistributedSample(double share)
+	{
+		distributedSamples += share;
+		if (parent)
+			parent.addDistributedSample(share);
 	}
 
 	/// Other paths this address is reachable via
