@@ -21,6 +21,7 @@ module btdu.browser;
 
 import core.stdc.config;
 import core.stdc.errno;
+import core.stdc.stddef : wchar_t;
 import core.sys.posix.locale;
 import core.time;
 
@@ -666,11 +667,19 @@ struct Browser
 		selection = items[pos];
 	}
 
+	// https://github.com/D-Programming-Deimos/ncurses/pull/43
+	align(1)
+	struct cchar_t
+	{
+		attr_t attr;
+		wchar_t[CCHARW_MAX] chars;
+	}
+
 	static cchar_t toCChar(dchar c, uint attr)
 	{
 		dchar[2] d = [c, 0];
 		cchar_t cchar;
-		if (setcchar(&cchar, d.ptr, attr, 0, null) != OK)
+		if (setcchar(cast(deimos.ncurses.curses.cchar_t*)&cchar, d.ptr, attr, 0, null) != OK)
 			return toCChar('\U0000FFFD', attr);
 		return cchar;
 	}
@@ -681,7 +690,7 @@ struct Browser
 		ccharBuf.clear();
 		foreach (dchar c; (cast(string)str).sanitize)
 			ccharBuf.put(toCChar(c, attr));
-		mvadd_wchnstr!(int, cchar_t)(y, x, ccharBuf.data.ptr, ccharBuf.data.length.to!int);
+		mvadd_wchnstr(y, x, cast(deimos.ncurses.curses.cchar_t*)ccharBuf.data.ptr, ccharBuf.data.length.to!int);
 	}
 
 	/// Pausing has the following effects:
