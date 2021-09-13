@@ -134,7 +134,7 @@ mixin template SimplePath()
 	string humanName() const
 	{
 		string humanName = name;
-		humanName.skipOver("\0");
+		humanName.skipOverNul();
 		return humanName;
 	}
 }
@@ -306,4 +306,17 @@ struct BrowserPath
 
 	/// Other paths this address is reachable via
 	HashSet!GlobalPath seenAs;
+}
+
+// We prefix "special" names with one NUL character to
+// distinguish them from filesystem entries.
+bool skipOverNul(C)(ref C[] str)
+{
+	// Workaround for https://issues.dlang.org/show_bug.cgi?id=22302
+	if (str.startsWith("\0"))
+	{
+		str = str[1 .. $];
+		return true;
+	}
+	return false;
 }

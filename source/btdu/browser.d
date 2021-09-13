@@ -31,6 +31,7 @@ import std.algorithm.searching;
 import std.algorithm.sorting;
 import std.array;
 import std.conv;
+import std.encoding : sanitize;
 import std.exception;
 import std.format;
 import std.path;
@@ -158,7 +159,7 @@ struct Browser
 					bool recurse(BrowserPath *path)
 					{
 						string name = path.name;
-						if (name.skipOver("\0"))
+						if (name.skipOverNul())
 							switch (name)
 							{
 								case "DATA":
@@ -247,7 +248,7 @@ struct Browser
 								"Use the arrow keys to navigate, press ? for help.";
 
 						string name = currentPath.name;
-						if (name.skipOver("\0"))
+						if (name.skipOverNul())
 						{
 							switch (name)
 							{
@@ -615,8 +616,7 @@ struct Browser
 						buf.put(displayedItem);
 					}
 
-					buf.put('\0');
-					mvprintw(y, 0, "%s", buf.data.ptr);
+					rawWrite(y, 0, buf.data, item is selection ? A_REVERSE : 0);
 				}
 				attroff(A_REVERSE);
 
@@ -664,6 +664,24 @@ struct Browser
 		if (pos > items.length - 1)
 			pos = items.length - 1;
 		selection = items[pos];
+	}
+
+	static cchar_t toCChar(dchar c, uint attr)
+	{
+		dchar[2] d = [c, 0];
+		cchar_t cchar;
+		if (setcchar(&cchar, d.ptr, attr, 0, null) != OK)
+			return toCChar('\U0000FFFD', attr);
+		return cchar;
+	}
+
+	static void rawWrite(int y, int x, const(char)[] str, uint attr)
+	{
+		static Appender!(cchar_t[]) ccharBuf;
+		ccharBuf.clear();
+		foreach (dchar c; (cast(string)str).sanitize)
+			ccharBuf.put(toCChar(c, attr));
+		mvadd_wchnstr!(int, cchar_t)(y, x, ccharBuf.data.ptr, ccharBuf.data.length.to!int);
 	}
 
 	/// Pausing has the following effects:
