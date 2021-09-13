@@ -62,6 +62,7 @@ struct Subprocess
 				thisExePath,
 				"--subprocess",
 				"--seed", rndGen.uniform!Seed.text,
+				"--",
 				fsPath,
 			],
 			stdin,
