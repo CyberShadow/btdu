@@ -145,6 +145,8 @@ struct Browser
 		if (!items.length && mode == Mode.browser && currentPath !is &browserRoot)
 			mode = Mode.info;
 
+		auto totalSamples = browserRoot.data[SampleType.represented].samples;
+
 		// Build info
 		final switch (mode)
 		{
@@ -218,9 +220,9 @@ struct Browser
 							"Exclusive data (referenced exactly once)",
 							"Shared data (including other locations)",
 						][type] ~ ":",
-						"  - Size: " ~ (browserRoot.data[SampleType.represented].samples
+						"  - Size: " ~ (totalSamples
 							? format!"~%s (%d sample%s)"(
-								humanSize(currentPath.data[type].samples * real(totalSize) / browserRoot.data[SampleType.represented].samples),
+								humanSize(currentPath.data[type].samples * real(totalSize) / totalSamples),
 								currentPath.data[type].samples,
 								currentPath.data[type].samples == 1 ? "" : "s",
 							)
@@ -507,13 +509,12 @@ struct Browser
 				mvprintw(h - 1, 0, " %.*s", message.length, message.ptr);
 			else
 			{
-				auto representedSamples = browserRoot.data[SampleType.represented].samples;
-				auto resolution = representedSamples
-					? "~" ~ (totalSize / representedSamples).humanSize()
+				auto resolution = totalSamples
+					? "~" ~ (totalSize / totalSamples).humanSize()
 					: "-";
 				mvprintw(h - 1, 0,
 					" Samples: %lld  Resolution: %.*s",
-					cast(cpp_longlong)representedSamples,
+					cast(cpp_longlong)totalSamples,
 					resolution.length, resolution.ptr,
 				);
 			}
@@ -566,8 +567,8 @@ struct Browser
 
 					buf.clear();
 					{
-						auto size = browserRoot.data[SampleType.represented].samples
-							? "~" ~ humanSize(child.data[SampleType.represented].samples * real(totalSize) / browserRoot.data[SampleType.represented].samples)
+						auto size = totalSamples
+							? "~" ~ humanSize(child.data[SampleType.represented].samples * real(totalSize) / totalSamples)
 							: "?";
 						buf.formattedWrite!"%12s "(size);
 					}
