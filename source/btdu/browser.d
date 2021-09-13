@@ -929,8 +929,11 @@ Right/Enter - Open selected node
           i - Expand/collapse information panel
           q - Close information panel or quit btdu
 
+Press q to exit this help screen and return to btdu.
+
+For terminology explanations, see:
+https://github.com/CyberShadow/btdu/blob/master/CONCEPTS.md
+
 https://github.com/CyberShadow/btdu
 Created by: Vladimir Panteleev <https://cy.md/>
-
-Press q to exit this help screen and return to btdu.
 EOF".splitLines;
