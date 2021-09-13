@@ -48,6 +48,10 @@ Use cases
 
   A feature unique to btdu is the ability to estimate the amount of space used by unreachable parts of extents, i.e. data in extents containing older versions of file content which has since been overwritten. This btrfs "dark matter" can be an easy to overlook space hog, which could be eliminated by rewriting or defragmentating affected files.
 
+- **Understand btrfs space usage**
+
+  btdu shows explanations for hierarchy objects and common errors, which can help understand how btrfs uses disk space. The `--expert` mode enables collection and display of [additional size metrics](CONCEPTS.md#size-metrics), providing more insight into allocation of objects with non-trivial sharing.
+
 
 Installation
 ------------
