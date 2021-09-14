@@ -58,12 +58,11 @@ class SelectLoop : EventLoop
 	}
 	Item[] items;
 
-	SocketSet readSet, exceptSet;
+	SocketSet readSet;
 
 	this()
 	{
 		readSet = new SocketSet;
-		exceptSet = new SocketSet; // TODO needed?
 	}
 
 	override void add(Receiver receiver)
@@ -78,14 +77,10 @@ class SelectLoop : EventLoop
 	override void step()
 	{
 		readSet.reset();
-		exceptSet.reset();
 		foreach (ref item; items)
 			if (item.receiver.active)
-			{
 				readSet.add(item.socket);
-				exceptSet.add(item.socket);
-			}
-		Socket.select(readSet, null, exceptSet);
+		Socket.select(readSet, null, null);
 		foreach (ref item; items)
 			if (readSet.isSet(item.socket))
 				while (true)
