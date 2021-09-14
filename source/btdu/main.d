@@ -19,6 +19,7 @@
 /// btdu entry point
 module btdu.main;
 
+import core.sys.posix.unistd : STDIN_FILENO;
 import core.time;
 
 import std.exception;
@@ -72,7 +73,7 @@ void program(
 	foreach (ref subproc; subprocesses)
 		subproc.start();
 
-	auto eventLoop = makeEventLoop();
+	auto eventLoop = makeEventLoop(procs + headless);
 
 	.expert = expert;
 
@@ -87,7 +88,7 @@ void program(
 		browser.start();
 		browser.update();
 		eventLoop.add(new class Receiver {
-			override int getFD() { return stdin.fileno; }
+			override int getFD() { return STDIN_FILENO; }
 			override ubyte[] getReadBuffer() { return null; }
 			override void handleRead(size_t received) {}
 		});

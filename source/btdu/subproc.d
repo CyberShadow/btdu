@@ -53,6 +53,7 @@ struct Subprocess
 	void start()
 	{
 		pipe = .pipe();
+		fd = pipe.readEnd.fileno;
 
 		pid = spawnProcess(
 			[
@@ -79,10 +80,10 @@ struct Subprocess
 	/// Section of buffer containing received and unparsed data
 	private size_t bufStart, bufEnd;
 
-	int fd() { return pipe.readEnd.fileno; }
+	int fd;
 
 	/// Where should received data be placed.
-	ubyte[] getReadBuffer()
+	ubyte[] getReadBuffer() nothrow @nogc
 	{
 		return buf[bufEnd .. $];
 	}

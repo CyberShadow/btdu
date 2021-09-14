@@ -86,6 +86,14 @@ struct Browser
 
 	void start()
 	{
+		{
+			import core.sys.posix.fcntl : fcntl, F_GETFL, F_SETFL, O_NONBLOCK;
+			import core.sys.posix.unistd : STDIN_FILENO;
+
+			int flags = fcntl(STDIN_FILENO, F_GETFL, 0);
+			fcntl(STDIN_FILENO, F_SETFL, flags | O_NONBLOCK);
+		}
+
 		setlocale(LC_CTYPE, "");
 		initscr();
 

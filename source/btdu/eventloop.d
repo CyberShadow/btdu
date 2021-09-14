@@ -19,14 +19,20 @@
 /// Event loop implementations.
 module btdu.eventloop;
 
-import std.exception : errnoEnforce;
+import core.sys.posix.sys.uio;
+
+import std.exception : errnoEnforce, ErrnoException;
 
 /// Event loop member.
 class Receiver
 {
-	abstract int getFD();
-	abstract ubyte[] getReadBuffer();
+	/// Get file descriptor.
+	abstract int getFD() nothrow @nogc;
+	/// Where to place read data. `null` to only poll for read readiness.
+	abstract ubyte[] getReadBuffer() nothrow @nogc;
+	/// Called when data has been read.
 	abstract void handleRead(size_t received);
+	/// Active now?
 	bool active() { return true; }
 }
 
@@ -37,16 +43,22 @@ class EventLoop
 	abstract void step();
 }
 
-EventLoop makeEventLoop()
+EventLoop makeEventLoop(uint size)
 {
-	// TODO
-	return new SelectLoop();
+	try
+		return new IOUringLoop(size);
+	catch (Exception e)
+	{
+		import std.stdio : stderr;
+		stderr.writefln("io_uring initialization failed (%s), using select().", e.msg);
+		return new SelectLoop();
+	}
 }
 
 private:
 
 /// select()-based main event loop.
-class SelectLoop : EventLoop
+final class SelectLoop : EventLoop
 {
 	import std.socket : Socket, socket_t, AddressFamily, SocketSet, wouldHaveBlocked;
 	import core.sys.posix.unistd : read;
@@ -100,5 +112,81 @@ class SelectLoop : EventLoop
 					}
 					item.receiver.handleRead(received);
 				}
+	}
+}
+
+/// io_uring-based main event loop.
+final class IOUringLoop : EventLoop
+{
+	import during : Uring, setup, SubmissionEntry, prepPollAdd, PollEvents, PollFlags, prepReadv, setUserData;
+
+	Uring io;
+
+	struct Item
+	{
+		Receiver receiver;
+		iovec v;
+	}
+	Item[] items;
+
+	this(uint size)
+	{
+		auto ret = io.setup(2 * size);
+		if (ret < 0)
+			throw new ErrnoException("I/O initialization error", -ret);
+	}
+
+	override void add(Receiver receiver)
+	{
+		auto index = items.length;
+		items ~= Item(receiver);
+		put(index);
+	}
+
+	void put(size_t index)
+	{
+		io.putWith!(
+			(ref SubmissionEntry e, size_t index, ref Item item)
+			{
+				auto buf = item.receiver.getReadBuffer();
+				if (buf is null)
+					e.prepPollAdd(item.receiver.getFD(), PollEvents.IN);
+				else
+				{
+					item.v = iovec(buf.ptr, buf.length);
+					e.prepReadv(item.receiver.getFD(), item.v, 0);
+				}
+
+				e.user_data = index;
+			})(index, items[index]);
+	}
+
+	override void step()
+	{
+		int ret = io.submit();
+		if (ret < 0)
+			throw new ErrnoException("I/O submission error", -ret);
+
+        ret = io.wait();
+		if (ret < 0)
+			throw new ErrnoException("I/O error", -ret);
+
+		while (!io.empty)
+		{
+			auto index = io.front.user_data;
+			auto receiver = items[index].receiver;
+			if (io.front.res < 0)
+				throw new ErrnoException("Read error", -io.front.res);
+
+			receiver.handleRead(io.front.res);
+			io.popFront();
+
+			put(index);
+		}
+		
+		ret = io.submit();
+		if (ret < 0)
+			throw new ErrnoException("I/O submission error", -ret);
+
 	}
 }
