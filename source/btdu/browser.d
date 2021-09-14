@@ -42,6 +42,7 @@ import std.traits : EnumMembers;
 
 import deimos.ncurses;
 
+import ae.utils.appender;
 import ae.utils.meta;
 import ae.utils.text;
 import ae.utils.time : stdDur, stdTime;
@@ -112,7 +113,7 @@ struct Browser
 		showMessageUntil = MonoTime.currTime() + (100.msecs * s.length);
 	}
 
-	private static Appender!(char[]) buf; // Reusable buffer
+	private static FastAppender!char buf; // Reusable buffer
 
 	void update()
 	{
@@ -179,7 +180,7 @@ struct Browser
 						return true;
 					}
 					if (recurse(currentPath))
-						fullPath = buf.data;
+						fullPath = buf.get();
 				}
 
 				string[] showSampleType(SampleType type, string name)
@@ -628,7 +629,7 @@ struct Browser
 						buf.put(displayedItem);
 					}
 
-					rawWrite(y, 0, buf.data, item is selection ? A_REVERSE : 0);
+					rawWrite(y, 0, buf.get(), item is selection ? A_REVERSE : 0);
 				}
 				attroff(A_REVERSE);
 
@@ -697,11 +698,11 @@ struct Browser
 
 	static void rawWrite(int y, int x, const(char)[] str, uint attr)
 	{
-		static Appender!(cchar_t[]) ccharBuf;
+		static FastAppender!cchar_t ccharBuf;
 		ccharBuf.clear();
 		foreach (dchar c; (cast(string)str).sanitize)
 			ccharBuf.put(toCChar(c, attr));
-		mvadd_wchnstr(y, x, cast(deimos.ncurses.curses.cchar_t*)ccharBuf.data.ptr, ccharBuf.data.length.to!int);
+		mvadd_wchnstr(y, x, cast(deimos.ncurses.curses.cchar_t*)ccharBuf.get().ptr, ccharBuf.get().length.to!int);
 	}
 
 	/// Pausing has the following effects:

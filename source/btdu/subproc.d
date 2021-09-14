@@ -152,7 +152,7 @@ struct Subprocess
 		bool ignoringOffset;
 	}
 	private Result result;
-	private Appender!(GlobalPath[]) allPaths;
+	private FastAppender!GlobalPath allPaths;
 
 	void handleMessage(ResultStartMessage m)
 	{
@@ -219,9 +219,9 @@ struct Subprocess
 		if (!result.haveInode)
 			result.browserPath = result.browserPath.appendName("\0NO_INODE");
 		auto representativeBrowserPath = result.browserPath;
-		if (allPaths.data.length)
+		if (allPaths.get().length)
 		{
-			auto representativePath = allPaths.fold!((a, b) {
+			auto representativePath = allPaths.get().fold!((a, b) {
 				// Prefer paths with resolved roots
 				auto aResolved = a.isResolved();
 				auto bResolved = b.isResolved();
@@ -239,18 +239,18 @@ struct Subprocess
 		}
 		representativeBrowserPath.addSample(SampleType.represented, result.logicalOffset, m.duration);
 
-		if (allPaths.data.length)
+		if (allPaths.get().length)
 		{
-			foreach (ref path; allPaths.data)
+			foreach (ref path; allPaths.get())
 				representativeBrowserPath.seenAs.add(path);
 
 			if (expert)
 			{
-				auto distributedShare = 1.0 / allPaths.data.length;
+				auto distributedShare = 1.0 / allPaths.get().length;
 
-				static Appender!(BrowserPath*[]) browserPaths;
+				static FastAppender!(BrowserPath*) browserPaths;
 				browserPaths.clear();
-				foreach (ref path; allPaths.data)
+				foreach (ref path; allPaths.get())
 				{
 					auto browserPath = result.browserPath.appendPath(&path);
 					browserPaths.put(browserPath);
@@ -259,7 +259,7 @@ struct Subprocess
 					browserPath.addDistributedSample(distributedShare);
 				}
 
-				auto exclusiveBrowserPath = BrowserPath.commonPrefix(browserPaths.data);
+				auto exclusiveBrowserPath = BrowserPath.commonPrefix(browserPaths.get());
 				exclusiveBrowserPath.addSample(SampleType.exclusive, result.logicalOffset, m.duration);
 			}
 		}

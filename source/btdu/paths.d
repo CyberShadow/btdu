@@ -20,12 +20,12 @@
 module btdu.paths;
 
 import ae.utils.aa;
+import ae.utils.appender;
 import ae.utils.meta;
 
 import std.algorithm.comparison;
 import std.algorithm.iteration;
 import std.algorithm.searching;
-import std.array : Appender;
 import std.range.primitives;
 import std.string;
 
@@ -158,17 +158,17 @@ mixin template PathCommon()
 	static typeof(this)* commonPrefix(typeof(this)*[] paths)
 	{
 		// First, calculate the lengths
-		static Appender!(size_t[]) lengths;
+		static FastAppender!size_t lengths;
 		lengths.clear();
 		foreach (ref path; paths)
 			lengths.put(path.chainLength);
 
 		// Rewind all paths to the minimal path's length
-		auto minLength = lengths.data.reduce!min;
+		auto minLength = lengths.get().reduce!min;
 		foreach (i, ref path; paths)
-			while (lengths.data[i] > minLength)
+			while (lengths.get()[i] > minLength)
 			{
-				lengths.data[i]--;
+				lengths.get()[i]--;
 				path = path.parent;
 			}
 

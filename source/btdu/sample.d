@@ -32,6 +32,7 @@ import std.format;
 import std.random;
 import std.string;
 
+import ae.utils.appender;
 import ae.utils.time : stdTime;
 
 import btrfs;
@@ -99,7 +100,7 @@ void subprocessMain(string fsPath)
 
 										try
 										{
-											static Appender!(char[]) pathBuf;
+											static FastAppender!char pathBuf;
 											pathBuf.clear();
 											pathBuf.put(fsPath);
 
@@ -119,10 +120,10 @@ void subprocessMain(string fsPath)
 											putRoot(rootID);
 											pathBuf.put('\0');
 
-											int rootFD = open(pathBuf.data.ptr, O_RDONLY);
+											int rootFD = open(pathBuf.get().ptr, O_RDONLY);
 											if (rootFD < 0)
 											{
-												send(ResultInodeErrorMessage(btdu.proto.Error("open", errno, pathBuf.data[0 .. $-1])));
+												send(ResultInodeErrorMessage(btdu.proto.Error("open", errno, pathBuf.get()[0 .. $-1])));
 												return;
 											}
 											scope(exit) close(rootFD);
