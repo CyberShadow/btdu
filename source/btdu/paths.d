@@ -23,7 +23,10 @@ import ae.utils.aa;
 import ae.utils.meta;
 
 import std.algorithm.comparison;
+import std.algorithm.iteration;
 import std.algorithm.searching;
+import std.array : Appender;
+import std.range.primitives;
 import std.string;
 
 /// Common definitions for a deduplicated trie for paths.
@@ -139,8 +142,8 @@ mixin template SimplePath()
 	}
 }
 
-/// Implements comparison for linked-list-like path structures
-mixin template PathCmp()
+/// Common operations for linked-list-like path structures
+mixin template PathCommon()
 {
 	/// Returns the total length of this path chain,
 	/// including this instance.
@@ -149,6 +152,40 @@ mixin template PathCmp()
 		return 1 + (parent ? parent.chainLength() : 0);
 	}
 
+	/// Returns the common prefix of `paths`.
+	/// Assumes that if two pointers are different, they point at different paths.
+	/// Destructively mutates `paths` as scratch space.
+	static typeof(this)* commonPrefix(typeof(this)*[] paths)
+	{
+		// First, calculate the lengths
+		static Appender!(size_t[]) lengths;
+		lengths.clear();
+		foreach (ref path; paths)
+			lengths.put(path.chainLength);
+
+		// Rewind all paths to the minimal path's length
+		auto minLength = lengths.data.reduce!min;
+		foreach (i, ref path; paths)
+			while (lengths.data[i] > minLength)
+			{
+				lengths.data[i]--;
+				path = path.parent;
+			}
+
+		// Rewind all paths until the tip points at the same thing
+		while (paths.any!(path => path !is paths[0]))
+			foreach (ref path; paths)
+				path = path.parent;
+
+		// All paths now point at the same thing.
+		return paths[0];
+	}
+}
+
+/// Implements comparison for linked-list-like path structures.
+/// Requires `PathCommon` and a `compareContents` definition.
+mixin template PathCmp()
+{
 	int opCmp(const ref typeof(this) b) const
 	{
 		if (this is b)
@@ -212,6 +249,7 @@ mixin template PathCmp()
 struct SubPath
 {
 	mixin SimplePath;
+	mixin PathCommon;
 	mixin PathCmp;
 
 	/// PathCmp implementation
@@ -270,6 +308,7 @@ struct GlobalPath
 		return Range(&this);
 	}
 
+	mixin PathCommon;
 	mixin PathCmp;
 }
 
@@ -284,6 +323,7 @@ enum SampleType
 struct BrowserPath
 {
 	mixin SimplePath;
+	mixin PathCommon;
 
 	struct Data
 	{

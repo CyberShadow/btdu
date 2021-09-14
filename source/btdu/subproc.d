@@ -25,6 +25,7 @@ import core.sys.posix.unistd;
 import std.algorithm.iteration;
 import std.algorithm.mutation;
 import std.algorithm.searching;
+import std.array;
 import std.conv;
 import std.exception;
 import std.file;
@@ -237,22 +238,29 @@ struct Subprocess
 			representativeBrowserPath = result.browserPath.appendPath(&representativePath);
 		}
 		representativeBrowserPath.addSample(SampleType.represented, result.logicalOffset, m.duration);
-		if (expert && result.allPaths.length <= 1)
-			representativeBrowserPath.addSample(SampleType.exclusive, result.logicalOffset, m.duration);
 
 		if (result.allPaths.length)
 		{
-			auto distributedShare = 1.0 / result.allPaths.length;
 			foreach (ref path; result.allPaths)
-			{
 				representativeBrowserPath.seenAs.add(path);
 
-				if (expert)
+			if (expert)
+			{
+				auto distributedShare = 1.0 / result.allPaths.length;
+
+				static Appender!(BrowserPath*[]) browserPaths;
+				browserPaths.clear();
+				foreach (ref path; result.allPaths)
 				{
 					auto browserPath = result.browserPath.appendPath(&path);
+					browserPaths.put(browserPath);
+
 					browserPath.addSample(SampleType.shared_, result.logicalOffset, m.duration);
 					browserPath.addDistributedSample(distributedShare);
 				}
+
+				auto exclusiveBrowserPath = BrowserPath.commonPrefix(browserPaths.data);
+				exclusiveBrowserPath.addSample(SampleType.exclusive, result.logicalOffset, m.duration);
 			}
 		}
 		else
@@ -260,6 +268,7 @@ struct Subprocess
 			if (expert)
 			{
 				representativeBrowserPath.addSample(SampleType.shared_, result.logicalOffset, m.duration);
+				representativeBrowserPath.addSample(SampleType.exclusive, result.logicalOffset, m.duration);
 				representativeBrowserPath.addDistributedSample(1);
 			}
 		}

@@ -30,20 +30,26 @@ In `--expert` mode, btdu shows four size metrics for tree nodes:
     - For every logical offset, btdu picks one [representative location](#representative-location) out of all locations that reference that logical offset, and assigns the sample's respective disk space usage to that location. 
     - This location is thus chosen to *represent* this disk space. So, if a directory's represented size is 1MiB, we can say that this directory is the simplest explanation for what is using that 1MiB of space.
   - This metric is most useful in understanding what is using up disk space on a btrfs filesystem, and is what's shown in the btdu directory listings.
+  - The represented size of a directory is the sum of represented sizes of its children.
   - Adding up the represented size for all filesystem objects (btdu tree leaves) adds up to the total size of the filesystem.
 
 - **Distributed** size
   - To calculate the distributed size, btdu evenly *distributes* a sample's respective disk space usage across all locations which reference data from that logical offset.
   - Thus, two 1MiB files which share the same 1MiB of data will each have a distributed size of 512KiB.
+  - The distributed size of a directory is the sum of distributed sizes of its children.
   - Adding up the distributed size for all filesystem objects (btdu tree leaves) also adds up to the total size of the filesystem.
 
 - **Exclusive** size
-  - The exclusive size represents the samples which are used *only* by the file at this location.
+  - The exclusive size represents the samples which are used *only* by this file or directory.
+    - Specifically, btdu awards exclusive size to the *common prefix* of all paths which reference data from a given logical offset.
   - Two files which are perfect clones of each other will thus both have an exclusive size of zero. The same applies to two identical snapshots.
+  - However, if the two clones are in the same directory, and the data is not used anywhere else, then that data will be represented in the directory's exclusive size.
+  - Unlike other size metrics, adding up the exclusive size of all items in a directory may not necessarily add up to the exclusive size of the directory.
 
 - **Shared** size
   - The shared size is the total size including all references of a single logical offset at this location.
   - This size generally correlates with the "visible" size, i.e. the size reported by classic space usage analysis tools, such as `du`. (However, if compression is used, the shown size will still be after compression.)
+  - The shared size of a directory is the sum of shared sizes of its children.
   - The total shared size will likely exceed the total size of the filesystem, if snapshots or reflinking is used.
 
 As an illustration, consider a file consisting of unique data (`dd if=/dev/urandom of=a bs=1M count=1`):
@@ -57,6 +63,3 @@ Here is what happens if we clone the file (`cp --reflink=always a b`):
 Finally, here is what the sizes would look like for two 2M files which share 1M. Note how the represented size adds up to 3M, the total size of the underlying data.
 
 ![](https://raw.githubusercontent.com/gist/CyberShadow/6b6ecfde854ec7d991f8774bc35bbce5/raw/2246dafb074b466c89f9cf3f7a62cd88a44b74e4/overlap.svg)
-
-The sizes for directories are the sum of sizes of their children.
-
