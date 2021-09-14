@@ -19,6 +19,7 @@
 /// btdu entry point
 module btdu.main;
 
+import core.sys.posix.unistd;
 import core.time;
 
 import std.exception;
@@ -94,6 +95,12 @@ void program(
 
 	auto readSet = new SocketSet;
 	auto exceptSet = new SocketSet;
+	auto sockets = new Socket[procs];
+	foreach (i; 0 .. procs)
+	{
+		sockets[i] = new Socket(cast(socket_t)subprocesses[i].fd.dup, AddressFamily.UNSPEC);
+		sockets[i].blocking = false;
+	}
 
 	// Main event loop
 	while (true)
@@ -106,8 +113,8 @@ void program(
 			exceptSet.add(stdinSocket);
 		}
 		if (!paused)
-			foreach (ref subproc; subprocesses)
-				readSet.add(subproc.socket);
+			foreach (socket; sockets)
+				readSet.add(socket);
 
 		Socket.select(readSet, null, exceptSet);
 		auto now = MonoTime.currTime();
@@ -121,9 +128,23 @@ void program(
 			nextRefresh = now + refreshInterval;
 		}
 		if (!paused)
-			foreach (ref subproc; subprocesses)
-				if (readSet.isSet(subproc.socket))
-					subproc.handleInput();
+			foreach (i, ref subproc; subprocesses)
+				if (readSet.isSet(sockets[i]))
+				{
+					while (true)
+					{
+						auto readBuf = subproc.getReadBuffer();
+						auto received = read(subproc.fd, readBuf.ptr, readBuf.length);
+						enforce(received != 0, "Unexpected subprocess termination");
+						if (received == Socket.ERROR)
+						{
+							errnoEnforce(wouldHaveBlocked, "Subprocess read error");
+							break;
+						}
+
+						subproc.handleInput(received);
+					}
+				}
 		if (!headless && now > nextRefresh)
 		{
 			browser.update();

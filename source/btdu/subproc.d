@@ -20,7 +20,6 @@
 module btdu.subproc;
 
 import core.sys.posix.signal;
-import core.sys.posix.unistd;
 
 import std.algorithm.iteration;
 import std.algorithm.mutation;
@@ -49,14 +48,11 @@ import btdu.state;
 struct Subprocess
 {
 	Pipe pipe;
-	Socket socket;
 	Pid pid;
 
 	void start()
 	{
 		pipe = .pipe();
-		socket = new Socket(cast(socket_t)pipe.readEnd.fileno.dup, AddressFamily.UNSPEC);
-		socket.blocking = false;
 
 		pid = spawnProcess(
 			[
@@ -69,6 +65,8 @@ struct Subprocess
 			stdin,
 			pipe.writeEnd,
 		);
+
+		buf = new ubyte[1024];
 	}
 
 	void pause(bool doPause)
@@ -81,43 +79,42 @@ struct Subprocess
 	/// Section of buffer containing received and unparsed data
 	private size_t bufStart, bufEnd;
 
-	/// Called when select() identifies that the process wrote something.
-	void handleInput()
-	{
-		while (true)
-		{
-			auto data = buf[bufStart .. bufEnd];
-			auto bytesNeeded = parse(data, this);
-			// `data` now contains remaining unparsed data.
-			// Update `bufStart` to point at the start of remaining unparsed data.
-			bufStart = bufEnd - data.length;
-			if (bufStart == bufEnd)
-				bufStart = bufEnd = 0;
+	int fd() { return pipe.readEnd.fileno; }
 
+	/// Where should received data be placed.
+	ubyte[] getReadBuffer()
+	{
+		return buf[bufEnd .. $];
+	}
+
+	/// Called when the event loop identifies that the process wrote something.
+	void handleInput(size_t received)
+	{
+		bufEnd += received;
+
+		auto data = buf[bufStart .. bufEnd];
+		auto bytesNeeded = parse(data, this);
+		// `data` now contains remaining unparsed data.
+		// Update `bufStart` to point at the start of remaining unparsed data.
+		bufStart = bufEnd - data.length;
+		if (bufStart == bufEnd)
+			bufStart = bufEnd = 0;
+
+		if (buf.length < bufEnd + bytesNeeded)
+		{
+			// Moving remaining data to the start of the buffer
+			// may allow us to avoid an allocation.
+			if (bufStart > 0)
+			{
+				copy(buf[bufStart .. bufEnd], buf[0 .. bufEnd - bufStart]);
+				bufEnd -= bufStart;
+				bufStart -= bufStart;
+			}
 			if (buf.length < bufEnd + bytesNeeded)
 			{
-				// Moving remaining data to the start of the buffer
-				// may allow us to avoid an allocation.
-				if (bufStart > 0)
-				{
-					copy(buf[bufStart .. bufEnd], buf[0 .. bufEnd - bufStart]);
-					bufEnd -= bufStart;
-					bufStart -= bufStart;
-				}
-				if (buf.length < bufEnd + bytesNeeded)
-				{
-					buf.length = bufEnd + bytesNeeded;
-					buf.length = buf.capacity;
-				}
+				buf.length = bufEnd + bytesNeeded;
+				buf.length = buf.capacity;
 			}
-			auto received = read(pipe.readEnd.fileno, buf.ptr + bufEnd, buf.length - bufEnd);
-			enforce(received != 0, "Unexpected subprocess termination");
-			if (received == Socket.ERROR)
-			{
-				errnoEnforce(wouldHaveBlocked, "Subprocess read error");
-				return;
-			}
-			bufEnd += received;
 		}
 	}
 
