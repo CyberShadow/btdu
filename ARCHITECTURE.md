@@ -8,7 +8,8 @@ The main process collects data from subprocesses, and arranges it into a tree.
 
 - `browser.d` - The ncurses-based user interface.
 - `common.d` - Small module with common definitions.
-- `main.d` - Entry point and event loop.
+- `eventloop.d` - Event loop implementations.
+- `main.d` - Entry point.
 - `paths.d` - Implements a trie for efficiently storing paths and associated hierarchical data.
 - `proto.d` - Describes the protocol used between the main process and subprocesses.
 - `sample.d` - The main loop for subprocesses. Performs sample acquisition.

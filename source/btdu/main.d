@@ -26,7 +26,6 @@ import std.exception;
 import std.parallelism;
 import std.path;
 import std.random;
-import std.socket;
 import std.stdio;
 
 import ae.utils.funopt;
@@ -35,6 +34,7 @@ import ae.utils.time.parsedur;
 
 import btdu.browser;
 import btdu.common;
+import btdu.eventloop;
 import btdu.paths;
 import btdu.sample;
 import btdu.subproc;
@@ -73,53 +73,50 @@ void program(
 	foreach (ref subproc; subprocesses)
 		subproc.start();
 
-	Socket stdinSocket;
-	if (!headless)
-	{
-		stdinSocket = new Socket(cast(socket_t)stdin.fileno, AddressFamily.UNSPEC);
-		stdinSocket.blocking = false;
-	}
+	auto eventLoop = makeEventLoop();
 
 	.expert = expert;
+
+	auto startTime = MonoTime.currTime();
+	enum refreshInterval = 500.msecs;
+	auto nextRefresh = startTime;
+	bool done;
 
 	Browser browser;
 	if (!headless)
 	{
 		browser.start();
 		browser.update();
+		eventLoop.add(new class Receiver {
+			override int getFD() { return stdin.fileno; }
+			override ubyte[] getReadBuffer() { return null; }
+			override void handleRead(size_t received) {}
+		});
 	}
 
-	auto startTime = MonoTime.currTime();
-	enum refreshInterval = 500.msecs;
-	auto nextRefresh = startTime;
-
-	auto readSet = new SocketSet;
-	auto exceptSet = new SocketSet;
-	auto sockets = new Socket[procs];
-	foreach (i; 0 .. procs)
-	{
-		sockets[i] = new Socket(cast(socket_t)subprocesses[i].fd.dup, AddressFamily.UNSPEC);
-		sockets[i].blocking = false;
-	}
+	foreach (ref p; subprocesses)
+		eventLoop.add(
+			new class (&p) Receiver {
+				Subprocess* subprocess;
+				this(Subprocess* p) { subprocess = p; }
+				override int getFD() { return subprocess.fd.dup; } // TODO need dup?
+				override ubyte[] getReadBuffer() { return subprocess.getReadBuffer(); }
+				override void handleRead(size_t received) {
+					enforce(received != 0, "Unexpected subprocess termination");
+					subprocess.handleInput(received);
+				}
+				override bool active() { return !paused; }
+			}
+		);
 
 	// Main event loop
-	while (true)
+	while (!done)
 	{
-		readSet.reset();
-		exceptSet.reset();
-		if (stdinSocket)
-		{
-			readSet.add(stdinSocket);
-			exceptSet.add(stdinSocket);
-		}
-		if (!paused)
-			foreach (socket; sockets)
-				readSet.add(socket);
+		eventLoop.step();
 
-		Socket.select(readSet, null, exceptSet);
 		auto now = MonoTime.currTime();
 
-		if (stdinSocket && browser.handleInput())
+		if (!headless && browser.handleInput())
 		{
 			do {} while (browser.handleInput()); // Process all input
 			if (browser.done)
@@ -127,24 +124,7 @@ void program(
 			browser.update();
 			nextRefresh = now + refreshInterval;
 		}
-		if (!paused)
-			foreach (i, ref subproc; subprocesses)
-				if (readSet.isSet(sockets[i]))
-				{
-					while (true)
-					{
-						auto readBuf = subproc.getReadBuffer();
-						auto received = read(subproc.fd, readBuf.ptr, readBuf.length);
-						enforce(received != 0, "Unexpected subprocess termination");
-						if (received == Socket.ERROR)
-						{
-							errnoEnforce(wouldHaveBlocked, "Subprocess read error");
-							break;
-						}
 
-						subproc.handleInput(received);
-					}
-				}
 		if (!headless && now > nextRefresh)
 		{
 			browser.update();
