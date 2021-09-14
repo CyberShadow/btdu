@@ -148,11 +148,11 @@ struct Subprocess
 		ulong logicalOffset;
 		BrowserPath* browserPath;
 		GlobalPath* inodeRoot;
-		GlobalPath[] allPaths;
 		bool haveInode, havePath;
 		bool ignoringOffset;
 	}
 	private Result result;
+	private Appender!(GlobalPath[]) allPaths;
 
 	void handleMessage(ResultStartMessage m)
 	{
@@ -190,25 +190,25 @@ struct Subprocess
 
 	void handleMessage(ResultInodeErrorMessage m)
 	{
-		result.allPaths ~= GlobalPath(result.inodeRoot, subPathRoot.appendError(m.error));
+		allPaths ~= GlobalPath(result.inodeRoot, subPathRoot.appendError(m.error));
 	}
 
 	void handleMessage(ResultMessage m)
 	{
 		result.havePath = true;
-		result.allPaths ~= GlobalPath(result.inodeRoot, subPathRoot.appendPath(m.path));
+		allPaths ~= GlobalPath(result.inodeRoot, subPathRoot.appendPath(m.path));
 	}
 
 	void handleMessage(ResultInodeEndMessage m)
 	{
 		cast(void) m; // empty message
 		if (!result.havePath)
-			result.allPaths ~= GlobalPath(result.inodeRoot, subPathRoot.appendPath("\0NO_PATH"));
+			allPaths ~= GlobalPath(result.inodeRoot, subPathRoot.appendPath("\0NO_PATH"));
 	}
 
 	void handleMessage(ResultErrorMessage m)
 	{
-		result.allPaths ~= GlobalPath(null, subPathRoot.appendError(m.error));
+		allPaths ~= GlobalPath(null, subPathRoot.appendError(m.error));
 		result.haveInode = true;
 	}
 
@@ -219,9 +219,9 @@ struct Subprocess
 		if (!result.haveInode)
 			result.browserPath = result.browserPath.appendName("\0NO_INODE");
 		auto representativeBrowserPath = result.browserPath;
-		if (result.allPaths)
+		if (allPaths.data.length)
 		{
-			auto representativePath = result.allPaths.fold!((a, b) {
+			auto representativePath = allPaths.fold!((a, b) {
 				// Prefer paths with resolved roots
 				auto aResolved = a.isResolved();
 				auto bResolved = b.isResolved();
@@ -239,18 +239,18 @@ struct Subprocess
 		}
 		representativeBrowserPath.addSample(SampleType.represented, result.logicalOffset, m.duration);
 
-		if (result.allPaths.length)
+		if (allPaths.data.length)
 		{
-			foreach (ref path; result.allPaths)
+			foreach (ref path; allPaths.data)
 				representativeBrowserPath.seenAs.add(path);
 
 			if (expert)
 			{
-				auto distributedShare = 1.0 / result.allPaths.length;
+				auto distributedShare = 1.0 / allPaths.data.length;
 
 				static Appender!(BrowserPath*[]) browserPaths;
 				browserPaths.clear();
-				foreach (ref path; result.allPaths)
+				foreach (ref path; allPaths.data)
 				{
 					auto browserPath = result.browserPath.appendPath(&path);
 					browserPaths.put(browserPath);
@@ -274,6 +274,7 @@ struct Subprocess
 		}
 
 		result = Result.init;
+		allPaths.clear();
 	}
 
 	void handleMessage(FatalErrorMessage m)
