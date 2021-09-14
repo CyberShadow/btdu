@@ -243,10 +243,8 @@ struct Browser
 						)
 						: "-")];
 
-					if (currentPath.data[SampleType.represented].samples != currentPath.data[SampleType.exclusive].samples)
-						info ~= showSampleType(SampleType.exclusive, "Exclusive size");
-					if (currentPath.data[SampleType.represented].samples != currentPath.data[SampleType.shared_].samples)
-						info ~= showSampleType(SampleType.shared_, "Shared size");
+					info ~= showSampleType(SampleType.exclusive, "Exclusive size");
+					info ~= showSampleType(SampleType.shared_, "Shared size");
 				}
 				else
 				{
