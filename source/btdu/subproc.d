@@ -88,9 +88,12 @@ struct Subprocess
 		{
 			auto data = buf[bufStart .. bufEnd];
 			auto bytesNeeded = parse(data, this);
+			// `data` now contains remaining unparsed data.
+			// Update `bufStart` to point at the start of remaining unparsed data.
 			bufStart = bufEnd - data.length;
 			if (bufStart == bufEnd)
 				bufStart = bufEnd = 0;
+
 			if (buf.length < bufEnd + bytesNeeded)
 			{
 				// Moving remaining data to the start of the buffer
