@@ -19,7 +19,6 @@
 /// btdu entry point
 module btdu.main;
 
-import core.sys.posix.unistd;
 import core.time;
 
 import std.exception;
@@ -99,7 +98,7 @@ void program(
 			new class (&p) Receiver {
 				Subprocess* subprocess;
 				this(Subprocess* p) { subprocess = p; }
-				override int getFD() { return subprocess.fd.dup; } // TODO need dup?
+				override int getFD() { return subprocess.fd; }
 				override ubyte[] getReadBuffer() { return subprocess.getReadBuffer(); }
 				override void handleRead(size_t received) {
 					enforce(received != 0, "Unexpected subprocess termination");
