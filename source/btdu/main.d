@@ -21,12 +21,14 @@ module btdu.main;
 
 import core.time;
 
+import std.conv : to;
 import std.exception;
 import std.parallelism;
 import std.path;
 import std.random;
 import std.socket;
 import std.stdio;
+import std.string;
 
 import ae.utils.funopt;
 import ae.utils.main;
@@ -62,10 +64,14 @@ void program(
 
 	bool headless;
 	Duration benchmarkTime;
+	ulong benchmarkSamples;
 	if (benchmark)
 	{
 		headless = true;
-		benchmarkTime = parseDuration(benchmark);
+		if (isNumeric(benchmark[]))
+			benchmarkSamples = benchmark.to!ulong;
+		else
+			benchmarkTime = parseDuration(benchmark);
 	}
 
 	subprocesses = new Subprocess[procs];
@@ -129,12 +135,16 @@ void program(
 			browser.update();
 			nextRefresh = now + refreshInterval;
 		}
-		if (benchmark && now > startTime + benchmarkTime)
+		if (benchmarkTime && now > startTime + benchmarkTime)
+			break;
+		if (benchmarkSamples && browserRoot.data[SampleType.represented].samples >= benchmarkSamples)
 			break;
 	}
 
-	if (benchmark)
+	if (benchmarkTime)
 		writeln(browserRoot.data[SampleType.represented].samples);
+	if (benchmarkSamples)
+		writeln(MonoTime.currTime() - startTime);
 }
 
 void checkBtrfs(string fsPath)
