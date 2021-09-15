@@ -31,6 +31,8 @@ import btdu.subproc : Subprocess;
 
 // Global variables
 
+__gshared: // btdu is single-threaded
+
 bool expert;
 string fsPath;
 ulong totalSize;
