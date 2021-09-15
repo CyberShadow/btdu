@@ -56,8 +56,9 @@ struct Browser
 	BrowserPath* currentPath;
 	sizediff_t top; // Scroll offset (row number, in the content, corresponding to the topmost displayed line)
 	sizediff_t contentAreaHeight; // Number of rows where scrolling content is displayed
-	string selection;
-	string[] items, textLines;
+	BrowserPath* selection;
+	BrowserPath*[] items;
+	string[] textLines;
 	bool done;
 
 	enum Mode
@@ -120,15 +121,15 @@ struct Browser
 		int h, w;
 		getmaxyx(stdscr, h, w); h++; w++;
 
-		items = currentPath.children.keys;
+		items = currentPath.children.values;
 		final switch (sortMode)
 		{
 			case SortMode.name:
-				items.sort();
+				items.sort!((a, b) => a.name < b.name);
 				break;
 			case SortMode.size:
 				items.multiSort!(
-					(a, b) => currentPath.children[a].data[SampleType.represented].samples > currentPath.children[b].data[SampleType.represented].samples,
+					(a, b) => a.data[SampleType.represented].samples > b.data[SampleType.represented].samples,
 					(a, b) => a < b,
 				);
 				break;
@@ -137,7 +138,7 @@ struct Browser
 			items.reverse();
 		if (dirsFirst)
 			items.sort!(
-				(a, b) => !!currentPath.children[a].children > !!currentPath.children[b].children,
+				(a, b) => !!a.children > !!b.children,
 				SwapStrategy.stable,
 			);
 
@@ -559,22 +560,20 @@ struct Browser
 		{
 			case Mode.browser:
 			{
-				auto mostSamples = currentPath.children.byValue.fold!((a, b) => max(a, b.data[SampleType.represented].samples))(0UL);
+				auto mostSamples = currentPath.children.fold!((a, b) => max(a, b.data[SampleType.represented].samples))(0UL);
 
-				foreach (i, item; items)
+				foreach (i, child; items)
 				{
 					auto y = cast(int)(i - top);
 					if (y < 0 || y >= contentAreaHeight)
 						continue;
 					y += 2;
 
-					if (item is selection)
+					if (child is selection)
 						attron(A_REVERSE);
 					else
 						attroff(A_REVERSE);
 					mvhline(y, 0, ' ', w);
-
-					auto child = currentPath.children[item];
 
 					buf.clear();
 					{
@@ -629,7 +628,7 @@ struct Browser
 						buf.put(displayedItem);
 					}
 
-					rawWrite(y, 0, buf.get(), item is selection ? A_REVERSE : 0);
+					rawWrite(y, 0, buf.get(), child is selection ? A_REVERSE : 0);
 				}
 				attroff(A_REVERSE);
 
@@ -769,7 +768,7 @@ struct Browser
 					case '<':
 						if (currentPath.parent)
 						{
-							selection = currentPath.name;
+							selection = currentPath;
 							currentPath = currentPath.parent;
 							top = 0;
 						}
@@ -780,7 +779,7 @@ struct Browser
 					case '\n':
 						if (selection)
 						{
-							currentPath = currentPath.children[selection];
+							currentPath = selection;
 							selection = null;
 							top = 0;
 						}
@@ -845,7 +844,7 @@ struct Browser
 						mode = Mode.browser;
 						if (currentPath.parent)
 						{
-							selection = currentPath.name;
+							selection = currentPath;
 							currentPath = currentPath.parent;
 							top = 0;
 						}
