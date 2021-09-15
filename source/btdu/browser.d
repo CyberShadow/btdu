@@ -121,16 +121,16 @@ struct Browser
 		int h, w;
 		getmaxyx(stdscr, h, w); h++; w++;
 
-		items = currentPath.children.values;
+		items = currentPath.children;
 		final switch (sortMode)
 		{
 			case SortMode.name:
-				items.sort!((a, b) => a.name < b.name);
+				items.sort!((a, b) => a.name[] < b.name[]);
 				break;
 			case SortMode.size:
 				items.multiSort!(
 					(a, b) => a.data[SampleType.represented].samples > b.data[SampleType.represented].samples,
-					(a, b) => a < b,
+					(a, b) => a.name[] < b.name[],
 				);
 				break;
 		}
@@ -163,7 +163,7 @@ struct Browser
 					buf.put(fsPath);
 					bool recurse(BrowserPath *path)
 					{
-						string name = path.name;
+						string name = path.name[];
 						if (name.skipOverNul())
 							switch (name)
 							{
@@ -215,9 +215,9 @@ struct Browser
 
 					(){
 						string[] result;
-						if (currentPath.parent && currentPath.parent.parent && currentPath.parent.parent.name == "\0ERROR")
+						if (currentPath.parent && currentPath.parent.parent && currentPath.parent.parent.name[] == "\0ERROR")
 						{
-							auto errno = currentPath.name in errnoLookup;
+							auto errno = currentPath.name[] in errnoLookup;
 							if (errno)
 							{
 								result ~= "- Error code: " ~ text(*errno);
@@ -262,7 +262,7 @@ struct Browser
 								"\n\n" ~
 								"Use the arrow keys to navigate, press ? for help.";
 
-						string name = currentPath.name;
+						string name = currentPath.name[];
 						if (name.skipOverNul())
 						{
 							switch (name)
@@ -340,7 +340,7 @@ struct Browser
 							}
 						}
 
-						if (currentPath.parent && currentPath.parent.name == "\0ERROR")
+						if (currentPath.parent && currentPath.parent.name[] == "\0ERROR")
 						{
 							switch (name)
 							{
@@ -361,9 +361,9 @@ struct Browser
 							}
 						}
 
-						if (currentPath.parent && currentPath.parent.parent && currentPath.parent.parent.name == "\0ERROR")
+						if (currentPath.parent && currentPath.parent.parent && currentPath.parent.parent.name[] == "\0ERROR")
 						{
-							switch (currentPath.parent.name)
+							switch (currentPath.parent.name[])
 							{
 								case "logical ino":
 									switch (name)
@@ -614,7 +614,7 @@ struct Browser
 
 					{
 						auto displayedItem = child.humanName;
-						if (child.name.startsWith("\0"))
+						if (child.name[].startsWith("\0"))
 							displayedItem = "<" ~ displayedItem ~ ">";
 						auto maxItemWidth = w - (minWidth - 5);
 						if (displayedItem.length > maxItemWidth)

@@ -28,32 +28,47 @@ import std.algorithm.iteration;
 import std.algorithm.searching;
 import std.range.primitives;
 import std.string;
+import std.traits : Unqual;
 
 /// Common definitions for a deduplicated trie for paths.
 mixin template SimplePath()
 {
+	// Size selected empirically
+	alias NameString = InlineString!23;
+
 	/// Parent directory name
 	typeof(this)* parent;
 	/// Base name
 	/// Names prefixed with a NUL character indicate "special" nodes,
 	/// which do not correspond to a filesystem path.
-	immutable string name;
+	immutable NameString name;
 	/// Directory items, if any
-	typeof(this)*[string] children;
+	typeof(this)*[] children;
 
-	private this(typeof(this)* parent, string name)
+	private this(typeof(this)* parent, NameString name)
 	{
 		this.parent = parent;
 		this.name = name;
-		parent.children[name] = &this;
+		auto p = &this;
+		parent.children ~= p;
 	}
+
+	inout(typeof(this)*)* opBinaryRight(string op : "in")(in char[] name) inout
+	{
+		foreach (ref child; children)
+			if (child.name[] == name)
+				return &child;
+		return null;
+	}
+
+	inout(typeof(this))* opIndex(in char[] name) inout { return *(name in this); }
 
 	invariant
 	{
 		if (name)
 		{
 			assert(parent !is null, "Named node without parent");
-			assert(parent.children[name] is &this, "Child/parent mismatch");
+			// assert((*parent)[name.toString()] is &this, "Child/parent mismatch");
 		}
 		else // root
 			assert(!parent, "Unnamed node with parent");
@@ -64,10 +79,19 @@ mixin template SimplePath()
 	{
 		assert(name.length, "Empty path segment");
 		assert(name.indexOf('/') < 0, "Path segment contains /: " ~ name);
-		if (auto pnext = name in children)
+		if (auto pnext = name in this)
 			return *pnext;
 		else
-			return new typeof(this)(&this, name.idup);
+			return new typeof(this)(&this, NameString(name));
+	}
+
+	/// ditto
+	private typeof(this)* appendName(NameString name)
+	{
+		if (auto pnext = name[] in this)
+			return *pnext;
+		else
+			return new typeof(this)(&this, name);
 	}
 
 	/// Append a normalized relative string path to this one.
@@ -118,7 +142,7 @@ mixin template SimplePath()
 		{
 			This p;
 			bool empty() const { return !p; }
-			string front() { return p.name; }
+			string front() { return p.name[]; }
 			void popFront() { p = p.parent; }
 		}
 		return Range(&this);
@@ -136,7 +160,7 @@ mixin template SimplePath()
 
 	string humanName() const
 	{
-		string humanName = name;
+		string humanName = name[];
 		humanName.skipOverNul();
 		return humanName;
 	}
@@ -255,7 +279,7 @@ struct SubPath
 	/// PathCmp implementation
 	private int compareContents(const ref typeof(this) b) const
 	{
-		return cmp(name, b.name);
+		return cmp(name[], b.name[]);
 	}
 }
 
@@ -367,4 +391,49 @@ bool skipOverNul(C)(ref C[] str)
 		return true;
 	}
 	return false;
+}
+
+/// Inline string type.
+alias InlineString(size_t size) = InlineArr!(immutable(char), size);
+
+union InlineArr(T, size_t size)
+{
+private:
+	static assert(size * T.sizeof > T[].sizeof);
+	alias InlineSize = ubyte;
+	static assert(size < InlineSize.max);
+
+	T[] str;
+	struct
+	{
+		T[size] inlineBuf;
+		InlineSize inlineLength;
+	}
+
+public:
+	this(in Unqual!T[] s)
+	{
+		if (s.length > size)
+			str = s.idup;
+		else
+		{
+			inlineBuf[0 .. s.length] = s;
+			inlineLength = cast(InlineSize)s.length;
+		}
+	}
+
+	inout(T)[] opSlice() inout
+	{
+		if (inlineLength)
+			return inlineBuf[0 .. inlineLength];
+		else
+			return str;
+	}
+
+	bool opCast(T : bool)() const { return this !is typeof(this).init; }
+
+	bool opEquals(ref const InlineArr other) const
+	{
+		return this[] == other[];
+	}
 }
