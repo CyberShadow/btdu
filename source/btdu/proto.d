@@ -19,7 +19,6 @@
 /// Main process / subprocess communication protocol
 module btdu.proto;
 
-import ae.utils.appender;
 import ae.utils.array;
 
 import core.sys.posix.unistd;

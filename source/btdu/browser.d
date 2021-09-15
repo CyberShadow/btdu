@@ -20,7 +20,6 @@
 module btdu.browser;
 
 import core.stdc.config;
-import core.stdc.errno;
 import core.stdc.stddef : wchar_t;
 import core.sys.posix.locale;
 import core.time;
@@ -30,15 +29,11 @@ import std.algorithm.iteration;
 import std.algorithm.mutation;
 import std.algorithm.searching;
 import std.algorithm.sorting;
-import std.array;
 import std.conv;
 import std.encoding : sanitize;
-import std.exception;
 import std.format;
-import std.path;
 import std.range;
 import std.string;
-import std.traits : EnumMembers;
 
 import deimos.ncurses;
 

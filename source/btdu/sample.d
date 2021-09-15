@@ -22,13 +22,10 @@ module btdu.sample;
 import core.stdc.errno;
 import core.sys.posix.fcntl;
 import core.sys.posix.unistd;
-import core.thread;
 
 import std.algorithm.iteration;
-import std.array;
 import std.datetime.stopwatch;
 import std.exception;
-import std.format;
 import std.random;
 import std.string;
 
@@ -38,7 +35,6 @@ import ae.utils.time : stdTime;
 import btrfs;
 import btrfs.c.kerncompat;
 import btrfs.c.kernel_shared.ctree;
-import btrfs.c.ioctl;
 
 import btdu.proto;
 

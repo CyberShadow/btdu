@@ -19,7 +19,7 @@
 /// Common definitions
 module btdu.common;
 
-import std.format;
+import std.format : format;
 import std.random : Random;
 
 enum btduVersion = "0.2.1";

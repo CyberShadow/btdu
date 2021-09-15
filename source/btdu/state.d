@@ -19,12 +19,7 @@
 /// Global state definitions
 module btdu.state;
 
-import std.exception;
-import std.string;
-
-import btrfs;
-import btrfs.c.kerncompat;
-import btrfs.c.kernel_shared.ctree;
+import btrfs.c.kerncompat : u64;
 
 import btdu.paths;
 import btdu.subproc : Subprocess;

@@ -23,7 +23,7 @@ import core.time;
 
 import std.conv : to;
 import std.exception;
-import std.parallelism;
+import std.parallelism : totalCPUs;
 import std.path;
 import std.random;
 import std.socket;
