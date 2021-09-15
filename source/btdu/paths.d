@@ -34,32 +34,35 @@ mixin template SimplePath()
 	// Size selected empirically
 	alias NameString = InlineString!23;
 
-	/// Parent directory name
+	/// Parent directory
 	typeof(this)* parent;
+	/// Directory items, if any
+	typeof(this)* firstChild;
+	/// Next item in the parent directory, if any
+	typeof(this)* nextSibling;
 	/// Base name
 	/// Names prefixed with a NUL character indicate "special" nodes,
 	/// which do not correspond to a filesystem path.
 	immutable NameString name;
-	/// Directory items, if any
-	typeof(this)*[] children;
 
 	private this(typeof(this)* parent, NameString name)
 	{
 		this.parent = parent;
 		this.name = name;
-		auto p = &this;
-		parent.children ~= p;
 	}
 
-	inout(typeof(this)*)* opBinaryRight(string op : "in")(in char[] name) inout
+	// Returns pointer to pointer to child, or pointer to where it should be added.
+	private inout(typeof(this)*)* find(in char[] name) inout
 	{
-		foreach (ref child; children)
-			if (child.name[] == name)
-				return &child;
-		return null;
+		inout(typeof(this)*)* child;
+		for (child = &firstChild; *child; child = &(*child).nextSibling)
+			if ((*child).name[] == name)
+				break;
+		return child;
 	}
 
-	inout(typeof(this))* opIndex(in char[] name) inout { return *(name in this); }
+	inout(typeof(this)*) opBinaryRight(string op : "in")(in char[] name) inout { return *find(name); }
+	ref inout(typeof(this)) opIndex(in char[] name) inout { return *(name in this); }
 
 	invariant
 	{
@@ -77,19 +80,21 @@ mixin template SimplePath()
 	{
 		assert(name.length, "Empty path segment");
 		assert(name.indexOf('/') < 0, "Path segment contains /: " ~ name);
-		if (auto pnext = name in this)
-			return *pnext;
+		auto ppnext = find(name);
+		if (auto pnext = *ppnext)
+			return pnext;
 		else
-			return new typeof(this)(&this, NameString(name));
+			return *ppnext = new typeof(this)(&this, NameString(name));
 	}
 
 	/// ditto
 	private typeof(this)* appendName(NameString name)
 	{
-		if (auto pnext = name[] in this)
-			return *pnext;
+		auto ppnext = find(name[]);
+		if (auto pnext = *ppnext)
+			return pnext;
 		else
-			return new typeof(this)(&this, name);
+			return *ppnext = new typeof(this)(&this, name);
 	}
 
 	/// Append a normalized relative string path to this one.

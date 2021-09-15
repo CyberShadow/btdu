@@ -116,7 +116,10 @@ struct Browser
 		int h, w;
 		getmaxyx(stdscr, h, w); h++; w++;
 
-		items = currentPath.children;
+		items = null;
+		for (auto child = currentPath.firstChild; child; child = child.nextSibling)
+			items ~= child;
+
 		final switch (sortMode)
 		{
 			case SortMode.name:
@@ -133,7 +136,7 @@ struct Browser
 			items.reverse();
 		if (dirsFirst)
 			items.sort!(
-				(a, b) => !!a.children > !!b.children,
+				(a, b) => !!a.firstChild > !!b.firstChild,
 				SwapStrategy.stable,
 			);
 
@@ -563,7 +566,7 @@ struct Browser
 		{
 			case Mode.browser:
 			{
-				auto mostSamples = currentPath.children.fold!((a, b) => max(a, b.data[SampleType.represented].samples))(0UL);
+				auto mostSamples = items.fold!((a, b) => max(a, b.data[SampleType.represented].samples))(0UL);
 
 				foreach (i, child; items)
 				{
@@ -613,7 +616,7 @@ struct Browser
 						}
 						buf.put("] ");
 					}
-					buf.put(child.children is null ? ' ' : '/');
+					buf.put(child.firstChild is null ? ' ' : '/');
 
 					{
 						auto displayedItem = child.humanName;
