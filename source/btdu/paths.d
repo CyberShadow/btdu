@@ -19,7 +19,6 @@
 /// Path manipulation and storage
 module btdu.paths;
 
-import ae.utils.aa;
 import ae.utils.appender;
 import ae.utils.meta;
 
@@ -376,8 +375,9 @@ struct BrowserPath
 			parent.addDistributedSample(share);
 	}
 
-	/// Other paths this address is reachable via
-	HashSet!GlobalPath seenAs;
+	/// Other paths this address is reachable via,
+	/// and samples seen from those addresses
+	size_t[GlobalPath] seenAs;
 }
 
 // We prefix "special" names with one NUL character to

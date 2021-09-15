@@ -418,8 +418,16 @@ struct Browser
 					showSeenAs = true;
 
 				if (showSeenAs)
+				{
+					auto representedSamples = currentPath.data[SampleType.represented].samples;
 					info ~= ["--- Shares data with: "] ~
-						currentPath.seenAs.keys.sort.map!(path => "- " ~ path.text).array;
+						currentPath.seenAs
+						.byKeyValue
+						.array
+						.sort!((ref a, ref b) => a.key < b.key)
+						.map!(pair => format("- %s (%d%%)", pair.key, pair.value * 100 / representedSamples))
+						.array;
+				}
 
 				textLines = info.join([""]);
 				if (mode == Mode.info)
