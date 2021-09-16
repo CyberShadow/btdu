@@ -25,8 +25,7 @@ import ae.utils.meta;
 import std.algorithm.comparison;
 import std.algorithm.iteration;
 import std.algorithm.searching;
-import std.experimental.allocator;
-import std.experimental.allocator.mallocator : Mallocator;
+import std.experimental.allocator : makeArray, make;
 import std.string;
 import std.traits : Unqual;
 
@@ -388,7 +387,7 @@ struct BrowserPath
 
 	/// Other paths this address is reachable via,
 	/// and samples seen from those addresses
-	HashMap!(GlobalPath, size_t, Mallocator, generateHash!GlobalPath, false, false) seenAs;
+	HashMap!(GlobalPath, size_t, CasualAllocator, generateHash!GlobalPath, false, false) seenAs;
 }
 
 // We prefix "special" names with one NUL character to
