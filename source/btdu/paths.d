@@ -25,8 +25,15 @@ import ae.utils.meta;
 import std.algorithm.comparison;
 import std.algorithm.iteration;
 import std.algorithm.searching;
+import std.experimental.allocator;
+import std.experimental.allocator.mallocator : Mallocator;
 import std.string;
 import std.traits : Unqual;
+
+import btdu.alloc;
+
+import containers.hashmap;
+import containers.internal.hash : generateHash;
 
 /// Common definitions for a deduplicated trie for paths.
 mixin template SimplePath()
@@ -45,7 +52,7 @@ mixin template SimplePath()
 	/// which do not correspond to a filesystem path.
 	immutable NameString name;
 
-	private this(typeof(this)* parent, NameString name)
+	/*private*/ this(typeof(this)* parent, NameString name)
 	{
 		this.parent = parent;
 		this.name = name;
@@ -84,7 +91,7 @@ mixin template SimplePath()
 		if (auto pnext = *ppnext)
 			return pnext;
 		else
-			return *ppnext = new typeof(this)(&this, NameString(name));
+			return *ppnext = growAllocator.make!(typeof(this))(&this, NameString(name));
 	}
 
 	/// ditto
@@ -94,7 +101,7 @@ mixin template SimplePath()
 		if (auto pnext = *ppnext)
 			return pnext;
 		else
-			return *ppnext = new typeof(this)(&this, name);
+			return *ppnext = growAllocator.make!(typeof(this))(&this, name);
 	}
 
 	/// Append a normalized relative string path to this one.
@@ -381,7 +388,7 @@ struct BrowserPath
 
 	/// Other paths this address is reachable via,
 	/// and samples seen from those addresses
-	size_t[GlobalPath] seenAs;
+	HashMap!(GlobalPath, size_t, Mallocator, generateHash!GlobalPath, false, false) seenAs;
 }
 
 // We prefix "special" names with one NUL character to
@@ -418,7 +425,7 @@ public:
 	this(in Unqual!T[] s)
 	{
 		if (s.length > size)
-			str = s.idup;
+			str = growAllocator.makeArray!T(s[]);
 		else
 		{
 			inlineBuf[0 .. s.length] = s;

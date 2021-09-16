@@ -240,7 +240,7 @@ struct Subprocess
 		if (allPaths.get().length)
 		{
 			foreach (ref path; allPaths.get())
-				representativeBrowserPath.seenAs[path]++;
+				(*representativeBrowserPath.seenAs.getOrAdd(path, 0UL))++;
 
 			if (expert)
 			{
