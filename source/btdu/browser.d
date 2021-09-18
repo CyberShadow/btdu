@@ -20,8 +20,8 @@
 module btdu.browser;
 
 import core.stdc.config;
+import core.stdc.locale;
 import core.stdc.stddef : wchar_t;
-import core.sys.posix.locale;
 import core.time;
 
 import std.algorithm.comparison;
