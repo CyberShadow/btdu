@@ -3,17 +3,19 @@ on: [ push, pull_request ]
 jobs:
   build:
     runs-on: ubuntu-20.04
+    strategy:
+      matrix:
+        arch: [x86_64, aarch64]
     steps:
     - uses: actions/checkout@v2
       with:
         submodules: true
     - name: Build
       run: |
-        ci/build-docker.sh
-    - name: Upload binaries
+        ci/build-docker.sh ${{ matrix.arch }}
+    - name: Upload binary
       uses: actions/upload-artifact@v2
       with:
-        name: static-binaries
+        name: btdu-static-${{ matrix.arch }}
         path: |
-          btdu-static-*
-          !*.o
+          btdu-static-${{ matrix.arch }}

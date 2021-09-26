@@ -3,63 +3,54 @@ set -eEuo pipefail
 
 cd "$(dirname "$0")"/..
 
-ldc_ver=1.27.1
+PATH=/tmp/ldc2-host/bin:$PATH
+
 host_arch=$(uname -m)
+target_arch=$BTDU_ARCH
 
-PATH=/tmp/ldc2-"$ldc_ver"-linux-"$host_arch"/bin:$PATH
-
-for arch in x86_64 aarch64
-do
-	(
-		cd /tmp
-		curl --location --fail --remote-name https://github.com/ldc-developers/ldc/releases/download/v$ldc_ver/ldc2-$ldc_ver-linux-"$arch".tar.xz
-		tar axf ldc2-$ldc_ver-linux-"$arch".tar.xz
-	)
-
-	if [[ "$arch" == "$host_arch" ]]
-	then
-		gnu_prefix=
-	else
-		gnu_prefix="$arch"-linux-gnu-
-		cat >> /tmp/ldc2-"$ldc_ver"-linux-"$host_arch"/etc/ldc2.conf <<EOF
-"$arch-.*-linux-gnu":
+if [[ "$target_arch" == "$host_arch" ]]
+then
+	gnu_prefix=
+else
+	gnu_prefix="$target_arch"-linux-gnu-
+	cat >> /tmp/ldc2-host/etc/ldc2.conf <<EOF
+"$target_arch-.*-linux-gnu":
 {
-    switches = [
-        "-defaultlib=phobos2-ldc,druntime-ldc",
-        "-gcc=aarch64-linux-gnu-gcc",
-    ];
-    lib-dirs = [
-        "/tmp/ldc2-$ldc_ver-linux-$arch/lib",
-    ];
-    rpath = "/tmp/ldc2-$ldc_ver-linux-$arch/lib";
+switches = [
+	"-defaultlib=phobos2-ldc,druntime-ldc",
+	"-gcc=aarch64-linux-gnu-gcc",
+];
+lib-dirs = [
+	"/tmp/ldc2-target/lib",
+];
+rpath = "/tmp/ldc2-target/lib";
 };
 EOF
-	fi
+fi
 
-	# shellcheck disable=SC2054
-	args=(
-		ldc2
-		-v
-		-mtriple "$arch"-linux-gnu
-		-i
-		-ofbtdu-static-"$arch"
-		-L-Lrelease
-		-L-l:libtermcap.a
-		-L-l:libncursesw.a
-		-L-l:libtinfo.a
-		-L-l:libz.a
-		-flto=full
-		-static
-		-O
-		--release
-		source/btdu/main
-	)
-	while read -r path
-	do
-		args+=(-I"$path")
-	done < <(dub describe | jq -r '.targets[] | select(.rootPackage=="btdu") | .buildSettings.importPaths[]')
+# shellcheck disable=SC2054
+args=(
+	ldc2
+	-v
+	-mtriple "$target_arch"-linux-gnu
+	-i
+	-ofbtdu-static-"$target_arch"
+	-L-Lrelease
+	-L-l:libtermcap.a
+	-L-l:libncursesw.a
+	-L-l:libtinfo.a
+	-L-l:libz.a
+	-flto=full
+	-static
+	-O
+	--release
+	source/btdu/main
+)
+while read -r path
+do
+	args+=(-I"$path")
+done < <(dub describe | jq -r '.targets[] | select(.rootPackage=="btdu") | .buildSettings.importPaths[]')
 
-	"${args[@]}"
+"${args[@]}"
 
-	"${gnu_prefix}"strip btdu-static-"$arch"
-done
+"${gnu_prefix}"strip btdu-static-"$target_arch"
