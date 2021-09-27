@@ -1,0 +1,44 @@
+.TH BTDU 1
+.SH NAME
+btdu \- sampling disk usage profiler for btrfs
+.SH SYNOPSIS
+\fBbtdu\fP [\fIOPTION\fP]... \fIPATH\fP
+.SH DESCRIPTION
+.B btdu
+is a sampling disk usage profiler for btrfs.
+
+For a detailed description, please see the full documentation:
+
+.I https://github.com/CyberShadow/btdu#readme
+.SH OPTIONS
+
+.TP
+\fIPATH\fP
+Path to the root of the filesystem to analyze
+
+.TP
+\fB-j\fP, \fB--procs\fP=\fIN\fP
+Number of sampling subprocesses
+
+ (default is number of logical CPUs for this system)
+
+.TP
+\fB--seed\fP=\fIN\fP
+Random seed used to choose samples
+
+.TP
+\fB--expert\fP
+Expert mode: collect and show additional metrics.
+
+Uses more memory.
+
+.SH BUGS
+Please report defects and enhancement requests to the GitHub issue tracker:
+
+.I https://github.com/CyberShadow/btdu/issues
+
+.SH AUTHORS
+
+\fBbtdu\fR is written by Vladimir Panteleev <btdu@c\fRy.m\fRd> and contributors:
+
+.I https://github.com/CyberShadow/btdu/graphs/contributors

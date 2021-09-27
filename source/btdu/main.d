@@ -49,8 +49,35 @@ void program(
 	Switch!hiddenOption subprocess = false,
 	Option!(string, hiddenOption) benchmark = null,
 	Switch!("Expert mode: collect and show additional metrics.\nUses more memory.") expert = false,
+	Switch!hiddenOption man = false,
 )
 {
+	if (man)
+	{
+		stdout.write(generateManPage!program(
+			"btdu",
+			".B btdu
+is a sampling disk usage profiler for btrfs.
+
+For a detailed description, please see the full documentation:
+
+.I https://github.com/CyberShadow/btdu#readme",
+			null,
+			`.SH BUGS
+Please report defects and enhancement requests to the GitHub issue tracker:
+
+.I https://github.com/CyberShadow/btdu/issues
+
+.SH AUTHORS
+
+\fBbtdu\fR is written by Vladimir Panteleev <btdu@c\fRy.m\fRd> and contributors:
+
+.I https://github.com/CyberShadow/btdu/graphs/contributors
+`,
+		));
+		return;
+	}
+
 	rndGen = Random(seed);
 	fsPath = path.buildNormalizedPath;
 
