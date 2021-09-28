@@ -59,7 +59,8 @@ Installation
 btdu can be installed in one of the following ways:
 
 - An [AUR package is available](https://aur.archlinux.org/packages/btdu) for Arch Linux and derivatives.
-- Download a static binary from [the releases page](https://github.com/CyberShadow/btdu/releases).
+- Download a static binary from [the releases page](https://github.com/CyberShadow/btdu/releases)
+  or [the latest CI run](https://github.com/CyberShadow/btdu/actions?query=branch%3Amaster).
 - Clone this repository and build from source (see below).
 
 
