@@ -44,6 +44,7 @@ In `--expert` mode, btdu shows four size metrics for tree nodes:
     - Specifically, btdu awards exclusive size to the *common prefix* of all paths which reference data from a given logical offset.
   - Two files which are perfect clones of each other will thus both have an exclusive size of zero. The same applies to two identical snapshots.
   - However, if the two clones are in the same directory, and the data is not used anywhere else, then that data will be represented in the directory's exclusive size.
+  - The exclusive size can also be described as the amount of space which would be freed if the corresponding object were to be deleted.
   - Unlike other size metrics, adding up the exclusive size of all items in a directory may not necessarily add up to the exclusive size of the directory.
 
 - **Shared** size
