@@ -1,4 +1,4 @@
-FROM debian:sid-20210902
+FROM debian:buster-20210902
 
 ARG BTDU_ARCH
 
