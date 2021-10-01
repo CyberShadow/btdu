@@ -28,24 +28,44 @@ rpath = "/tmp/ldc2-target/lib";
 EOF
 fi
 
+case "$target_arch" in
+	aarch64)
+		# See https://forum.dlang.org/post/ulkljredphpgipqfmlvf@forum.dlang.org
+		static=false
+		;;
+	*)
+		static=true
+esac
+
+if $static
+then
+	fn=btdu-static-"$target_arch"
+else
+	fn=btdu-glibc-"$target_arch"
+fi
+
 # shellcheck disable=SC2054
 args=(
 	ldc2
 	-v
 	-mtriple "$target_arch"-linux-gnu
 	-i
-	-ofbtdu-static-"$target_arch"
+	-of"$fn"
 	-L-Lrelease
 	-L-l:libtermcap.a
 	-L-l:libncursesw.a
 	-L-l:libtinfo.a
 	-L-l:libz.a
 	-flto=full
-	-static
 	-O
 	--release
 	source/btdu/main
 )
+
+if $static ; then
+	args+=(-static)
+fi
+
 while read -r path
 do
 	args+=(-I"$path")
@@ -53,4 +73,4 @@ done < <(dub describe | jq -r '.targets[] | select(.rootPackage=="btdu") | .buil
 
 "${args[@]}"
 
-"${gnu_prefix}"strip btdu-static-"$target_arch"
+"${gnu_prefix}"strip "$fn"

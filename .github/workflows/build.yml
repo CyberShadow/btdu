@@ -16,6 +16,6 @@ jobs:
     - name: Upload binary
       uses: actions/upload-artifact@v2
       with:
-        name: btdu-static-${{ matrix.arch }}
+        name: btdu-${{ matrix.arch }}
         path: |
-          btdu-static-${{ matrix.arch }}
+          btdu-*-${{ matrix.arch }}
