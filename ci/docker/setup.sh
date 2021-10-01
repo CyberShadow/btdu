@@ -28,6 +28,7 @@ packages=(
 	xz-utils  # To unpack LDC archives
 	libxml2   # Needed by LDC
 	curl      # To download LDC; Needed by Dub
+	cmake     # To rebuild the LDC runtime
 )
 
 if [[ "$target_arch" == "$host_arch" ]]

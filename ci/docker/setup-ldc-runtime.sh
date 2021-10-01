@@ -4,7 +4,7 @@ set -eEuo pipefail
 host_arch=$(uname -m)
 target_arch=$BTDU_ARCH
 
-cd /tmp/ldc2-host/bin
+cd /tmp
 
 args=(
 	env
@@ -15,7 +15,7 @@ if [[ "$host_arch" != "$target_arch" ]]; then
 fi
 
 args+=(
-	./ldc-build-runtime
+	ldc2-host/bin/ldc-build-runtime
 	--dFlags="-mtriple=$target_arch-linux-gnu"
 	--dFlags="-flto=full"
 	--dFlags="-O"

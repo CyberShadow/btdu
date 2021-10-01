@@ -8,7 +8,5 @@ RUN /root/setup.sh
 COPY setup-ldc.sh /root/setup-ldc.sh
 RUN /root/setup-ldc.sh
 
-RUN apt-get install -y cmake
-
-COPY setup-ldc2.sh /root/setup-ldc2.sh
-RUN /root/setup-ldc2.sh
+COPY setup-ldc-runtime.sh /root/setup-ldc-runtime.sh
+RUN /root/setup-ldc-runtime.sh

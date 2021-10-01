@@ -23,9 +23,9 @@ switches = [
 	"-gcc=$target_arch-linux-gnu-gcc",
 ];
 lib-dirs = [
-	"/tmp/ldc2-host/bin/ldc-build-runtime.tmp/lib",
+	"/tmp/ldc-build-runtime.tmp/lib",
 ];
-rpath = "/tmp/ldc2-host/bin/ldc-build-runtime.tmp/lib";
+rpath = "/tmp/ldc-build-runtime.tmp/lib";
 };
 EOF
 
