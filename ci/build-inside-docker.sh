@@ -18,7 +18,7 @@ else
 {
 switches = [
 	"-defaultlib=phobos2-ldc,druntime-ldc",
-	"-gcc=aarch64-linux-gnu-gcc",
+	"-gcc=$target_arch-linux-gnu-gcc",
 ];
 lib-dirs = [
 	"/tmp/ldc2-target/lib",
