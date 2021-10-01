@@ -13,7 +13,9 @@ then
 	gnu_prefix=
 else
 	gnu_prefix="$target_arch"-linux-gnu-
-	cat >> /tmp/ldc2-host/etc/ldc2.conf <<EOF
+fi
+
+cat >> /tmp/ldc2-host/etc/ldc2.conf <<EOF
 "$target_arch-.*-linux-gnu":
 {
 switches = [
@@ -21,12 +23,11 @@ switches = [
 	"-gcc=$target_arch-linux-gnu-gcc",
 ];
 lib-dirs = [
-	"/tmp/ldc2-target/lib",
+	"/tmp/ldc2-host/bin/ldc-build-runtime.tmp/lib",
 ];
-rpath = "/tmp/ldc2-target/lib";
+rpath = "/tmp/ldc2-host/bin/ldc-build-runtime.tmp/lib";
 };
 EOF
-fi
 
 case "$target_arch" in
 	aarch64)
