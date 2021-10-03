@@ -182,14 +182,15 @@ struct Browser
 						fullPath = buf.get();
 				}
 
-				string[] showSampleType(SampleType type, string name)
+				string[] showSampleType(SampleType type, string name, bool showError)
 				{
 					return [
 						"- " ~ name ~ ": " ~ (totalSamples
-							? format!"~%s (%d sample%s)"(
+							? format!"~%s (%d sample%s)%s"(
 								humanSize(currentPath.data[type].samples * real(totalSize) / totalSamples),
 								currentPath.data[type].samples,
 								currentPath.data[type].samples == 1 ? "" : "s",
+								showError ? ", ±" ~ humanSize(estimateError(totalSamples, currentPath.data[type].samples) * totalSize) : "",
 							)
 							: "-"),
 
@@ -234,7 +235,7 @@ struct Browser
 
 				if (expert)
 				{
-					info ~= showSampleType(SampleType.represented, "Represented size");
+					info ~= showSampleType(SampleType.represented, "Represented size", true);
 					info ~= ["- Distributed size: " ~ (totalSamples
 						? format!"~%s (%1.3f sample%s)"(
 							humanSize(currentPath.distributedSamples * real(totalSize) / totalSamples),
@@ -243,12 +244,12 @@ struct Browser
 						)
 						: "-")];
 
-					info ~= showSampleType(SampleType.exclusive, "Exclusive size");
-					info ~= showSampleType(SampleType.shared_, "Shared size");
+					info ~= showSampleType(SampleType.exclusive, "Exclusive size", true);
+					info ~= showSampleType(SampleType.shared_, "Shared size", false);
 				}
 				else
 				{
-					info[$-1] ~= showSampleType(SampleType.represented, "Represented size");
+					info[$-1] ~= showSampleType(SampleType.represented, "Represented size", true);
 				}
 
 				{
@@ -920,6 +921,34 @@ struct Browser
 }
 
 private:
+
+/// https://en.wikipedia.org/wiki/1.96
+enum z_975 = 1.96;
+
+// https://stackoverflow.com/q/69420422/21501
+double estimateError(
+	/// Total samples
+	double n,
+	/// Samples within the item
+	double m,
+	/// Standard score for desired confidence
+	/// (default is for 95% confidence)
+	double z = z_975,
+)
+{
+	import std.math.algebraic : sqrt;
+
+	auto mean = m / n;
+	auto std_dev = sqrt((
+		// Zeroes (misses)
+		(mean ^^ 2) * (n - m) +
+		// Ones (hits)
+		((1 - mean) ^^ 2) * m
+	) / n);
+
+	auto error = std_dev / sqrt(n);
+	return z * error;
+}
 
 string humanSize(real size)
 {

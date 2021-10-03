@@ -6,6 +6,15 @@ Sample size
 
 One sample is one logical offset chosen at random by btdu. Because we know the total size of the filesystem, we can divide this size by the total number of samples to obtain the approximate size of how much data one sample represents. (This size is also shown at the bottom as "Resolution".)
 
+Confidence
+----------
+
+For the represented and exclusive size, btdu displays a confidence range, e.g.:
+
+    - Represented size: ~763.0 GiB (6006 samples), ±16.9 GiB
+
+This should be interpreted as: given the data btdu collected so far, it is [confident with 95% certainty](https://en.wikipedia.org/wiki/Confidence_interval) that the object size is within 16.9 GiB of 763.0 GiB.
+
 Representative location
 -----------------------
 
