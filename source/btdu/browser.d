@@ -923,9 +923,11 @@ struct Browser
 private:
 
 /// https://en.wikipedia.org/wiki/1.96
+// enum z_975 = normalDistributionInverse(0.975);
 enum z_975 = 1.96;
 
 // https://stackoverflow.com/q/69420422/21501
+// https://stats.stackexchange.com/q/546878/234615
 double estimateError(
 	/// Total samples
 	double n,
@@ -938,15 +940,10 @@ double estimateError(
 {
 	import std.math.algebraic : sqrt;
 
-	auto mean = m / n;
-	auto std_dev = sqrt((
-		// Zeroes (misses)
-		(mean ^^ 2) * (n - m) +
-		// Ones (hits)
-		((1 - mean) ^^ 2) * m
-	) / n);
+	auto p = m / n;
+	auto q = 1 - p;
 
-	auto error = std_dev / sqrt(n);
+	auto error = sqrt((p * q) / n);
 	return z * error;
 }
 
