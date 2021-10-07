@@ -3,6 +3,8 @@ description "sampling disk usage profiler for btrfs"
 license "GPL v2"
 targetType "executable"
 
+toolchainRequirements frontend=">=2.097"
+
 dependency "btrfs" version="~>0.0.12"
 dependency "ae" version="==0.0.3100"
 dependency "ncurses" version="~>0.0.149"
