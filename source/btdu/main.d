@@ -189,8 +189,19 @@ void checkBtrfs(string fsPath)
 	enforce(fd.isBTRFS,
 		fsPath ~ " is not a btrfs filesystem");
 
-	enforce(fd.isSubvolume,
-		fsPath ~ " is not the root of a btrfs subvolume - please specify the path to the subvolume root");
+	enforce(fd.isSubvolume, {
+		auto rootPath = getPathMountInfo(fsPath).file;
+		if (!rootPath)
+			rootPath = "/";
+		return format(
+			"%s is not the root of a btrfs subvolume - " ~
+			"please specify the path to the subvolume root" ~
+			"\n" ~
+			"E.g.: %s",
+			fsPath,
+			[Runtime.args[0], rootPath].escapeShellCommand,
+		);
+	}());
 
 	enforce(fd.getSubvolumeID() == BTRFS_FS_TREE_OBJECTID, {
 		auto device = getPathMountInfo(fsPath).spec;
