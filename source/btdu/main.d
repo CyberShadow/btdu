@@ -19,6 +19,7 @@
 /// btdu entry point
 module btdu.main;
 
+import core.runtime : Runtime;
 import core.time;
 
 import std.conv : to;
@@ -30,6 +31,7 @@ import std.socket;
 import std.stdio;
 import std.string;
 
+import ae.sys.file : getPathMountInfo;
 import ae.utils.funopt;
 import ae.utils.main;
 import ae.utils.time.parsedur;
@@ -190,8 +192,34 @@ void checkBtrfs(string fsPath)
 	enforce(fd.isSubvolume,
 		fsPath ~ " is not the root of a btrfs subvolume - please specify the path to the subvolume root");
 
-	enforce(fd.getSubvolumeID() == BTRFS_FS_TREE_OBJECTID,
-		fsPath ~ " is not the root btrfs subvolume - please specify the path to a mountpoint mounted with subvol=/ or subvolid=5");
+	enforce(fd.getSubvolumeID() == BTRFS_FS_TREE_OBJECTID, {
+		auto device = getPathMountInfo(fsPath).spec;
+		if (!device)
+			device = "/dev/sda1"; // placeholder
+		auto tmpName = "/tmp/" ~ device.baseName;
+		return format(
+			"%s is not the root btrfs subvolume - " ~
+			"please specify the path to a mountpoint mounted with subvol=/ or subvolid=5" ~
+			"\n" ~
+			"E.g.: %s && %s && %s",
+			fsPath,
+			["mkdir", tmpName].escapeShellCommand,
+			["mount", "-o", "subvol=/", device, tmpName].escapeShellCommand,
+			[Runtime.args[0], tmpName].escapeShellCommand,
+		);
+	}());
+}
+
+private string escapeShellCommand(string[] args)
+{
+	import std.process : escapeShellFileName;
+	import std.algorithm.searching : all;
+	import ae.utils.array : isOneOf;
+
+	foreach (ref arg; args)
+		if (!arg.representation.all!(c => c.isOneOf("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_/.=:@%")))
+			arg = arg.escapeShellFileName;
+	return args.join(" ");
 }
 
 void usageFun(string usage)
