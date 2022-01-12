@@ -59,6 +59,7 @@ Installation
 btdu can be installed in one of the following ways:
 
 - An [AUR package is available](https://aur.archlinux.org/packages/btdu) for Arch Linux and derivatives.
+- A package is available for Void Linux through the [official repository](https://github.com/void-linux/void-packages/blob/eb53f7e51057b76d9488abd275c93f16d40d4c65/srcpkgs/btdu/template).
 - Download a static binary from [the releases page](https://github.com/CyberShadow/btdu/releases)
   or [the latest CI run](https://github.com/CyberShadow/btdu/actions?query=branch%3Amaster).
 - Clone this repository and build from source (see below).
