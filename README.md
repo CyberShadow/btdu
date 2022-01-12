@@ -56,9 +56,11 @@ Use cases
 Installation
 ------------
 
+<a href="https://repology.org/project/btdu/versions"><img align="right" src="https://repology.org/badge/vertical-allrepos/btdu.svg" alt="Packaging status" title="Packaging status"></a>
+
 btdu can be installed in one of the following ways:
 
-- An [AUR package is available](https://aur.archlinux.org/packages/btdu) for Arch Linux and derivatives.
+- Via package manager, if it is packaged by your distribution (see on the right).
 - Download a static binary from [the releases page](https://github.com/CyberShadow/btdu/releases)
   or [the latest CI run](https://github.com/CyberShadow/btdu/actions?query=branch%3Amaster).
 - Clone this repository and build from source (see below).
