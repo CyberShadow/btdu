@@ -81,6 +81,8 @@ Usage
 
 Note that the indicated path must be to the root subvolume (otherwise btdu will be unable to open other subvolumes for inode resolution). If in doubt, mount the filesystem to a new mountpoint with `-o subvol=/,subvolid=5`.
 
+You can start browsing the results instantly; btdu will keep collecting samples to improve accuracy until it is stopped by quitting or pausing (which you can do by pressing <kbd>p</kbd>).
+
 Run `btdu --help` for more usage information.
 
 See [CONCEPTS.md](CONCEPTS.md) for information about some btdu / btrfs concepts, such as represented / exclusive / shared size.
