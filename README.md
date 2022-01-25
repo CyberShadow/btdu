@@ -69,8 +69,9 @@ btdu can be installed in one of the following ways:
 Building
 --------
 
-- Install [a D compiler](https://dlang.org/download.html)
-- Install [Dub](https://github.com/dlang/dub), if it wasn't included with your D compiler
+- Install [a D compiler](https://dlang.org/download.html).  
+  Note that you will need a compiler supporting D v2.097 or newer - the compiler in your distribution's repositories might be too old.
+- Install [Dub](https://github.com/dlang/dub), if it wasn't included with your D compiler.
 - Run `dub build -b release`
 
 
