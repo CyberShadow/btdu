@@ -72,6 +72,7 @@ Building
 - Install [a D compiler](https://dlang.org/download.html).  
   Note that you will need a compiler supporting D v2.097 or newer - the compiler in your distribution's repositories might be too old.
 - Install [Dub](https://github.com/dlang/dub), if it wasn't included with your D compiler.
+- Install libncursesw5-dev, or your distribution's equivalent.
 - Run `dub build -b release`
 
 
