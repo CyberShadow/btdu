@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020, 2021  Vladimir Panteleev <btdu@cy.md>
+ * Copyright (C) 2020, 2021, 2022  Vladimir Panteleev <btdu@cy.md>
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public
@@ -22,7 +22,7 @@ module btdu.common;
 import std.format : format;
 import std.random : Random;
 
-enum btduVersion = "0.3.0";
+enum btduVersion = "0.3.1";
 
 alias Seed = typeof(Random.defaultSeed);
 
