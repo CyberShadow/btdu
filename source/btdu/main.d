@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020, 2021  Vladimir Panteleev <btdu@cy.md>
+ * Copyright (C) 2020, 2021, 2022  Vladimir Panteleev <btdu@cy.md>
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public
@@ -52,6 +52,7 @@ void program(
 	Option!(string, hiddenOption) benchmark = null,
 	Switch!("Expert mode: collect and show additional metrics.\nUses more memory.") expert = false,
 	Switch!hiddenOption man = false,
+	Switch!("Run without launching the result browser UI.") headless = false,
 )
 {
 	if (man)
@@ -91,7 +92,6 @@ Please report defects and enhancement requests to the GitHub issue tracker:
 	if (procs == 0)
 		procs = totalCPUs;
 
-	bool headless;
 	Duration benchmarkTime;
 	ulong benchmarkSamples;
 	if (benchmark)
@@ -170,10 +170,16 @@ Please report defects and enhancement requests to the GitHub issue tracker:
 			break;
 	}
 
-	if (benchmarkTime)
-		writeln(browserRoot.data[SampleType.represented].samples);
-	if (benchmarkSamples)
-		writeln(MonoTime.currTime() - startTime);
+	if (headless)
+	{
+		auto totalSamples = browserRoot.data[SampleType.represented].samples;
+		stderr.writefln(
+			"Collected %s samples (achieving a resolution of ~%s) in %s.",
+			totalSamples,
+			(totalSize / totalSamples).humanSize(),
+			MonoTime.currTime() - startTime,
+		);
+	}
 }
 
 void checkBtrfs(string fsPath)
