@@ -199,3 +199,39 @@ string humanSize(real size)
 	}
 	return format("%3.1f %s%sB", size, prefixChars[power], prefixChars[power] == ' ' ? ' ' : 'i');
 }
+
+real parseSize(string s)
+{
+	import std.ascii : isAlpha;
+	import std.string : strip, endsWith, toUpper, indexOf;
+	import std.exception : enforce;
+	import std.conv : to;
+
+	static immutable prefixChars = " KMGTPEZY";
+	s = s.strip().toUpper();
+	if (s.endsWith("IB"))
+		s = s[0 .. $-2];
+	else
+	if (s.endsWith("B"))
+		s = s[0 .. $-1];
+	sizediff_t magnitude = 0;
+	if (s.length && isAlpha(s[$-1]))
+	{
+		magnitude = prefixChars.indexOf(s[$-1]);
+		enforce(magnitude > 0, "Unrecognized size suffix: " ~ s);
+		s = s[0 .. $-1];
+	}
+
+	return s.to!real * (1024.0 ^^ magnitude);
+}
+
+unittest
+{
+	assert(parseSize("0") == 0);
+	assert(parseSize("1") == 1);
+	assert(parseSize("1b") == 1);
+	assert(parseSize("1k") == 1024);
+	assert(parseSize("1.5k") == 1024 + 512);
+	assert(parseSize("1.5kb") == 1024 + 512);
+	assert(parseSize("1.5kib") == 1024 + 512);
+}
