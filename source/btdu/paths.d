@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020, 2021  Vladimir Panteleev <btdu@cy.md>
+ * Copyright (C) 2020, 2021, 2022  Vladimir Panteleev <btdu@cy.md>
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public
@@ -19,15 +19,16 @@
 /// Path manipulation and storage
 module btdu.paths;
 
-import ae.utils.appender;
-import ae.utils.meta;
-
 import std.algorithm.comparison;
 import std.algorithm.iteration;
 import std.algorithm.searching;
 import std.experimental.allocator : makeArray, make;
 import std.string;
-import std.traits : Unqual;
+import std.traits : Unqual, EnumMembers;
+
+import ae.utils.appender;
+import ae.utils.json : JSONName, JSONOptional, JSONFragment;
+import ae.utils.meta;
 
 import btdu.alloc;
 
@@ -388,6 +389,38 @@ struct BrowserPath
 	/// Other paths this address is reachable via,
 	/// and samples seen from those addresses
 	HashMap!(GlobalPath, size_t, CasualAllocator, generateHash!GlobalPath, false, false) seenAs;
+
+	/// Serialized representation
+	struct SerializedForm
+	{
+		string name;
+
+		struct SampleData
+		{
+			// Same order as SampleType
+			@JSONOptional Data represented;
+			@JSONOptional Data exclusive;
+			@JSONName("shared")
+			@JSONOptional Data shared_;
+			@JSONOptional JSONFragment distributedSamples = JSONFragment("0");
+		}
+		SampleData data;
+
+		BrowserPath*[] children;
+	}
+
+	SerializedForm toJSON()
+	{
+		SerializedForm s;
+		s.name = this.name[];
+		for (auto p = firstChild; p; p = p.nextSibling)
+			s.children ~= p;
+		static foreach (sampleType; EnumMembers!SampleType)
+			s.data.tupleof[sampleType] = data[sampleType];
+		if (this.distributedSamples !is 0.)
+			s.data.distributedSamples.json = this.distributedSamples.format!"%17e";
+		return s;
+	}
 }
 
 // We prefix "special" names with one NUL character to

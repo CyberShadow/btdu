@@ -34,6 +34,7 @@ import std.string;
 import ae.sys.file : getPathMountInfo;
 import ae.sys.shutdown;
 import ae.utils.funopt;
+import ae.utils.json;
 import ae.utils.main;
 import ae.utils.time.parsedur;
 
@@ -56,6 +57,7 @@ void program(
 	Option!(ulong, "Stop after collecting N samples.", "N", 'n') maxSamples = 0,
 	Option!(string, "Stop after running for this duration.", "DURATION") maxTime = null,
 	Option!(string, "Stop after achieving this resolution.", "SIZE") minResolution = null,
+	Option!(string, "On exit, export the collected results to the given file.", "PATH", 'o', "export") exportPath = null,
 )
 {
 	if (man)
@@ -201,6 +203,37 @@ Please report defects and enhancement requests to the GitHub issue tracker:
 			MonoTime.currTime() - startTime,
 		);
 	}
+
+	if (exportPath)
+	{
+		stderr.writeln("Exporting results...");
+
+		SerializedState s;
+		s.expert = expert;
+		s.fsPath = fsPath;
+		s.totalSize = totalSize;
+		s.root = &browserRoot;
+
+		alias LockingBinaryWriter = typeof(File.lockingBinaryWriter());
+		alias JsonFileSerializer = CustomJsonSerializer!(JsonWriter!LockingBinaryWriter);
+
+		{
+			JsonFileSerializer j;
+			auto file = exportPath == "-" ? stdout : File(exportPath, "wb");
+			j.writer.output = file.lockingBinaryWriter;
+			j.put(s);
+		}
+		stderr.writeln("Exported results to: ", exportPath);
+	}
+}
+
+/// Serialized
+struct SerializedState
+{
+	bool expert;
+	string fsPath;
+	ulong totalSize;
+	BrowserPath* root;
 }
 
 void checkBtrfs(string fsPath)
