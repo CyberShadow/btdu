@@ -185,3 +185,17 @@ ref Errno getErrno(int errno)
 		return m;
 	}());
 }
+
+// Conversion
+
+string humanSize(real size)
+{
+	static immutable prefixChars = " KMGTPEZY";
+	size_t power = 0;
+	while (size > 1024 && power + 1 < prefixChars.length)
+	{
+		size /= 1024;
+		power++;
+	}
+	return format("%3.1f %s%sB", size, prefixChars[power], prefixChars[power] == ' ' ? ' ' : 'i');
+}

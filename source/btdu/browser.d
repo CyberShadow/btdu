@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020, 2021  Vladimir Panteleev <btdu@cy.md>
+ * Copyright (C) 2020, 2021, 2022  Vladimir Panteleev <btdu@cy.md>
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public
@@ -945,18 +945,6 @@ double estimateError(
 
 	auto error = sqrt((p * q) / n);
 	return z * error;
-}
-
-string humanSize(real size)
-{
-	static immutable prefixChars = " KMGTPEZY";
-	size_t power = 0;
-	while (size > 1024 && power + 1 < prefixChars.length)
-	{
-		size /= 1024;
-		power++;
-	}
-	return format("%3.1f %s%sB", size, prefixChars[power], prefixChars[power] == ' ' ? ' ' : 'i');
 }
 
 string toDecimalString(Duration d)
