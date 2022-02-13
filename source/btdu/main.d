@@ -49,10 +49,12 @@ void program(
 	Option!(uint, "Number of sampling subprocesses\n (default is number of logical CPUs for this system)", "N", 'j') procs = 0,
 	Option!(Seed, "Random seed used to choose samples") seed = 0,
 	Switch!hiddenOption subprocess = false,
-	Option!(string, hiddenOption) benchmark = null,
 	Switch!("Expert mode: collect and show additional metrics.\nUses more memory.") expert = false,
 	Switch!hiddenOption man = false,
 	Switch!("Run without launching the result browser UI.") headless = false,
+	Option!(ulong, "Stop after collecting N samples.", "N", 'n') maxSamples = 0,
+	Option!(string, "Stop after running for this duration.", "DURATION") maxTime = null,
+	Option!(string, "Stop after achieving this resolution.", "SIZE") minResolution = null,
 )
 {
 	if (man)
@@ -92,16 +94,13 @@ Please report defects and enhancement requests to the GitHub issue tracker:
 	if (procs == 0)
 		procs = totalCPUs;
 
-	Duration benchmarkTime;
-	ulong benchmarkSamples;
-	if (benchmark)
-	{
-		headless = true;
-		if (isNumeric(benchmark[]))
-			benchmarkSamples = benchmark.to!ulong;
-		else
-			benchmarkTime = parseDuration(benchmark);
-	}
+	Duration parsedMaxTime;
+	if (maxTime)
+		parsedMaxTime = parseDuration(maxTime);
+
+	real parsedMinResolution;
+	if (minResolution)
+		parsedMinResolution = parseSize(minResolution);
 
 	subprocesses = new Subprocess[procs];
 	foreach (ref subproc; subprocesses)
@@ -164,10 +163,25 @@ Please report defects and enhancement requests to the GitHub issue tracker:
 			browser.update();
 			nextRefresh = now + refreshInterval;
 		}
-		if (benchmarkTime && now > startTime + benchmarkTime)
-			break;
-		if (benchmarkSamples && browserRoot.data[SampleType.represented].samples >= benchmarkSamples)
-			break;
+
+		if ((maxSamples && browserRoot.data[SampleType.represented].samples >= maxSamples) ||
+			(maxTime && now > startTime + parsedMaxTime) ||
+			(minResolution && (totalSize / browserRoot.data[SampleType.represented].samples) <= parsedMinResolution))
+		{
+			if (headless)
+				break;
+			else
+			{
+				if (!paused)
+				{
+					browser.togglePause();
+					browser.update();
+				}
+				// Only pause once
+				maxSamples = 0;
+				maxTime = minResolution = null;
+			}
+		}
 	}
 
 	if (headless)
