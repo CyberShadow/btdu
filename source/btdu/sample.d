@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020, 2021  Vladimir Panteleev <btdu@cy.md>
+ * Copyright (C) 2020, 2021, 2022  Vladimir Panteleev <btdu@cy.md>
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public
@@ -29,6 +29,7 @@ import std.exception;
 import std.random;
 import std.string;
 
+import ae.sys.shutdown;
 import ae.utils.appender;
 import ae.utils.time : stdTime;
 
@@ -42,6 +43,12 @@ void subprocessMain(string fsPath)
 {
 	try
 	{
+		// Ignore SIGINT/SIGTERM, because the main process will handle it for us.
+		// We want the main process to receive and process the signal before any child
+		// processes do, otherwise the main process doesn't know if the child exited due to an
+		// abrupt failure or simply because it received and processed the signal before it did.
+		addShutdownHandler((reason) {});
+
 		// if (!quiet) stderr.writeln("Opening filesystem...");
 		int fd = open(fsPath.toStringz, O_RDONLY);
 		errnoEnforce(fd >= 0, "open");

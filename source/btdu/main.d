@@ -32,6 +32,7 @@ import std.stdio;
 import std.string;
 
 import ae.sys.file : getPathMountInfo;
+import ae.sys.shutdown;
 import ae.utils.funopt;
 import ae.utils.main;
 import ae.utils.time.parsedur;
@@ -129,8 +130,14 @@ Please report defects and enhancement requests to the GitHub issue tracker:
 	auto readSet = new SocketSet;
 	auto exceptSet = new SocketSet;
 
+	bool run = true;
+	if (headless) // In non-headless mode, ncurses takes care of this
+		addShutdownHandler((reason) {
+			run = false;
+		});
+
 	// Main event loop
-	while (true)
+	while (run)
 	{
 		readSet.reset();
 		exceptSet.reset();
