@@ -228,7 +228,7 @@ Please report defects and enhancement requests to the GitHub issue tracker:
 		stderr.writefln(
 			"Collected %s samples (achieving a resolution of ~%s) in %s.",
 			totalSamples,
-			(totalSize / totalSamples).humanSize(),
+			totalSamples ? (totalSize / totalSamples).humanSize() : "-",
 			MonoTime.currTime() - startTime,
 		);
 	}
