@@ -19,6 +19,7 @@
 /// btdu entry point
 module btdu.main;
 
+import core.lifetime : move;
 import core.runtime : Runtime;
 import core.time;
 
@@ -31,6 +32,8 @@ import std.socket;
 import std.stdio;
 import std.string;
 
+import ae.sys.data;
+import ae.sys.datamm;
 import ae.sys.file : getPathMountInfo;
 import ae.sys.shutdown;
 import ae.utils.funopt;
@@ -58,6 +61,7 @@ void program(
 	Option!(string, "Stop after running for this duration.", "DURATION") maxTime = null,
 	Option!(string, "Stop after achieving this resolution.", "SIZE") minResolution = null,
 	Option!(string, "On exit, export the collected results to the given file.", "PATH", 'o', "export") exportPath = null,
+	Switch!("Instead of analyzing a btrfs filesystem, read previously collected results saved with --export from PATH.", 'f', "import") doImport = false,
 )
 {
 	if (man)
@@ -86,16 +90,45 @@ Please report defects and enhancement requests to the GitHub issue tracker:
 		return;
 	}
 
-	rndGen = Random(seed);
-	fsPath = path.buildNormalizedPath;
+	Data importData; // Keep memory-mapped file alive, as directory names may reference it
+	if (doImport)
+	{
+		if (procs || seed || subprocess || expert || headless || maxSamples || maxTime || minResolution || exportPath)
+			throw new Exception("Conflicting command-line options");
 
-	if (subprocess)
-		return subprocessMain(path);
+		stderr.writeln("Loading results from file...");
+		importData = mapFile(path, MmMode.read);
+		auto json = cast(string)importData.contents;
 
-	checkBtrfs(fsPath);
+		debug importing = true;
+		auto s = json.jsonParse!SerializedState();
 
-	if (procs == 0)
-		procs = totalCPUs;
+		expert = s.expert;
+		fsPath = s.fsPath;
+		totalSize = s.totalSize;
+		move(*s.root, browserRoot);
+
+		browserRoot.resetParents();
+		debug importing = false;
+		imported = true;
+	}
+	else
+	{
+		rndGen = Random(seed);
+		fsPath = path.buildNormalizedPath;
+
+		if (subprocess)
+			return subprocessMain(path);
+
+		checkBtrfs(fsPath);
+
+		if (procs == 0)
+			procs = totalCPUs;
+
+		subprocesses = new Subprocess[procs];
+		foreach (ref subproc; subprocesses)
+			subproc.start();
+	}
 
 	Duration parsedMaxTime;
 	if (maxTime)
@@ -104,10 +137,6 @@ Please report defects and enhancement requests to the GitHub issue tracker:
 	real parsedMinResolution;
 	if (minResolution)
 		parsedMinResolution = parseSize(minResolution);
-
-	subprocesses = new Subprocess[procs];
-	foreach (ref subproc; subprocesses)
-		subproc.start();
 
 	Socket stdinSocket;
 	if (!headless)

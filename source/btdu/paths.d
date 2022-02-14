@@ -71,8 +71,11 @@ mixin template SimplePath()
 	inout(typeof(this)*) opBinaryRight(string op : "in")(in char[] name) inout { return *find(name); }
 	ref inout(typeof(this)) opIndex(in char[] name) inout { return *(name in this); }
 
-	invariant
+	debug invariant
 	{
+		import btdu.state : importing;
+		if (importing)
+			return;
 		if (name)
 		{
 			assert(parent !is null, "Named node without parent");
@@ -420,6 +423,31 @@ struct BrowserPath
 		if (this.distributedSamples !is 0.)
 			s.data.distributedSamples.json = this.distributedSamples.format!"%17e";
 		return s;
+	}
+
+	static BrowserPath fromJSON(ref SerializedForm s)
+	{
+		import std.conv : to;
+
+		auto p = BrowserPath(null, NameString(s.name));
+		foreach_reverse (child; s.children)
+		{
+			child.nextSibling = p.firstChild;
+			p.firstChild = child;
+		}
+		static foreach (sampleType; EnumMembers!SampleType)
+			p.data[sampleType] = s.data.tupleof[sampleType];
+		p.distributedSamples = s.data.distributedSamples.json.strip.to!double;
+		return p;
+	}
+
+	void resetParents()
+	{
+		for (auto p = firstChild; p; p = p.nextSibling)
+		{
+			p.parent = &this;
+			p.resetParents();
+		}
 	}
 }
 

@@ -28,6 +28,7 @@ import btdu.subproc : Subprocess;
 
 __gshared: // btdu is single-threaded
 
+bool imported;
 bool expert;
 string fsPath;
 ulong totalSize;
@@ -38,3 +39,4 @@ BrowserPath browserRoot;
 
 Subprocess[] subprocesses;
 bool paused;
+debug bool importing;

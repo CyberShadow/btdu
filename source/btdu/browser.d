@@ -520,6 +520,9 @@ struct Browser
 			attron(A_REVERSE);
 			mvhline(0, 0, ' ', w);
 			mvprintw(0, 0, " btdu v" ~ btduVersion ~ " @ %.*s", fsPath.length, fsPath.ptr);
+			if (imported)
+				mvprintw(0, w - 10, " [IMPORT] ");
+			else
 			if (paused)
 				mvprintw(0, w - 10, " [PAUSED] ");
 
@@ -717,6 +720,12 @@ struct Browser
 	/// 3. We display the paused state in the UI.
 	void togglePause()
 	{
+		if (imported)
+		{
+			showMessage("Viewing an imported file, cannot pause / unpause");
+			return;
+		}
+
 		paused = !paused;
 		foreach (ref subprocess; subprocesses)
 			subprocess.pause(paused);
