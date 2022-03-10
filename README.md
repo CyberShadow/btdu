@@ -89,6 +89,16 @@ Run `btdu --help` for more usage information.
 
 See [CONCEPTS.md](CONCEPTS.md) for information about some btdu / btrfs concepts, such as represented / exclusive / shared size.
 
+### Headless mode
+
+With the `--headless` switch, btdu will run without the user interface. This is useful together with the `--export` option, which saves results to a file that can later be viewed in the UI using the `--import` option. For automated invocations, don't forget to specify a stop condition such as `--max-time`.
+
+### Deleting
+
+You can delete the selected file or directory from the filesystem by pressing <kbd>d</kbd> <kbd>Y</kbd>. This will recursively delete the file or directory shown as "Full path".
+
+Deleting files during a btdu run (whether via btdu or not) skews the results, though when deleting files from btdu, it will make a best-effort attempt to adjust the results to match. Statistics such as exclusive size may be inaccurate. Re-run btdu to obtain fresh results.
+
 License
 -------
 
