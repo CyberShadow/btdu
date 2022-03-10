@@ -22,6 +22,7 @@ module btdu.paths;
 import std.algorithm.comparison;
 import std.algorithm.iteration;
 import std.algorithm.searching;
+import std.array : array;
 import std.experimental.allocator : makeArray, make;
 import std.string;
 import std.traits : Unqual, EnumMembers;
@@ -404,16 +405,36 @@ struct BrowserPath
 	}
 	Data[enumLength!SampleType] data;
 	double distributedSamples = 0;
+	bool deleting;
 
 	void addSample(SampleType type, ulong logicalOffset, ulong duration)
 	{
-		data[type].samples++;
+		addSamples(type, 1, (&logicalOffset)[0..1], duration);
+	}
+
+	void addSamples(SampleType type, ulong samples, ulong[] logicalOffsets, ulong duration)
+	{
+		data[type].samples += samples;
 		data[type].duration += duration;
-		if (logicalOffset != data[type].logicalOffsets[$-1])
-			foreach (i, ref l0; data[type].logicalOffsets)
-				l0 = i + 1 == Data.logicalOffsets.length ? logicalOffset : data[type].logicalOffsets[i + 1];
+		foreach (logicalOffset; logicalOffsets)
+			if (logicalOffset != data[type].logicalOffsets[$-1])
+				foreach (i, ref l0; data[type].logicalOffsets)
+					l0 = i + 1 == Data.logicalOffsets.length ? logicalOffset : data[type].logicalOffsets[i + 1];
 		if (parent)
-			parent.addSample(type, logicalOffset, duration);
+			parent.addSamples(type, samples, logicalOffsets, duration);
+	}
+
+	void removeSamples(SampleType type, ulong samples, ulong[] logicalOffsets, ulong duration)
+	{
+		assert(samples <= data[type].samples && duration <= data[type].duration);
+		data[type].samples -= samples;
+		data[type].duration -= duration;
+		foreach (i, lMy; data[type].logicalOffsets)
+			if (logicalOffsets.canFind(lMy))
+				foreach_reverse (j; 0 .. i + 1)
+					data[type].logicalOffsets = j == 0 ? -1 : data[type].logicalOffsets[j + 1];
+		if (parent)
+			parent.removeSamples(type, samples, logicalOffsets, duration);
 	}
 
 	void addDistributedSample(double share)
@@ -421,6 +442,11 @@ struct BrowserPath
 		distributedSamples += share;
 		if (parent)
 			parent.addDistributedSample(share);
+	}
+
+	void removeDistributedSample(double share)
+	{
+		addDistributedSample(-share);
 	}
 
 	/// Other paths this address is reachable via,
@@ -488,65 +514,88 @@ struct BrowserPath
 	void remove()
 	{
 		assert(parent);
-		// Unlink
+
+		// Mark this subtree for deletion, to aid the rebalancing below.
+		markForDeletion();
+
+		// Rebalance the hierarchy's statistics by updating and moving sample data as needed.
+		evict();
+
+		// Unlink this node, removing it from the tree.
 		{
 			auto pp = parent.find(this.name[]);
 			assert(*pp == &this);
 			*pp = this.nextSibling;
 		}
+	}
 
-		// Delete children first
+	// Mark this subtree for deletion, to aid the rebalancing below.
+	private void markForDeletion()
+	{
+		deleting = true;
 		for (auto p = firstChild; p; p = p.nextSibling)
-			p.remove();
+			p.markForDeletion();
+	}
 
+	/// Clear all samples or move them elsewhere.
+	private void evict()
+	{
+		assert(parent);
+
+		// Evict children first
+		for (auto p = firstChild; p; p = p.nextSibling)
+			p.evict();
+
+		// Save this node's remaining stats before we remove them.
+		auto data = this.data;
+		auto distributedSamples = this.distributedSamples;
+
+		// Remove sample data from this node and its parents.
+		// After recursion, for non-leaf nodes, most of these should now be at zero (as far as we can estimate).
+		static foreach (sampleType; EnumMembers!SampleType)
+			if (data[sampleType].samples) // avoid quadratic complexity
+				removeSamples(sampleType, data[sampleType].samples, data[sampleType].logicalOffsets[], data[sampleType].duration);
+		if (distributedSamples) // avoid quadratic complexity
+			removeDistributedSample(distributedSamples);
+
+		if (seenAs.empty)
+			return;  // Directory (non-leaf) node - nothing else to do here.
+
+		// For leaf nodes, some stats can be redistributed to other references.
+		// We need to do some path calculations first,
+		// such as inferring the GlobalPath from the BrowserPath and seenAs.
 		BrowserPath* root;
-		GlobalPath globalPath;
 		foreach (ref otherPath; seenAs.byKey)
 		{
 			root = this.unappendPath(&otherPath);
 			if (root)
-			{
-				globalPath = otherPath;
 				break;
-			}
 		}
+		debug assert(root);
 		if (!root)
 			return;
 
-		auto numRemainingPaths = seenAs.length - 1;
-
-		// Update parents
-		{
-			auto p = parent;
-			while (p)
-			{
-				if (numRemainingPaths == 0)
-					p.data[SampleType.represented].samples -= this.data[SampleType.represented].samples;
-				if (true)
-					p.data[SampleType.exclusive].samples -= this.data[SampleType.exclusive].samples;
-				if (true)
-					p.data[SampleType.shared_].samples -= this.data[SampleType.shared_].samples;
-				if (numRemainingPaths == 0)
-					p.distributedSamples -= this.distributedSamples;
-				p = p.parent;
-			}
-		}
+		// These paths will inherit the remains.
+		auto remainingPaths = seenAs.byKey
+			.filter!(otherPath => !root.appendPath(&otherPath).deleting)
+			.array;
 
 		// Redistribute to siblings
-		if (numRemainingPaths > 0)
+		if (!remainingPaths.empty)
 		{
-			GlobalPath[] remainingPaths;
-			foreach (ref otherPath; seenAs.byKey)
-				if (otherPath != globalPath)
-					remainingPaths ~= otherPath;
 			auto newRepresentativePath = selectRepresentativePath(remainingPaths);
 			foreach (ref remainingPath; remainingPaths)
 			{
-				auto remainingBrowserPath = root.appendPath(&remainingPath);
 				// Redistribute samples
 				if (remainingPath == newRepresentativePath)
-					remainingBrowserPath.data[SampleType.represented].samples += this.data[SampleType.represented].samples;
-				remainingBrowserPath.distributedSamples += this.distributedSamples / numRemainingPaths;
+					root.appendPath(&remainingPath).addSamples(
+						SampleType.represented,
+						data[SampleType.represented].samples,
+						data[SampleType.represented].logicalOffsets[],
+						data[SampleType.represented].duration,
+					);
+				if (distributedSamples)
+					root.appendPath(&remainingPath).addDistributedSample(distributedSamples / remainingPaths.length);
 			}
 		}
 	}
