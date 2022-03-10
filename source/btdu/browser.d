@@ -110,6 +110,11 @@ struct Browser
 		endwin();
 	}
 
+	@property bool needRefresh()
+	{
+		return mode == Mode.deleteProgress;
+	}
+
 	@disable this(this);
 
 	string message; MonoTime showMessageUntil;

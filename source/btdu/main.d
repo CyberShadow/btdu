@@ -181,7 +181,10 @@ Please report defects and enhancement requests to the GitHub issue tracker:
 			foreach (ref subproc; subprocesses)
 				readSet.add(subproc.socket);
 
-		Socket.select(readSet, null, exceptSet);
+		if (!headless && browser.needRefresh())
+			Socket.select(readSet, null, exceptSet, refreshInterval);
+		else
+			Socket.select(readSet, null, exceptSet);
 		auto now = MonoTime.currTime();
 
 		if (stdinSocket && browser.handleInput())
