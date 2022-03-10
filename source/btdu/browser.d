@@ -22,6 +22,7 @@ module btdu.browser;
 import core.stdc.config;
 import core.stdc.locale;
 import core.stdc.stddef : wchar_t;
+import core.thread : Thread;
 import core.time;
 
 import std.algorithm.comparison;
@@ -31,12 +32,14 @@ import std.algorithm.searching;
 import std.algorithm.sorting;
 import std.conv;
 import std.encoding : sanitize;
+import std.exception : errnoEnforce;
 import std.format;
 import std.range;
 import std.string;
 
 import deimos.ncurses;
 
+import ae.sys.file : listDir;
 import ae.utils.appender;
 import ae.utils.meta;
 import ae.utils.text;
@@ -61,6 +64,9 @@ struct Browser
 		browser,
 		info,
 		help,
+		deleteConfirm,
+		deleteProgress,
+		deleteError,
 	}
 	Mode mode;
 
@@ -80,6 +86,10 @@ struct Browser
 		both,
 	}
 	RatioDisplayMode ratioDisplayMode = RatioDisplayMode.graph;
+
+	Thread deleteThread;
+	string deleteCurrent, deleteError;
+	bool deleteStop;
 
 	void start()
 	{
@@ -110,6 +120,36 @@ struct Browser
 	}
 
 	private static FastAppender!char buf; // Reusable buffer
+
+	// Returns full path as string, or null.
+	private static char[] getFullPath(BrowserPath* path)
+	{
+		buf.clear();
+		buf.put(fsPath);
+		bool recurse(BrowserPath *path)
+		{
+			string name = path.name[];
+			if (name.skipOverNul())
+				switch (name)
+				{
+					case "DATA":
+					case "UNREACHABLE":
+						return true;
+					default:
+						return false;
+				}
+			if (path.parent)
+				if (!recurse(path.parent))
+					return false;
+			buf.put('/');
+			buf.put(name);
+			return true;
+		}
+		if (recurse(path))
+			return buf.get();
+		else
+			return null;
+	}
 
 	void update()
 	{
@@ -142,6 +182,27 @@ struct Browser
 
 		if (!selection && items.length)
 			selection = items[0];
+
+		if (mode == Mode.deleteProgress && !deleteThread.isRunning())
+		{
+			try
+			{
+				deleteThread.join();
+
+				// Success:
+				// TODO update tree
+				showMessage("Deleted " ~ selection.humanName ~ ".");
+				mode = Mode.browser;
+				selection = null;
+			}
+			catch (Exception e)
+			{
+				// Failure:
+				deleteError = e.msg;
+				mode = Mode.deleteError;
+			}
+			deleteThread = null;
+		}
 		if (!items.length && mode == Mode.browser && currentPath !is &browserRoot)
 			mode = Mode.info;
 
@@ -152,35 +213,13 @@ struct Browser
 		{
 			case Mode.browser:
 			case Mode.info:
+			case Mode.deleteConfirm:
+			case Mode.deleteProgress:
+			case Mode.deleteError:
 			{
 				string[][] info;
 
-				char[] fullPath;
-				{
-					buf.clear();
-					buf.put(fsPath);
-					bool recurse(BrowserPath *path)
-					{
-						string name = path.name[];
-						if (name.skipOverNul())
-							switch (name)
-							{
-								case "DATA":
-								case "UNREACHABLE":
-									return true;
-								default:
-									return false;
-							}
-						if (path.parent)
-							if (!recurse(path.parent))
-								return false;
-						buf.put('/');
-						buf.put(name);
-						return true;
-					}
-					if (recurse(currentPath))
-						fullPath = buf.get();
-				}
+				auto fullPath = getFullPath(currentPath);
 
 				string[] showSampleType(SampleType type, string name, bool showError)
 				{
@@ -461,6 +500,9 @@ struct Browser
 			final switch (mode)
 			{
 				case Mode.browser:
+				case Mode.deleteConfirm:
+				case Mode.deleteProgress:
+				case Mode.deleteError:
 					contentHeight = items.length;
 					contentAreaHeight -= min(textLines.length, contentAreaHeight / 2);
 					contentAreaHeight = min(contentAreaHeight, contentHeight + 1);
@@ -481,6 +523,9 @@ struct Browser
 			final switch (mode)
 			{
 				case Mode.browser:
+				case Mode.deleteConfirm:
+				case Mode.deleteProgress:
+				case Mode.deleteError:
 				{
 					// Ensure the selected item is visible
 					auto pos = selection && items ? items.countUntil(selection) : 0;
@@ -551,6 +596,9 @@ struct Browser
 					prefix = "INFO: ";
 					goto case;
 				case Mode.browser:
+				case Mode.deleteConfirm:
+				case Mode.deleteProgress:
+				case Mode.deleteError:
 					auto displayedPath = currentPath is &browserRoot ? "/" : currentPath.pointerWriter.text;
 					auto maxPathWidth = w - 8 - prefix.length;
 					if (displayedPath.length > maxPathWidth)
@@ -571,6 +619,9 @@ struct Browser
 		final switch (mode)
 		{
 			case Mode.browser:
+			case Mode.deleteConfirm:
+			case Mode.deleteProgress:
+			case Mode.deleteError:
 			{
 				auto mostSamples = items.fold!((a, b) => max(a, b.data[SampleType.represented].samples))(0UL);
 
@@ -673,6 +724,84 @@ struct Browser
 		}
 
 		refresh();
+
+		// Pop-up
+		(){
+			dstring[] lines;
+
+			final switch (mode)
+			{
+				case Mode.browser:
+				case Mode.info:
+				case Mode.help:
+					return;
+
+				case Mode.deleteConfirm:
+					lines = [
+						"Are you sure you want to delete:"d,
+						null,
+						getFullPath(selection).to!dstring,
+						null,
+						"Press Shift+Y to confirm,",
+						"any other key to cancel.",
+					];
+					break;
+
+				case Mode.deleteProgress:
+					synchronized(deleteThread) lines = [
+						deleteStop ? "Stopping deletion:"d : "Deleting:"d,
+						null,
+						deleteCurrent.to!dstring,
+						null,
+						"Press Esc or q to cancel.",
+					];
+					break;
+
+				case Mode.deleteError:
+					lines = [
+						"Error deleting:"d,
+						null,
+						deleteCurrent.to!dstring,
+						null,
+						deleteError.to!dstring,
+						null,
+						"Displayed usage may be inaccurate;"d,
+						"please restart btdu."d,
+					];
+					break;
+			}
+
+			auto maxW = w - 6;
+			for (size_t i = 0; i < lines.length; i++)
+			{
+				auto line = lines[i];
+				if (line.length > maxW)
+				{
+					auto p = line[0 .. maxW].lastIndexOf('/');
+					if (p < 0)
+						p = line[0 .. maxW].lastIndexOf(' ');
+					if (p < 0)
+						p = maxW;
+					lines = lines[0 .. i] ~ line[0 .. p] ~ line[p .. $] ~ lines[i + 1 .. $];
+				}
+			}
+
+			auto winW = (lines.map!(line => line.length).reduce!max + 6).to!int;
+			auto winH = (lines.length + 4).to!int;
+			auto winX = (w - winW) / 2;
+			auto winY = (h - winH) / 2;
+			auto win = newwin(winH, winW, winY, winX);
+			scope(exit) delwin(win);
+
+			box(win, 0, 0);
+			foreach (y, line; lines)
+			{
+				auto s = line.to!string;
+				mvwprintw(win, (2 + y).to!int, 3, "%.*s", s.length, s.ptr);
+			}
+
+			wrefresh(win);
+		}();
 	}
 
 	void moveCursor(sizediff_t delta)
@@ -847,6 +976,19 @@ struct Browser
 						ratioDisplayMode %= enumLength!RatioDisplayMode;
 						showMessage(format("Showing %s", ratioDisplayMode));
 						break;
+					case 'd':
+						if (!selection)
+						{
+							showMessage("Nothing to delete.");
+							break;
+						}
+						if (!getFullPath(selection))
+						{
+							showMessage("Cannot delete special node " ~ selection.humanName ~ ".");
+							break;
+						}
+						mode = Mode.deleteConfirm;
+						break;
 					default:
 						// TODO: show message
 						break;
@@ -897,6 +1039,72 @@ struct Browser
 				}
 				break;
 
+			case Mode.deleteConfirm:
+				switch (ch)
+				{
+					case 'Y':
+						auto path = getFullPath(selection).idup;
+						deleteCurrent = path;
+						deleteStop = false;
+						deleteThread = new Thread({
+							listDir!((e) {
+								synchronized(deleteThread)
+									deleteCurrent = e.fullName;
+
+								if (deleteStop)
+								{
+									// e.stop();
+									// return;
+									throw new Exception("User abort");
+								}
+
+								if (e.entryIsDir)
+									e.recurse();
+
+								int ret = unlinkat(e.dirFD, e.baseNameFSPtr,
+									e.entryIsDir ? AT_REMOVEDIR : 0);
+								errnoEnforce(ret == 0, "unlinkat failed");
+							}, Yes.includeRoot)(path);
+						});
+						deleteThread.start();
+						mode = Mode.deleteProgress;
+						break;
+
+					default:
+						mode = Mode.browser;
+						showMessage("Delete operation cancelled.");
+						break;
+				}
+				break;
+
+			case Mode.deleteProgress:
+				switch (ch)
+				{
+					case 'q':
+					case 27: // ESC
+						deleteStop = true;
+						break;
+
+					default:
+						// TODO: show message
+						break;
+				}
+				break;
+
+			case Mode.deleteError:
+				switch (ch)
+				{
+					case 'q':
+					case 27: // ESC
+						mode = Mode.browser;
+						break;
+
+					default:
+						// TODO: show message
+						break;
+				}
+				break;
+
 			textScroll:
 				switch (ch)
 				{
@@ -932,6 +1140,10 @@ struct Browser
 }
 
 private:
+
+// TODO: upstream into Druntime
+extern (C) int unlinkat(int fd, const(char)* pathname, int flags);
+enum AT_REMOVEDIR = 0x200;
 
 /// https://en.wikipedia.org/wiki/1.96
 // enum z_975 = normalDistributionInverse(0.975);
@@ -996,6 +1208,7 @@ Right/Enter - Open selected node
           t - Toggle dirs before files when sorting
           g - Show percentage and/or graph
           i - Expand/collapse information panel
+          d - Delete the selected file or directory
           q - Close information panel or quit btdu
 
 Press q to exit this help screen and return to btdu.
