@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020, 2021  Vladimir Panteleev <btdu@cy.md>
+ * Copyright (C) 2020, 2021, 2022  Vladimir Panteleev <btdu@cy.md>
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public
@@ -219,20 +219,7 @@ struct Subprocess
 		auto representativeBrowserPath = result.browserPath;
 		if (allPaths.get().length)
 		{
-			auto representativePath = allPaths.get().fold!((a, b) {
-				// Prefer paths with resolved roots
-				auto aResolved = a.isResolved();
-				auto bResolved = b.isResolved();
-				if (aResolved != bResolved)
-					return aResolved ? a : b;
-				// Shortest path always wins
-				auto aLength = a.length;
-				auto bLength = b.length;
-				if (aLength != bLength)
-					return aLength < bLength ? a : b;
-				// If the length is the same, pick the lexicographically smallest one
-				return a < b ? a : b;
-			})();
+			auto representativePath = selectRepresentativePath(allPaths.get());
 			representativeBrowserPath = result.browserPath.appendPath(&representativePath);
 		}
 		representativeBrowserPath.addSample(SampleType.represented, result.logicalOffset, m.duration);
@@ -279,14 +266,6 @@ struct Subprocess
 	{
 		throw new Exception("Subprocess encountered a fatal error:\n" ~ cast(string)m.msg);
 	}
-}
-
-private bool isResolved(ref GlobalPath p)
-{
-	return !p.range
-		.map!(g => g.range)
-		.joiner
-		.canFind!(n => n.startsWith("\0TREE_"));
 }
 
 private SubPath* appendError(ref SubPath path, ref btdu.proto.Error error)

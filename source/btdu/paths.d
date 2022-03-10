@@ -451,6 +451,32 @@ struct BrowserPath
 	}
 }
 
+GlobalPath selectRepresentativePath(GlobalPath[] paths)
+{
+	return paths.fold!((a, b) {
+		// Prefer paths with resolved roots
+		auto aResolved = a.isResolved();
+		auto bResolved = b.isResolved();
+		if (aResolved != bResolved)
+			return aResolved ? a : b;
+		// Shortest path always wins
+		auto aLength = a.length;
+		auto bLength = b.length;
+		if (aLength != bLength)
+			return aLength < bLength ? a : b;
+		// If the length is the same, pick the lexicographically smallest one
+		return a < b ? a : b;
+	})();
+}
+
+private bool isResolved(ref GlobalPath p)
+{
+	return !p.range
+		.map!(g => g.range)
+		.joiner
+		.canFind!(n => n.startsWith("\0TREE_"));
+}
+
 // We prefix "special" names with one NUL character to
 // distinguish them from filesystem entries.
 bool skipOverNul(C)(ref C[] str)
