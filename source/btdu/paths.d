@@ -146,6 +146,40 @@ mixin template SimplePath()
 		return recurse(&this, path);
 	}
 
+	/// Perform the reverse operation, returning a parent path,
+	/// or `null` if `path` is not a suffix of `this`.
+	typeof(this)* unappendPath(in SubPath* path)
+	{
+		typeof(this)* recurse(typeof(this)* base, in SubPath* path)
+		{
+			if (!path.parent) // root
+				return base;
+			if (!base.parent)
+				return null;
+			if (path.name[] != base.name[])
+				return null;
+			return recurse(base.parent, path.parent);
+		}
+
+		return recurse(&this, path);
+	}
+
+	/// ditto
+	typeof(this)* unappendPath(in GlobalPath* path)
+	{
+		typeof(this)* recurse(typeof(this)* base, in GlobalPath* path)
+		{
+			if (!path) // root
+				return base;
+			base = base.unappendPath(path.subPath);
+			if (!base)
+				return null;
+			return recurse(base, path.parent);
+		}
+
+		return recurse(&this, path);
+	}
+
 	/// Return an iterator for path fragments.
 	/// Iterates from inner-most to top level.
 	auto range() const
@@ -447,6 +481,73 @@ struct BrowserPath
 		{
 			p.parent = &this;
 			p.resetParents();
+		}
+	}
+
+	/// Approximate the effect of deleting the filesystem object represented by the path.
+	void remove()
+	{
+		assert(parent);
+		// Unlink
+		{
+			auto pp = parent.find(this.name[]);
+			assert(*pp == &this);
+			*pp = this.nextSibling;
+		}
+
+		// Delete children first
+		for (auto p = firstChild; p; p = p.nextSibling)
+			p.remove();
+
+		BrowserPath* root;
+		GlobalPath globalPath;
+		foreach (ref otherPath; seenAs.byKey)
+		{
+			root = this.unappendPath(&otherPath);
+			if (root)
+			{
+				globalPath = otherPath;
+				break;
+			}
+		}
+		if (!root)
+			return;
+
+		auto numRemainingPaths = seenAs.length - 1;
+
+		// Update parents
+		{
+			auto p = parent;
+			while (p)
+			{
+				if (numRemainingPaths == 0)
+					p.data[SampleType.represented].samples -= this.data[SampleType.represented].samples;
+				if (true)
+					p.data[SampleType.exclusive].samples -= this.data[SampleType.exclusive].samples;
+				if (true)
+					p.data[SampleType.shared_].samples -= this.data[SampleType.shared_].samples;
+				if (numRemainingPaths == 0)
+					p.distributedSamples -= this.distributedSamples;
+				p = p.parent;
+			}
+		}
+
+		// Redistribute to siblings
+		if (numRemainingPaths > 0)
+		{
+			GlobalPath[] remainingPaths;
+			foreach (ref otherPath; seenAs.byKey)
+				if (otherPath != globalPath)
+					remainingPaths ~= otherPath;
+			auto newRepresentativePath = selectRepresentativePath(remainingPaths);
+			foreach (ref remainingPath; remainingPaths)
+			{
+				auto remainingBrowserPath = root.appendPath(&remainingPath);
+				// Redistribute samples
+				if (remainingPath == newRepresentativePath)
+					remainingBrowserPath.data[SampleType.represented].samples += this.data[SampleType.represented].samples;
+				remainingBrowserPath.distributedSamples += this.distributedSamples / numRemainingPaths;
+			}
 		}
 	}
 }

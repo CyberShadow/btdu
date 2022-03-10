@@ -161,6 +161,27 @@ struct Browser
 		int h, w;
 		getmaxyx(stdscr, h, w); h++; w++;
 
+		if (mode == Mode.deleteProgress && !deleteThread.isRunning())
+		{
+			try
+			{
+				deleteThread.join();
+
+				// Success:
+				showMessage("Deleted " ~ selection.humanName ~ ".");
+				mode = Mode.browser;
+				selection.remove();
+				selection = null;
+			}
+			catch (Exception e)
+			{
+				// Failure:
+				deleteError = e.msg;
+				mode = Mode.deleteError;
+			}
+			deleteThread = null;
+		}
+
 		items = null;
 		for (auto child = currentPath.firstChild; child; child = child.nextSibling)
 			items ~= child;
@@ -188,26 +209,6 @@ struct Browser
 		if (!selection && items.length)
 			selection = items[0];
 
-		if (mode == Mode.deleteProgress && !deleteThread.isRunning())
-		{
-			try
-			{
-				deleteThread.join();
-
-				// Success:
-				// TODO update tree
-				showMessage("Deleted " ~ selection.humanName ~ ".");
-				mode = Mode.browser;
-				selection = null;
-			}
-			catch (Exception e)
-			{
-				// Failure:
-				deleteError = e.msg;
-				mode = Mode.deleteError;
-			}
-			deleteThread = null;
-		}
 		if (!items.length && mode == Mode.browser && currentPath !is &browserRoot)
 			mode = Mode.info;
 
