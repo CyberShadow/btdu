@@ -49,6 +49,8 @@ import btdu.common;
 import btdu.state;
 import btdu.paths;
 
+alias imported = btdu.state.imported;
+
 struct Browser
 {
 	BrowserPath* currentPath;

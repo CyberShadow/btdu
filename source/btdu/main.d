@@ -48,6 +48,8 @@ import btdu.sample;
 import btdu.subproc;
 import btdu.state;
 
+alias imported = btdu.state.imported;
+
 @(`Sampling disk usage profiler for btrfs.`)
 void program(
 	Parameter!(string, "Path to the root of the filesystem to analyze") path,
