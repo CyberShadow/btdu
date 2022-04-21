@@ -23,6 +23,9 @@ import core.lifetime : move;
 import core.runtime : Runtime;
 import core.time;
 
+import std.algorithm.iteration;
+import std.algorithm.searching;
+import std.array;
 import std.conv : to;
 import std.exception;
 import std.parallelism : totalCPUs;
@@ -31,6 +34,7 @@ import std.random;
 import std.socket;
 import std.stdio;
 import std.string;
+import std.typecons;
 
 import ae.sys.data;
 import ae.sys.datamm;
@@ -298,20 +302,42 @@ void checkBtrfs(string fsPath)
 	}());
 
 	enforce(fd.getSubvolumeID() == BTRFS_FS_TREE_OBJECTID, {
-		auto device = getPathMountInfo(fsPath).spec;
+		string msg = format(
+			"The mount point you specified, \"%s\", " ~
+			"is not the root btrfs subvolume (\"subvolid=%d,subvol=/\").\n",
+			fsPath, BTRFS_FS_TREE_OBJECTID);
+
+		auto mountInfo = getPathMountInfo(fsPath);
+		auto options = mountInfo.mntops
+			.split(",")
+			.map!(o => o.findSplit("="))
+			.map!(p => tuple(p[0], p[2]))
+			.assocArray;
+		if ("subvol" in options && "subvolid" in options)
+			msg ~= format(
+				"It is the btrfs subvolume \"subvolid=%s,subvol=%s\".\n",
+				options["subvolid"], options["subvol"],
+			);
+
+		auto device = mountInfo.spec;
 		if (!device)
 			device = "/dev/sda1"; // placeholder
 		auto tmpName = "/tmp/" ~ device.baseName;
-		return format(
-			"%s is not the root btrfs subvolume - " ~
-			"please specify the path to a mountpoint mounted with subvol=/ or subvolid=5" ~
+		msg ~= format(
+			"Please specify the path to a mountpoint mounted with subvol=/ or subvolid=%d." ~
 			"\n" ~
 			"E.g.: %s && %s && %s",
-			fsPath,
+			BTRFS_FS_TREE_OBJECTID,
 			["mkdir", tmpName].escapeShellCommand,
 			["mount", "-o", "subvol=/", device, tmpName].escapeShellCommand,
 			[Runtime.args[0], tmpName].escapeShellCommand,
 		);
+		if (fsPath == "/")
+			msg ~= format(
+				"\n\nNote that the root btrfs subvolume (\"subvolid=%d,subvol=/\") " ~
+				"is not the same as the root of the filesystem (\"/\").",
+				BTRFS_FS_TREE_OBJECTID);
+		return msg;
 	}());
 }
 
