@@ -304,7 +304,7 @@ void checkBtrfs(string fsPath)
 	enforce(fd.getSubvolumeID() == BTRFS_FS_TREE_OBJECTID, {
 		string msg = format(
 			"The mount point you specified, \"%s\", " ~
-			"is not the root btrfs subvolume (\"subvolid=%d,subvol=/\").\n",
+			"is not the top-level btrfs subvolume (\"subvolid=%d,subvol=/\").\n",
 			fsPath, BTRFS_FS_TREE_OBJECTID);
 
 		auto mountInfo = getPathMountInfo(fsPath);
@@ -334,7 +334,7 @@ void checkBtrfs(string fsPath)
 		);
 		if (fsPath == "/")
 			msg ~= format(
-				"\n\nNote that the root btrfs subvolume (\"subvolid=%d,subvol=/\") " ~
+				"\n\nNote that the top-level btrfs subvolume (\"subvolid=%d,subvol=/\") " ~
 				"is not the same as the root of the filesystem (\"/\").",
 				BTRFS_FS_TREE_OBJECTID);
 		return msg;
