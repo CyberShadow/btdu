@@ -22,6 +22,7 @@ module btdu.browser;
 import core.stdc.config;
 import core.stdc.locale;
 import core.stdc.stddef : wchar_t;
+import core.sys.posix.stdio : FILE;
 import core.thread : Thread;
 import core.time;
 
@@ -53,6 +54,9 @@ alias imported = btdu.state.imported;
 
 struct Browser
 {
+	int ttyFD = -1;
+	FILE* inputFile, outputFile;
+
 	BrowserPath* currentPath;
 	sizediff_t top; // Scroll offset (row number, in the content, corresponding to the topmost displayed line)
 	sizediff_t contentAreaHeight; // Number of rows where scrolling content is displayed
@@ -96,7 +100,38 @@ struct Browser
 	void start()
 	{
 		setlocale(LC_CTYPE, "");
-		initscr();
+
+		// Smarter alternative to initscr()
+		{
+			import core.stdc.stdlib : getenv;
+			import core.sys.posix.unistd : isatty, STDIN_FILENO, STDOUT_FILENO, STDERR_FILENO;
+			import core.sys.posix.fcntl : open, O_RDWR, O_NOCTTY;
+			import core.sys.posix.stdio : fdopen;
+
+			int inputFD = {
+				if (isatty(STDIN_FILENO))
+					return STDIN_FILENO;
+				ttyFD = open("/dev/tty", O_RDWR);
+				if (ttyFD >= 0 && isatty(ttyFD))
+					return ttyFD;
+				throw new Exception("Could not detect a TTY to read interactive input from.");
+			}();
+			int outputFD = {
+				if (isatty(STDOUT_FILENO))
+					return STDOUT_FILENO;
+				if (isatty(STDERR_FILENO))
+					return STDERR_FILENO;
+				if (ttyFD < 0)
+					ttyFD = open("/dev/tty", O_RDWR);
+				if (ttyFD >= 0 && isatty(ttyFD))
+					return ttyFD;
+				throw new Exception("Could not detect a TTY to display interactive UI on.");
+			}();
+
+			inputFile = fdopen(inputFD, "rb");
+			outputFile = fdopen(outputFD, "wb");
+			newterm(getenv("TERM"), outputFile, inputFile);
+		}
 
 		timeout(0); // Use non-blocking read
 		cbreak(); // Disable line buffering
@@ -110,6 +145,18 @@ struct Browser
 	~this()
 	{
 		endwin();
+
+		{
+			import core.stdc.stdio : fclose;
+			import core.sys.posix.unistd : close;
+
+			if (inputFile)
+				fclose(inputFile);
+			if (outputFile)
+				fclose(outputFile);
+			if (ttyFD >= 0)
+				close(ttyFD);
+		}
 	}
 
 	@property bool needRefresh()
