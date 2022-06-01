@@ -1187,18 +1187,6 @@ string toDecimalString(Duration d)
 	return format!"%d.%07d seconds"(ticks / secondsPerTick, ticks % secondsPerTick);
 }
 
-/// Helper type for formatting pointers without passing their contents by-value.
-/// Helps preserve the SubPath invariant (which would be broken by copying).
-struct PointerWriter(T)
-{
-	T* ptr;
-	void toString(scope void delegate(const(char)[]) sink) const
-	{
-		ptr.toString(sink);
-	}
-}
-PointerWriter!T pointerWriter(T)(T* ptr) { return PointerWriter!T(ptr); }
-
 static immutable string[] help = q"EOF
 btdu - the sampling disk usage profiler for btrfs
 -------------------------------------------------

@@ -235,3 +235,15 @@ unittest
 	assert(parseSize("1.5kb") == 1024 + 512);
 	assert(parseSize("1.5kib") == 1024 + 512);
 }
+
+/// Helper type for formatting pointers without passing their contents by-value.
+/// Helps preserve the SubPath invariant (which would be broken by copying).
+struct PointerWriter(T)
+{
+	T* ptr;
+	void toString(scope void delegate(const(char)[]) sink) const
+	{
+		ptr.toString(sink);
+	}
+}
+PointerWriter!T pointerWriter(T)(T* ptr) { return PointerWriter!T(ptr); }
