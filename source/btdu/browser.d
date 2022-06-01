@@ -685,8 +685,6 @@ struct Browser
 
 					{
 						auto displayedItem = child.humanName;
-						if (child.name[].startsWith("\0"))
-							displayedItem = "<" ~ displayedItem ~ ">";
 						auto maxItemWidth = w - (minWidth - 5);
 						if (displayedItem.length > maxItemWidth)
 						{

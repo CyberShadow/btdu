@@ -209,7 +209,8 @@ mixin template SimplePath()
 	string humanName() const
 	{
 		string humanName = name[];
-		humanName.skipOverNul();
+		if (humanName.skipOverNul())
+			humanName = "<" ~ humanName ~ ">";
 		return humanName;
 	}
 }
