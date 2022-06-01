@@ -28,8 +28,10 @@ import std.algorithm.searching;
 import std.array;
 import std.conv : to;
 import std.exception;
+import std.math : ceil;
 import std.parallelism : totalCPUs;
 import std.path;
+import std.process : environment;
 import std.random;
 import std.socket;
 import std.stdio;
@@ -67,6 +69,7 @@ void program(
 	Option!(string, "Stop after running for this duration.", "DURATION") maxTime = null,
 	Option!(string, "Stop after achieving this resolution.", "SIZE") minResolution = null,
 	Option!(string, "On exit, export the collected results to the given file.", "PATH", 'o', "export") exportPath = null,
+	Switch!("On exit, export represented size estimates in 'du' format to standard output.") du = false,
 	Switch!("Instead of analyzing a btrfs filesystem, read previously collected results saved with --export from PATH.", 'f', "import") doImport = false,
 )
 {
@@ -262,6 +265,32 @@ Please report defects and enhancement requests to the GitHub issue tracker:
 			j.put(s);
 		}
 		stderr.writeln("Exported results to: ", exportPath);
+	}
+
+	if (du)
+	{
+		ulong blockSize = {
+			// As in du(1)
+			if ("POSIXLY_CORRECT" in environment)
+				return 512;
+			foreach (name; ["BTDU_BLOCK_SIZE", "DU_BLOCK_SIZE", "BLOCK_SIZE", "BLOCKSIZE"])
+				if (auto value = environment.get(name))
+					return value.to!ulong;
+			return 1024;
+		}();
+
+		auto totalSamples = browserRoot.data[SampleType.represented].samples;
+
+		void visit(BrowserPath* path)
+		{
+			for (auto child = path.firstChild; child; child = child.nextSibling)
+				visit(child);
+
+			auto samples = path.data[SampleType.represented].samples;
+			auto size = ceil(samples * real(totalSize) / totalSamples / blockSize).to!ulong;
+			writefln("%d\t%s%s", size, fsPath, path.pointerWriter);
+		}
+		visit(&browserRoot);
 	}
 }
 
