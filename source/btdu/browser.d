@@ -37,6 +37,7 @@ import std.exception : errnoEnforce;
 import std.format;
 import std.range;
 import std.string;
+import std.traits;
 
 import deimos.ncurses;
 
@@ -83,6 +84,15 @@ struct Browser
 	}
 	SortMode sortMode;
 	bool reverseSort, dirsFirst;
+
+	enum SizeDisplayMode : OriginalType!SampleType
+	{
+		represented = SampleType.represented,
+		exclusive = SampleType.exclusive,
+		shared_ = SampleType.shared_,
+		distributed,
+	}
+	SizeDisplayMode sizeDisplayMode = SizeDisplayMode.represented;
 
 	enum RatioDisplayMode
 	{
@@ -205,6 +215,19 @@ struct Browser
 			return null;
 	}
 
+	private real getSamples(BrowserPath* path)
+	{
+		final switch (sizeDisplayMode)
+		{
+			case SizeDisplayMode.represented:
+			case SizeDisplayMode.exclusive:
+			case SizeDisplayMode.shared_:
+				return path.data[cast(SampleType)sizeDisplayMode].samples;
+			case SizeDisplayMode.distributed:
+				return path.distributedSamples;
+		}
+	}
+
 	void update()
 	{
 		int h, w;
@@ -242,7 +265,7 @@ struct Browser
 				break;
 			case SortMode.size:
 				items.multiSort!(
-					(a, b) => a.data[SampleType.represented].samples > b.data[SampleType.represented].samples,
+					(a, b) => a.I!getSamples() > b.I!getSamples(),
 					(a, b) => a.name[] < b.name[],
 				);
 				break;
@@ -638,11 +661,14 @@ struct Browser
 				auto resolution = totalSamples
 					? "~" ~ (totalSize / totalSamples).humanSize()
 					: "-";
-				mvprintw(h - 1, 0,
-					" Samples: %lld  Resolution: %.*s",
-					cast(cpp_longlong)totalSamples,
-					resolution.length, resolution.ptr,
+				auto status = format(
+					" Samples: %d  Resolution: %s",
+					totalSamples,
+					resolution,
 				);
+				if (expert)
+					status ~= "  Size metric: %s".format(sizeDisplayMode.to!string.chomp("_"));
+				mvprintw(h - 1, 0, "%.*s", status.length, status.ptr);
 			}
 			attroff(A_REVERSE);
 
@@ -680,7 +706,8 @@ struct Browser
 			case Mode.deleteProgress:
 			case Mode.deleteError:
 			{
-				auto mostSamples = items.fold!((a, b) => max(a, b.data[SampleType.represented].samples))(0UL);
+				auto currentPathSamples = currentPath.I!getSamples();
+				auto mostSamples = items.fold!((a, b) => max(a, b.I!getSamples()))(0.0L);
 
 				foreach (i, child; items)
 				{
@@ -688,6 +715,8 @@ struct Browser
 					if (y < 0 || y >= contentAreaHeight)
 						continue;
 					y += 2;
+
+					auto childSamples = child.I!getSamples();
 
 					if (child is selection)
 						attron(A_REVERSE);
@@ -698,7 +727,7 @@ struct Browser
 					buf.clear();
 					{
 						auto size = totalSamples
-							? "~" ~ humanSize(child.data[SampleType.represented].samples * real(totalSize) / totalSamples)
+							? "~" ~ humanSize(childSamples * real(totalSize) / totalSamples)
 							: "?";
 						buf.formattedWrite!"%12s "(size);
 					}
@@ -708,8 +737,8 @@ struct Browser
 						buf.put('[');
 						if (ratioDisplayMode & RatioDisplayMode.percentage)
 						{
-							if (currentPath.data[SampleType.represented].samples)
-								buf.formattedWrite!"%5.1f%%"(100.0 * child.data[SampleType.represented].samples / currentPath.data[SampleType.represented].samples);
+							if (currentPathSamples)
+								buf.formattedWrite!"%5.1f%%"(100.0 * childSamples / currentPathSamples);
 							else
 								buf.put("    -%");
 						}
@@ -720,7 +749,7 @@ struct Browser
 							char[10] bar;
 							if (mostSamples)
 							{
-								auto barPos = 10 * child.data[SampleType.represented].samples / mostSamples;
+								auto barPos = cast(size_t)(10 * childSamples / mostSamples);
 								bar[0 .. barPos] = '#';
 								bar[barPos .. $] = ' ';
 							}
@@ -1021,6 +1050,15 @@ struct Browser
 					case 's':
 						setSort(SortMode.size);
 						break;
+					case 'm':
+						if (expert)
+						{
+							sizeDisplayMode = cast(SizeDisplayMode)((sizeDisplayMode + 1) % enumLength!SizeDisplayMode);
+							showMessage("Showing %s size".format(sizeDisplayMode.to!string.chomp("_")));
+						}
+						else
+							showMessage("Not in expert mode - re-run with --expert");
+						break;
 					case 't':
 						dirsFirst = !dirsFirst;
 						showMessage(format("%s directories before files",
@@ -1248,6 +1286,7 @@ Right/Enter - Open selected node
           p - Pause/resume
           n - Sort by name (ascending/descending)
           s - Sort by size (ascending/descending)
+          m - Cycle size metric [expert mode]
           t - Toggle dirs before files when sorting
           g - Show percentage and/or graph
           i - Expand/collapse information panel
