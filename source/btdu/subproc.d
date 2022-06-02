@@ -273,7 +273,7 @@ private SubPath* appendError(ref SubPath path, ref btdu.proto.Error error)
 	auto result = &path;
 	result = result.appendName("\0ERROR");
 	result = result.appendName(error.msg);
-	if (error.errno | error.path.length)
+	if (error.errno || error.path.length)
 	{
 		result = result.appendName(getErrno(error.errno).name);
 		if (error.path.length)
