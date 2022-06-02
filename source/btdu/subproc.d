@@ -271,6 +271,11 @@ struct Subprocess
 private SubPath* appendError(ref SubPath path, ref btdu.proto.Error error)
 {
 	auto result = &path;
+
+	import core.stdc.errno : ENOENT;
+	if (&path == &subPathRoot && error.errno == ENOENT && error.msg == "logical ino")
+		return result.appendName("\0SLACK");
+
 	result = result.appendName("\0ERROR");
 	result = result.appendName(error.msg);
 	if (error.errno || error.path.length)

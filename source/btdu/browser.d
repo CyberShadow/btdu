@@ -420,6 +420,14 @@ struct Browser
 										"\n\n" ~
 										"Children of this node indicate the path of files using the extent containing the unreachable samples. " ~
 										"Defragmentation of these files may reduce the amount of such unreachable blocks.";
+								case "SLACK":
+									return
+										"btrfs reports that there is nothing at the random sample location that btdu picked." ~
+										"\n\n" ~
+										"This most likely represents allocated but unused space, " ~
+										"which could be reduced by running a balance on the DATA block group." ~
+										"\n\n" ~
+										"More precisely, this node represents samples for which BTRFS_IOC_LOGICAL_INO returned ENOENT.";
 								default:
 									if (name.skipOver("TREE_"))
 										return
@@ -462,13 +470,7 @@ struct Browser
 									switch (name)
 									{
 										case "ENOENT":
-											return
-												"Not an actual error - btrfs simply reports that there is nothing at the random sample location that btdu picked." ~
-												"\n\n" ~
-												"This most likely represents allocated but unused space, " ~
-												"which could be reduced by running a balance on the DATA block group." ~
-												"\n\n" ~
-												"Note that even though this node is categorized as an error in btdu's hierarchy, it does not actually indicate a problem with the filesystem.";
+											assert(false); // Should have been rewritten into SLACK
 										case "ENOTTY":
 											return
 												"An ENOTTY (\"Inappropriate ioctl for device\") error means that btdu issued an ioctl which the kernel btrfs code does not understand." ~
