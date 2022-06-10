@@ -40,7 +40,7 @@ import std.typecons;
 
 import ae.sys.data;
 import ae.sys.datamm;
-import ae.sys.file : getPathMountInfo;
+import ae.sys.file : getMounts, getPathMountInfo;
 import ae.sys.shutdown;
 import ae.utils.funopt;
 import ae.utils.json;
@@ -306,7 +306,9 @@ struct SerializedState
 void checkBtrfs(string fsPath)
 {
 	import core.sys.posix.fcntl : open, O_RDONLY;
+	import std.file : exists;
 	import std.string : toStringz;
+	import std.algorithm.searching : canFind;
 	import btrfs : isBTRFS, isSubvolume, getSubvolumeID;
 	import btrfs.c.kernel_shared.ctree : BTRFS_FS_TREE_OBJECTID;
 
@@ -316,8 +318,9 @@ void checkBtrfs(string fsPath)
 	enforce(fd.isBTRFS,
 		fsPath ~ " is not a btrfs filesystem");
 
+	auto mounts = getMounts().array;
 	enforce(fd.isSubvolume, {
-		auto rootPath = getPathMountInfo(fsPath).file;
+		auto rootPath = mounts.getPathMountInfo(fsPath).file;
 		if (!rootPath)
 			rootPath = "/";
 		return format(
@@ -336,7 +339,7 @@ void checkBtrfs(string fsPath)
 			"is not the top-level btrfs subvolume (\"subvolid=%d,subvol=/\").\n",
 			fsPath, BTRFS_FS_TREE_OBJECTID);
 
-		auto mountInfo = getPathMountInfo(fsPath);
+		auto mountInfo = mounts.getPathMountInfo(fsPath);
 		auto options = mountInfo.mntops
 			.split(",")
 			.map!(o => o.findSplit("="))
@@ -351,7 +354,12 @@ void checkBtrfs(string fsPath)
 		auto device = mountInfo.spec;
 		if (!device)
 			device = "/dev/sda1"; // placeholder
-		auto tmpName = "/tmp/" ~ device.baseName;
+		auto mountRoot =
+			"/mnt".exists && !mounts.canFind!(m => m.file == "/mnt") ? "/mnt" :
+			"/media".exists ? "/media" :
+			"..."
+		;
+		auto tmpName = mountRoot ~ "/" ~ device.baseName;
 		msg ~= format(
 			"Please specify the path to a mountpoint mounted with subvol=/ or subvolid=%d." ~
 			"\n" ~
