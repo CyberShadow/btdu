@@ -442,7 +442,10 @@ struct Browser
 										"btrfs may keep the old extent which still contains the old copy of the overwritten block." ~
 										"\n\n" ~
 										"Children of this node indicate the path of files using the extent containing the unreachable samples. " ~
-										"Defragmentation of these files may reduce the amount of such unreachable blocks.";
+										"Defragmentation of these files may reduce the amount of such unreachable blocks." ~
+										"\n\n" ~
+										"More precisely, this node represents samples for which BTRFS_IOC_LOGICAL_INO returned zero results, " ~
+										"but BTRFS_IOC_LOGICAL_INO_V2 with BTRFS_LOGICAL_INO_ARGS_IGNORE_OFFSET returned something else.";
 								case "SLACK":
 									return
 										"btrfs reports that there is nothing at the random sample location that btdu picked." ~
