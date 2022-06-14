@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020, 2021  Vladimir Panteleev <btdu@cy.md>
+ * Copyright (C) 2020, 2021, 2022  Vladimir Panteleev <btdu@cy.md>
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public
@@ -53,10 +53,14 @@ struct ResultStartMessage
 	ulong logicalOffset;
 }
 
+// Retrying with BTRFS_LOGICAL_INO_ARGS_IGNORE_OFFSET
+struct ResultIgnoringOffsetMessage
+{
+}
+
 struct ResultInodeStartMessage
 {
 	u64 rootID;
-	bool ignoringOffset;
 }
 
 struct ResultInodeErrorMessage
@@ -92,6 +96,7 @@ alias AllMessages = AliasSeq!(
 	StartMessage,
 	NewRootMessage,
 	ResultStartMessage,
+	ResultIgnoringOffsetMessage,
 	ResultInodeStartMessage,
 	ResultInodeErrorMessage,
 	ResultInodeEndMessage,

@@ -99,7 +99,7 @@ void subprocessMain(string fsPath)
 										// Send new roots before the inode start
 										cast(void)getRoot(fd, rootID);
 
-										send(ResultInodeStartMessage(rootID, ignoringOffset));
+										send(ResultInodeStartMessage(rootID));
 
 										try
 										{
@@ -142,7 +142,11 @@ void subprocessMain(string fsPath)
 									ignoringOffset,
 								);
 								if (!called && !ignoringOffset)
+								{
+									// Retry with BTRFS_LOGICAL_INO_ARGS_IGNORE_OFFSET
+									send(ResultIgnoringOffsetMessage());
 									continue;
+								}
 							}
 							catch (Exception e)
 								send(ResultErrorMessage(e.toError));

@@ -178,12 +178,17 @@ struct Subprocess
 			result.haveInode = true; // Sampler won't even try
 	}
 
+	void handleMessage(ResultIgnoringOffsetMessage m)
+	{
+		cast(void) m; // empty message
+		result.ignoringOffset = true;
+	}
+
 	void handleMessage(ResultInodeStartMessage m)
 	{
 		result.haveInode = true;
 		result.havePath = false;
 		result.inodeRoot = *(m.rootID in globalRoots).enforce("Unknown inode root");
-		result.ignoringOffset = m.ignoringOffset; // Will be the same for all inodes
 	}
 
 	void handleMessage(ResultInodeErrorMessage m)
@@ -213,7 +218,13 @@ struct Subprocess
 	void handleMessage(ResultEndMessage m)
 	{
 		if (result.ignoringOffset)
-			result.browserPath = result.browserPath.appendName("\0UNREACHABLE");
+		{
+			if (!result.haveInode)
+			{} // Same with or without BTRFS_LOGICAL_INO_ARGS_IGNORE_OFFSET
+			else
+				result.browserPath = result.browserPath.appendName("\0UNREACHABLE");
+		}
+
 		if (!result.haveInode)
 			result.browserPath = result.browserPath.appendName("\0NO_INODE");
 		auto representativeBrowserPath = result.browserPath;
