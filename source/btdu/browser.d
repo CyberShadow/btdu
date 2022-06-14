@@ -518,9 +518,24 @@ struct Browser
 												"but responded with \"not found\" when attempting to look up filesystem paths for the given inode." ~
 												"\n\n" ~
 												"One likely explanation is files which are awaiting deletion, " ~
-												"but are still kept alive by an open file descriptor held by some process." ~
+												"but are still kept alive by an open file descriptor held by some process. " ~
+												"This space could be reclaimed by killing the respective tasks or restarting the system." ~
 												"\n\n" ~
-												"More precisely, this node represents samples for which BTRFS_IOC_INO_PATHS returned ENOENT.";
+												(currentPath.parent.parent.parent && currentPath.parent.parent.parent.name[] == "\0UNREACHABLE"
+													? (
+														// Reproducible on 5.17.9 with e.g.:
+														// https://gist.github.com/CyberShadow/10c1c1f66ba3808fdaf9497b22f5896c#file-unreachable-ino-paths-enoent-sh
+														// Was also seen on 5.10.115 in weird (leaky?) circumstances.
+														"Because this node is under <UNREACHABLE>, the space represented by this node is actually in extents which are not used by any file (deleted or not), " ~
+														"but are kept because another part of the extent they belong to is actually used by a deleted-but-still-open file." ~
+														"\n\n" ~
+														"More precisely, this node represents samples for which BTRFS_IOC_LOGICAL_INO returned zero results, " ~
+														"then BTRFS_IOC_LOGICAL_INO_V2 with BTRFS_LOGICAL_INO_ARGS_IGNORE_OFFSET returned one or more inodes, " ~
+														"then attempting to resolve these inodes with BTRFS_IOC_INO_PATHS returned ENOENT."
+													) : (
+														"More precisely, this node represents samples for which BTRFS_IOC_INO_PATHS returned ENOENT."
+													)
+												);
 										default:
 									}
 									break;
