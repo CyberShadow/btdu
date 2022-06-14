@@ -506,6 +506,24 @@ struct Browser
 										default:
 									}
 									break;
+								case "ino paths":
+									switch (name)
+									{
+										case "ENOENT":
+											// Reproducible with e.g.: ( dd if=/dev/zero bs=1M count=512 ; rm a ; sleep infinity ) > a
+											// on 5.17.9
+											// https://gist.github.com/CyberShadow/10c1c1f66ba3808fdaf9497b22f5896c#file-ino-paths-enoent-sh
+											return
+												"This node represents samples in files for which btrfs provided an inode, " ~
+												"but responded with \"not found\" when attempting to look up filesystem paths for the given inode." ~
+												"\n\n" ~
+												"One likely explanation is files which are awaiting deletion, " ~
+												"but are still kept alive by an open file descriptor held by some process." ~
+												"\n\n" ~
+												"More precisely, this node represents samples for which BTRFS_IOC_INO_PATHS returned ENOENT.";
+										default:
+									}
+									break;
 								case "open":
 									switch (name)
 									{
