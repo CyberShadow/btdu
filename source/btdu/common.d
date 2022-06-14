@@ -192,12 +192,13 @@ string humanSize(real size)
 {
 	static immutable prefixChars = " KMGTPEZY";
 	size_t power = 0;
-	while (size > 1024 && power + 1 < prefixChars.length)
+	while (size > 1000 && power + 1 < prefixChars.length)
 	{
 		size /= 1024;
 		power++;
 	}
-	return format("%3.1f %s%sB", size, prefixChars[power], prefixChars[power] == ' ' ? ' ' : 'i');
+	auto digits = size < 1 ? 3 : size < 10 ? 2 : 1;
+	return format("%4.*f %s%sB", digits, size, prefixChars[power], prefixChars[power] == ' ' ? ' ' : 'i');
 }
 
 real parseSize(string s)
