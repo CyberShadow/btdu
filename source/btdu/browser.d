@@ -81,6 +81,7 @@ struct Browser
 	{
 		name,
 		size,
+		time, // Average query duration
 	}
 	SortMode sortMode;
 	bool reverseSort, dirsFirst;
@@ -228,6 +229,26 @@ struct Browser
 		}
 	}
 
+	private real getDuration(BrowserPath* path)
+	{
+		final switch (sizeDisplayMode)
+		{
+			case SizeDisplayMode.represented:
+			case SizeDisplayMode.exclusive:
+			case SizeDisplayMode.shared_:
+				return path.data[cast(SampleType)sizeDisplayMode].duration;
+			case SizeDisplayMode.distributed:
+				return path.distributedDuration;
+		}
+	}
+
+	private real getAverageDuration(BrowserPath* path)
+	{
+		auto samples = getSamples(path);
+		auto duration = getDuration(path);
+		return samples ? duration / samples : -real.infinity;
+	}
+
 	void update()
 	{
 		int h, w;
@@ -266,6 +287,12 @@ struct Browser
 			case SortMode.size:
 				items.multiSort!(
 					(a, b) => a.I!getSamples() > b.I!getSamples(),
+					(a, b) => a.name[] < b.name[],
+				);
+				break;
+			case SortMode.time:
+				items.multiSort!(
+					(a, b) => a.I!getAverageDuration() > b.I!getAverageDuration(),
 					(a, b) => a.name[] < b.name[],
 				);
 				break;
@@ -742,8 +769,39 @@ struct Browser
 			case Mode.deleteProgress:
 			case Mode.deleteError:
 			{
-				auto currentPathSamples = currentPath.I!getSamples();
-				auto mostSamples = items.fold!((a, b) => max(a, b.I!getSamples()))(0.0L);
+				real getUnits(BrowserPath* path)
+				{
+					final switch (sortMode)
+					{
+						case SortMode.name:
+						case SortMode.size:
+							return getSamples(path);
+						case SortMode.time:
+							return getAverageDuration(path);
+					}
+				}
+
+				string getUnitsStr(real units)
+				{
+					final switch (sortMode)
+					{
+						case SortMode.name:
+						case SortMode.size:
+							auto samples = units;
+							return totalSamples
+								? "~" ~ humanSize(samples * real(totalSize) / totalSamples)
+								: "?";
+
+						case SortMode.time:
+							auto hnsecs = units;
+							if (hnsecs == -real.infinity)
+								return "?";
+							return humanDuration(hnsecs);
+					}
+				}
+
+				auto currentPathUnits = currentPath.I!getUnits();
+				auto mostUnits = items.fold!((a, b) => max(a, b.I!getUnits()))(0.0L);
 
 				foreach (i, child; items)
 				{
@@ -752,7 +810,7 @@ struct Browser
 						continue;
 					y += 2;
 
-					auto childSamples = child.I!getSamples();
+					auto childUnits = child.I!getUnits();
 
 					if (child is selection)
 						attron(A_REVERSE);
@@ -761,20 +819,15 @@ struct Browser
 					mvhline(y, 0, ' ', w);
 
 					buf.clear();
-					{
-						auto size = totalSamples
-							? "~" ~ humanSize(childSamples * real(totalSize) / totalSamples)
-							: "?";
-						buf.formattedWrite!"%12s "(size);
-					}
+					buf.formattedWrite!"%12s "(getUnitsStr(childUnits));
 
 					if (ratioDisplayMode)
 					{
 						buf.put('[');
 						if (ratioDisplayMode & RatioDisplayMode.percentage)
 						{
-							if (currentPathSamples)
-								buf.formattedWrite!"%5.1f%%"(100.0 * childSamples / currentPathSamples);
+							if (currentPathUnits)
+								buf.formattedWrite!"%5.1f%%"(100.0 * childUnits / currentPathUnits);
 							else
 								buf.put("    -%");
 						}
@@ -783,9 +836,9 @@ struct Browser
 						if (ratioDisplayMode & RatioDisplayMode.graph)
 						{
 							char[10] bar;
-							if (mostSamples)
+							if (mostUnits)
 							{
-								auto barPos = cast(size_t)(10 * childSamples / mostSamples);
+								auto barPos = cast(size_t)(10 * childUnits / mostUnits);
 								bar[0 .. barPos] = '#';
 								bar[barPos .. $] = ' ';
 							}
@@ -997,6 +1050,7 @@ struct Browser
 		{
 			case SortMode.name: ascending = !reverseSort; break;
 			case SortMode.size: ascending =  reverseSort; break;
+			case SortMode.time: ascending =  reverseSort; break;
 		}
 
 		showMessage(format("Sorting by %s (%s)", mode, ["descending", "ascending"][ascending]));
@@ -1085,6 +1139,9 @@ struct Browser
 						break;
 					case 's':
 						setSort(SortMode.size);
+						break;
+					case 'T':
+						setSort(SortMode.time);
 						break;
 					case 'm':
 						if (expert)
@@ -1322,6 +1379,7 @@ Right/Enter - Open selected node
           p - Pause/resume
           n - Sort by name (ascending/descending)
           s - Sort by size (ascending/descending)
+          T - Show and sort by avg. query duration
           m - Cycle size metric [expert mode]
           t - Toggle dirs before files when sorting
           g - Show percentage and/or graph
