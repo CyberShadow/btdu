@@ -242,7 +242,8 @@ struct Subprocess
 
 			if (expert)
 			{
-				auto distributedShare = 1.0 / allPaths.get().length;
+				auto distributedSamples = 1.0 / allPaths.get().length;
+				auto distributedDuration = double(m.duration) / allPaths.get().length;
 
 				static FastAppender!(BrowserPath*) browserPaths;
 				browserPaths.clear();
@@ -252,7 +253,7 @@ struct Subprocess
 					browserPaths.put(browserPath);
 
 					browserPath.addSample(SampleType.shared_, result.logicalOffset, m.duration);
-					browserPath.addDistributedSample(distributedShare);
+					browserPath.addDistributedSample(distributedSamples, distributedDuration);
 				}
 
 				auto exclusiveBrowserPath = BrowserPath.commonPrefix(browserPaths.get());
@@ -265,7 +266,7 @@ struct Subprocess
 			{
 				representativeBrowserPath.addSample(SampleType.shared_, result.logicalOffset, m.duration);
 				representativeBrowserPath.addSample(SampleType.exclusive, result.logicalOffset, m.duration);
-				representativeBrowserPath.addDistributedSample(1);
+				representativeBrowserPath.addDistributedSample(1, m.duration);
 			}
 		}
 

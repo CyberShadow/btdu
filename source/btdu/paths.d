@@ -405,7 +405,7 @@ struct BrowserPath
 		ulong[3] logicalOffsets = -1; /// Examples (the last 3 seen) of logical offsets
 	}
 	Data[enumLength!SampleType] data;
-	double distributedSamples = 0;
+	double distributedSamples = 0, distributedDuration = 0;
 	bool deleting;
 
 	void addSample(SampleType type, ulong logicalOffset, ulong duration)
@@ -438,16 +438,17 @@ struct BrowserPath
 			parent.removeSamples(type, samples, logicalOffsets, duration);
 	}
 
-	void addDistributedSample(double share)
+	void addDistributedSample(double sampleShare, double durationShare)
 	{
-		distributedSamples += share;
+		distributedSamples += sampleShare;
+		distributedDuration += durationShare;
 		if (parent)
-			parent.addDistributedSample(share);
+			parent.addDistributedSample(sampleShare, durationShare);
 	}
 
-	void removeDistributedSample(double share)
+	void removeDistributedSample(double sampleShare, double durationShare)
 	{
-		addDistributedSample(-share);
+		addDistributedSample(-sampleShare, -durationShare);
 	}
 
 	/// Other paths this address is reachable via,
@@ -467,6 +468,7 @@ struct BrowserPath
 			@JSONName("shared")
 			@JSONOptional Data shared_;
 			@JSONOptional JSONFragment distributedSamples = JSONFragment("0");
+			@JSONOptional JSONFragment distributedDuration = JSONFragment("0");
 		}
 		SampleData data;
 
@@ -483,6 +485,8 @@ struct BrowserPath
 			s.data.tupleof[sampleType] = data[sampleType];
 		if (this.distributedSamples !is 0.)
 			s.data.distributedSamples.json = this.distributedSamples.format!"%17e";
+		if (this.distributedDuration !is 0.)
+			s.data.distributedDuration.json = this.distributedDuration.format!"%17e";
 		return s;
 	}
 
@@ -499,6 +503,7 @@ struct BrowserPath
 		static foreach (sampleType; EnumMembers!SampleType)
 			p.data[sampleType] = s.data.tupleof[sampleType];
 		p.distributedSamples = s.data.distributedSamples.json.strip.to!double;
+		p.distributedDuration = s.data.distributedDuration.json.strip.to!double;
 		return p;
 	}
 
@@ -550,6 +555,7 @@ struct BrowserPath
 		// Save this node's remaining stats before we remove them.
 		auto data = this.data;
 		auto distributedSamples = this.distributedSamples;
+		auto distributedDuration = this.distributedDuration;
 
 		// Remove sample data from this node and its parents.
 		// After recursion, for non-leaf nodes, most of these should now be at zero (as far as we can estimate).
@@ -557,7 +563,7 @@ struct BrowserPath
 			if (data[sampleType].samples) // avoid quadratic complexity
 				removeSamples(sampleType, data[sampleType].samples, data[sampleType].logicalOffsets[], data[sampleType].duration);
 		if (distributedSamples) // avoid quadratic complexity
-			removeDistributedSample(distributedSamples);
+			removeDistributedSample(distributedSamples, distributedDuration);
 
 		if (seenAs.empty)
 			return;  // Directory (non-leaf) node - nothing else to do here.
@@ -596,7 +602,10 @@ struct BrowserPath
 						data[SampleType.represented].duration,
 					);
 				if (distributedSamples)
-					root.appendPath(&remainingPath).addDistributedSample(distributedSamples / remainingPaths.length);
+					root.appendPath(&remainingPath).addDistributedSample(
+						distributedSamples / remainingPaths.length,
+						distributedDuration / remainingPaths.length,
+					);
 			}
 		}
 	}
