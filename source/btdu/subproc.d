@@ -21,6 +21,7 @@ module btdu.subproc;
 
 import core.sys.posix.signal;
 import core.sys.posix.unistd;
+import core.time;
 
 import std.algorithm.iteration;
 import std.algorithm.mutation;
@@ -80,9 +81,11 @@ struct Subprocess
 	private size_t bufStart, bufEnd;
 
 	/// Called when select() identifies that the process wrote something.
-	void handleInput()
+	void handleInput(Duration maxDuration)
 	{
-		while (true)
+		auto deadline = MonoTime.currTime() + maxDuration;
+		// Ensure the loop exits eventually, even when there is always more data to process:
+		do
 		{
 			auto data = buf[bufStart .. bufEnd];
 			auto bytesNeeded = parse(data, this);
@@ -114,6 +117,7 @@ struct Subprocess
 			}
 			bufEnd += received;
 		}
+		while (MonoTime.currTime() < deadline);
 	}
 
 	void handleMessage(StartMessage m)

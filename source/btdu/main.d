@@ -167,6 +167,10 @@ Please report defects and enhancement requests to the GitHub issue tracker:
 	enum refreshInterval = 500.msecs;
 	auto nextRefresh = startTime;
 
+	enum totalMaxDuration = 1.seconds / 60; // 60 FPS
+	// How much time we may spend processing one subprocess's output:
+	auto subprocMaxDuration = totalMaxDuration / subprocesses.length;
+
 	auto readSet = new SocketSet;
 	auto exceptSet = new SocketSet;
 
@@ -207,7 +211,7 @@ Please report defects and enhancement requests to the GitHub issue tracker:
 		if (!paused)
 			foreach (ref subproc; subprocesses)
 				if (readSet.isSet(subproc.socket))
-					subproc.handleInput();
+					subproc.handleInput(subprocMaxDuration);
 		if (!headless && now > nextRefresh)
 		{
 			browser.update();
