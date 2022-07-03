@@ -237,6 +237,24 @@ unittest
 	assert(parseSize("1.5kib") == 1024 + 512);
 }
 
+string humanDuration(real hnsecs)
+{
+	if (hnsecs == 0)
+		return "0";
+	auto d = hnsecs * 100; // nanoseconds
+
+	static immutable units = ["ns", "µs", "ms", "s", "m", "h", "d", "w"];
+	static immutable unitSize = [1000, 1000, 1000, 60,  60,  24,  7];
+	size_t unitIndex = 0;
+	while (unitIndex < unitSize.length && d > unitSize[unitIndex])
+	{
+		d /= unitSize[unitIndex];
+		unitIndex++;
+	}
+	auto digits = d < 1 ? 3 : d < 10 ? 2 : 1;
+	return format("%4.*f%s", digits, d, units[unitIndex]);
+}
+
 /// Helper type for formatting pointers without passing their contents by-value.
 /// Helps preserve the SubPath invariant (which would be broken by copying).
 struct PointerWriter(T)
