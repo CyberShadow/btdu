@@ -108,6 +108,7 @@ alias AllMessages = AliasSeq!(
 
 struct Header
 {
+	/// Includes Header.
 	/// Even when the length is redundant (fixed-size messages),
 	/// putting it up front allows simplifying deserialization and
 	/// process entire messages in one go
@@ -205,6 +206,7 @@ size_t parse(H)(ref ubyte[] buf, ref H handler)
 		if (buf.length < header.length)
 			return header.length - buf.length;
 
+		auto initialBufLength = buf.length;
 		buf.shift(Header.sizeof);
 
 	typeSwitch:
@@ -219,6 +221,12 @@ size_t parse(H)(ref ubyte[] buf, ref H handler)
 			default:
 				assert(false, "Unknown message");
 		}
+
+		auto consumed = initialBufLength - buf.length;
+		import std.format : format;
+		assert(consumed == header.length,
+			"Deserialization consumed size / header size mismatch (%d / %d)"
+			.format(consumed, header.length));
 	}
 	assert(false, "Unreachable");
 }
