@@ -151,7 +151,7 @@ struct Subprocess
 
 	private struct Result
 	{
-		ulong logicalOffset;
+		Offset offset;
 		BrowserPath* browserPath;
 		GlobalPath* inodeRoot;
 		bool haveInode, havePath;
@@ -162,7 +162,7 @@ struct Subprocess
 
 	void handleMessage(ResultStartMessage m)
 	{
-		result.logicalOffset = m.logicalOffset;
+		result.offset = m.offset;
 		result.browserPath = &browserRoot;
 		static immutable flagNames = [
 			"DATA",
@@ -177,7 +177,7 @@ struct Subprocess
 			"RAID1C3",
 			"RAID1C4",
 		].amap!(s => "\0" ~ s);
-		if (result.logicalOffset == -1) // hole
+		if (result.offset.logical == -1) // hole
 			result.browserPath = result.browserPath.appendName("\0UNALLOCATED");
 		else if ((m.chunkFlags & BTRFS_BLOCK_GROUP_PROFILE_MASK) == 0)
 			result.browserPath = result.browserPath.appendName("\0SINGLE");
@@ -243,7 +243,7 @@ struct Subprocess
 			auto representativePath = selectRepresentativePath(allPaths.get());
 			representativeBrowserPath = result.browserPath.appendPath(&representativePath);
 		}
-		representativeBrowserPath.addSample(SampleType.represented, result.logicalOffset, m.duration);
+		representativeBrowserPath.addSample(SampleType.represented, result.offset, m.duration);
 
 		if (allPaths.get().length)
 		{
@@ -262,20 +262,20 @@ struct Subprocess
 					auto browserPath = result.browserPath.appendPath(&path);
 					browserPaths.put(browserPath);
 
-					browserPath.addSample(SampleType.shared_, result.logicalOffset, m.duration);
+					browserPath.addSample(SampleType.shared_, result.offset, m.duration);
 					browserPath.addDistributedSample(distributedSamples, distributedDuration);
 				}
 
 				auto exclusiveBrowserPath = BrowserPath.commonPrefix(browserPaths.get());
-				exclusiveBrowserPath.addSample(SampleType.exclusive, result.logicalOffset, m.duration);
+				exclusiveBrowserPath.addSample(SampleType.exclusive, result.offset, m.duration);
 			}
 		}
 		else
 		{
 			if (expert)
 			{
-				representativeBrowserPath.addSample(SampleType.shared_, result.logicalOffset, m.duration);
-				representativeBrowserPath.addSample(SampleType.exclusive, result.logicalOffset, m.duration);
+				representativeBrowserPath.addSample(SampleType.shared_, result.offset, m.duration);
+				representativeBrowserPath.addSample(SampleType.exclusive, result.offset, m.duration);
 				representativeBrowserPath.addDistributedSample(1, m.duration);
 			}
 		}

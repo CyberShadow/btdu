@@ -155,12 +155,13 @@ void subprocessMain(string fsPath, bool physical)
 				{
 					auto sw = StopWatch(AutoStart.yes);
 
-					u64 logicalOffset;
+					u64 logicalOffset, physicalOffset;
 					if (!physical)
 						logicalOffset = chunk.logicalOffset + (targetPos - pos);
 					else
 					{
 						u64 physicalOffsetInExtent = (targetPos - pos);
+						physicalOffset = chunk.physicalOffset + physicalOffsetInExtent;
 
 						if (chunk.logicalOffset == hole)
 						{
@@ -181,7 +182,7 @@ void subprocessMain(string fsPath, bool physical)
 						}
 					}
 
-					send(ResultStartMessage(chunk.type, logicalOffset));
+					send(ResultStartMessage(chunk.type, Offset(logicalOffset, chunk.devID, physicalOffset)));
 
 					if (chunk.type & BTRFS_BLOCK_GROUP_DATA)
 					{

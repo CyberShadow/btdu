@@ -27,14 +27,16 @@ import std.experimental.allocator : makeArray, make;
 import std.string;
 import std.traits : Unqual, EnumMembers;
 
+import containers.hashmap;
+import containers.internal.hash : generateHash;
+
 import ae.utils.appender;
 import ae.utils.json : JSONName, JSONOptional, JSONFragment;
 import ae.utils.meta;
 
 import btdu.alloc;
 
-import containers.hashmap;
-import containers.internal.hash : generateHash;
+public import btdu.proto : Offset;
 
 /// Common definitions for a deduplicated trie for paths.
 mixin template SimplePath()
@@ -402,40 +404,40 @@ struct BrowserPath
 	{
 		ulong samples; /// For non-leaves, sum of leaves
 		ulong duration; /// Total hnsecs
-		ulong[3] logicalOffsets = -1; /// Examples (the last 3 seen) of logical offsets
+		Offset[3] offsets; /// Examples (the last 3 seen) of sample offsets
 	}
 	Data[enumLength!SampleType] data;
 	double distributedSamples = 0, distributedDuration = 0;
 	bool deleting;
 
-	void addSample(SampleType type, ulong logicalOffset, ulong duration)
+	void addSample(SampleType type, Offset offset, ulong duration)
 	{
-		addSamples(type, 1, (&logicalOffset)[0..1], duration);
+		addSamples(type, 1, (&offset)[0..1], duration);
 	}
 
-	void addSamples(SampleType type, ulong samples, ulong[] logicalOffsets, ulong duration)
+	void addSamples(SampleType type, ulong samples, Offset[] offsets, ulong duration)
 	{
 		data[type].samples += samples;
 		data[type].duration += duration;
-		foreach (logicalOffset; logicalOffsets)
-			if (logicalOffset != data[type].logicalOffsets[$-1])
-				foreach (i, ref l0; data[type].logicalOffsets)
-					l0 = i + 1 == Data.logicalOffsets.length ? logicalOffset : data[type].logicalOffsets[i + 1];
+		foreach (offset; offsets)
+			if (offset != data[type].offsets[$-1])
+				foreach (i, ref l0; data[type].offsets)
+					l0 = i + 1 == Data.offsets.length ? offset : data[type].offsets[i + 1];
 		if (parent)
-			parent.addSamples(type, samples, logicalOffsets, duration);
+			parent.addSamples(type, samples, offsets, duration);
 	}
 
-	void removeSamples(SampleType type, ulong samples, ulong[] logicalOffsets, ulong duration)
+	void removeSamples(SampleType type, ulong samples, Offset[] offsets, ulong duration)
 	{
 		assert(samples <= data[type].samples && duration <= data[type].duration);
 		data[type].samples -= samples;
 		data[type].duration -= duration;
-		foreach (i, lMy; data[type].logicalOffsets)
-			if (logicalOffsets.canFind(lMy))
+		foreach (i, lMy; data[type].offsets)
+			if (offsets.canFind(lMy))
 				foreach_reverse (j; 0 .. i + 1)
-					data[type].logicalOffsets = j == 0 ? -1 : data[type].logicalOffsets[j + 1];
+					data[type].offsets = j == 0 ? Offset.init : data[type].offsets[j + 1];
 		if (parent)
-			parent.removeSamples(type, samples, logicalOffsets, duration);
+			parent.removeSamples(type, samples, offsets, duration);
 	}
 
 	void addDistributedSample(double sampleShare, double durationShare)
@@ -561,7 +563,7 @@ struct BrowserPath
 		// After recursion, for non-leaf nodes, most of these should now be at zero (as far as we can estimate).
 		static foreach (sampleType; EnumMembers!SampleType)
 			if (data[sampleType].samples) // avoid quadratic complexity
-				removeSamples(sampleType, data[sampleType].samples, data[sampleType].logicalOffsets[], data[sampleType].duration);
+				removeSamples(sampleType, data[sampleType].samples, data[sampleType].offsets[], data[sampleType].duration);
 		if (distributedSamples) // avoid quadratic complexity
 			removeDistributedSample(distributedSamples, distributedDuration);
 
@@ -598,7 +600,7 @@ struct BrowserPath
 					root.appendPath(&remainingPath).addSamples(
 						SampleType.represented,
 						data[SampleType.represented].samples,
-						data[SampleType.represented].logicalOffsets[],
+						data[SampleType.represented].offsets[],
 						data[SampleType.represented].duration,
 					);
 				if (distributedSamples)

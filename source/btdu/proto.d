@@ -19,13 +19,13 @@
 /// Main process / subprocess communication protocol
 module btdu.proto;
 
-import ae.utils.array;
-
 import core.sys.posix.unistd;
 
 import std.exception;
 import std.meta;
 import std.traits;
+
+import ae.utils.array;
 
 import btrfs.c.ioctl : btrfs_ioctl_dev_info_args;
 import btrfs.c.kerncompat : u64, __u64;
@@ -49,10 +49,16 @@ struct NewRootMessage
 	const(char)[] name;
 }
 
+struct Offset
+{
+	ulong logical = -1;
+	ulong devID = -1, physical = -1;
+}
+
 struct ResultStartMessage
 {
 	ulong chunkFlags;
-	ulong logicalOffset;
+	Offset offset;
 }
 
 // Retrying with BTRFS_LOGICAL_INO_ARGS_IGNORE_OFFSET

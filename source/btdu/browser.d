@@ -343,11 +343,20 @@ struct Browser
 						// 	: "-"),
 
 						(expert ? "  " : "") ~ "- Logical offsets: " ~ (currentPath.data[type].samples
-							? format!"%s%(%d, %)"(
-								currentPath.data[type].samples > currentPath.data[type].logicalOffsets.length ? "..., " : "",
-								currentPath.data[type].logicalOffsets[].filter!(o => o != ulong.max),
+							? format!"%s%-(%s, %)"(
+								currentPath.data[type].samples > currentPath.data[type].offsets.length ? "..., " : "",
+								currentPath.data[type].offsets[].filter!(o => o != Offset.init).map!((ref o) => o.logical).map!(o => o == ulong.max ? "-" : o.text),
 							)
 							: "-"),
+
+					] ~ (physical ? [
+						(expert ? "  " : "") ~ "- Physical offsets: " ~ (currentPath.data[type].samples
+							? format!"%s%(%s, %)"(
+								currentPath.data[type].samples > currentPath.data[type].offsets.length ? "..., " : "",
+								currentPath.data[type].offsets[].filter!(o => o != Offset.init).map!((ref o) => formatted!"%d:%d"(o.devID, o.physical)),
+							)
+							: "-"),
+						] : []) ~ [
 					];
 				}
 
