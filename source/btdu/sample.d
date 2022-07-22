@@ -24,22 +24,28 @@ import core.sys.posix.fcntl;
 import core.sys.posix.unistd;
 
 import std.algorithm.iteration;
+import std.algorithm.searching : countUntil;
+import std.bigint;
+import std.conv : to;
 import std.datetime.stopwatch;
 import std.exception;
 import std.random;
 import std.string;
 
 import ae.sys.shutdown;
+import ae.utils.aa : addNew;
 import ae.utils.appender;
+import ae.utils.meta : I;
 import ae.utils.time : stdTime;
 
 import btrfs;
+import btrfs.c.ioctl : btrfs_ioctl_dev_info_args;
 import btrfs.c.kerncompat;
 import btrfs.c.kernel_shared.ctree;
 
 import btdu.proto;
 
-void subprocessMain(string fsPath)
+void subprocessMain(string fsPath, bool physical)
 {
 	try
 	{
@@ -49,24 +55,94 @@ void subprocessMain(string fsPath)
 		// abrupt failure or simply because it received and processed the signal before it did.
 		addShutdownHandler((reason) {});
 
-		// if (!quiet) stderr.writeln("Opening filesystem...");
+		// stderr.writeln("Opening filesystem...");
 		int fd = open(fsPath.toStringz, O_RDONLY);
 		errnoEnforce(fd >= 0, "open");
 
-		// if (!quiet) stderr.writeln("Reading chunks...");
+		// stderr.writeln("Reading chunks...");
+
+		/// Used for logicalOffset to represent unallocated space in physical mode.
+		enum u64 hole = -1;
+
+		/// Represents one continuous sampling zone,
+		/// in physical or logical space (depending on the mode).
+		/// Represents one physical extent or one logical chunk.
 		static struct ChunkInfo
 		{
-			u64 offset;
-			btrfs_chunk chunk; /// No stripes
+			u64 type;
+			u64 logicalOffset, logicalLength;
+			u64 devID;
+			u64 physicalOffset, physicalLength;
+			u64 numStripes, stripeIndex, stripeLength;
 		}
-		ChunkInfo[] chunks;
-		enumerateChunks(fd, (u64 offset, const ref btrfs_chunk chunk) {
-			chunks ~= ChunkInfo(offset, chunk);
-		});
+		@property u64 length(ChunkInfo c) { return physical ? c.physicalLength : c.logicalLength; }
 
-		ulong totalSize = chunks.map!((ref chunk) => chunk.chunk.length).sum;
-		// if (!quiet) stderr.writefln("Found %d chunks with a total size of %d.", globalParams.chunks.length, globalParams.totalSize);
-		send(StartMessage(totalSize));
+		ChunkInfo[] chunks;
+		btrfs_ioctl_dev_info_args[] devices;
+
+		if (!physical) // logical mode
+		{
+			enumerateChunks(fd, (u64 offset, const ref btrfs_chunk chunk) {
+				chunks ~= ChunkInfo(
+					chunk.type,
+					offset, chunk.length,
+					-1,
+					-1, 0,
+				);
+			});
+		}
+		else // physical mode
+		{
+			btrfs_chunk[u64] chunkLookup;
+			btrfs_stripe[][u64] stripeLookup;
+			enumerateChunks(fd, (u64 offset, const ref btrfs_chunk chunk) {
+				chunkLookup.addNew(offset, cast()chunk).enforce("Chunk with duplicate offset");
+				stripeLookup.addNew(offset, chunk.stripe.ptr[0 .. chunk.num_stripes].dup).enforce("Chunk with duplicate offset");
+			});
+
+			devices = getDevices(fd);
+
+			foreach (ref device; devices)
+			{
+				u64 lastOffset = 0;
+				void flushHole(u64 dataStart, u64 dataEnd)
+				{
+					if (dataStart != lastOffset)
+					{
+						enforce(lastOffset < dataStart, "Unordered extents");
+						chunks ~= ChunkInfo(
+							0,
+							hole, 0,
+							device.devid,
+							lastOffset, dataStart - lastOffset,
+						);
+					}
+					lastOffset = dataEnd;
+				}
+				enumerateDevExtents(fd, (u64 devid, u64 offset, const ref btrfs_dev_extent extent) {
+					flushHole(offset, offset + extent.length);
+					auto chunk = (extent.chunk_offset in chunkLookup).enforce("Chunk for extent not found");
+					auto stripes = stripeLookup[extent.chunk_offset];
+					auto stripeIndex = stripes.countUntil!((ref stripe) => stripe.devid == devid && stripe.offset == offset);
+					enforce(stripeIndex >= 0, "Stripe for extent not found in chunk");
+
+					chunks ~= ChunkInfo(
+						chunk.type,
+						offset, chunk.length,
+						devid,
+						extent.chunk_offset, extent.length,
+						chunk.num_stripes, stripeIndex, chunk.stripe_len,
+					);
+				}, [device.devid, device.devid]);
+				flushHole(device.total_bytes, device.total_bytes);
+			}
+
+			assert(chunks.map!((ref chunk) => chunk.I!length).sum == devices.map!((ref device) => device.total_bytes).sum);
+		}
+
+		u64 totalSize = chunks.map!((ref chunk) => chunk.I!length).sum;
+		// stderr.writefln("Found %d chunks with a total size of %d.", chunks.length, totalSize);
+		send(StartMessage(totalSize, devices));
 
 		while (true)
 		{
@@ -74,21 +150,47 @@ void subprocessMain(string fsPath)
 			u64 pos = 0;
 			foreach (ref chunk; chunks)
 			{
-				auto end = pos + chunk.chunk.length;
+				auto end = pos + chunk.I!length;
 				if (end > targetPos)
 				{
-					auto offset = chunk.offset + (targetPos - pos);
-					send(ResultStartMessage(chunk.chunk.type, offset));
 					auto sw = StopWatch(AutoStart.yes);
 
-					if (chunk.chunk.type & BTRFS_BLOCK_GROUP_DATA)
+					u64 logicalOffset;
+					if (!physical)
+						logicalOffset = chunk.logicalOffset + (targetPos - pos);
+					else
+					{
+						u64 physicalOffsetInExtent = (targetPos - pos);
+
+						if (chunk.logicalOffset == hole)
+						{
+							logicalOffset = hole;
+						}
+						else
+						{
+							// This is an approximation.
+							// The exact algorithm is rather complicated, see btrfs_map_block or btrfs_map_physical.c.
+							// Because data is distributed uniformly anyway, the only reason why we would
+							// want to use the full algorithm would be to provide accurate offsets.
+							// For RAID5/6 the calculation would need to be partially meaningless anyway,
+							// as the parity blocks don't correspond to any particular single logical offset.
+							auto physicalStripeIndex = physicalOffsetInExtent / chunk.stripeLength;
+							auto offsetInStripe = physicalOffsetInExtent % chunk.stripeLength;
+							auto logicalStripeIndex = (BigInt(physicalStripeIndex) * chunk.logicalLength / chunk.physicalLength).to!ulong;
+							logicalOffset = chunk.logicalOffset + logicalStripeIndex * chunk.stripeLength + offsetInStripe;
+						}
+					}
+
+					send(ResultStartMessage(chunk.type, logicalOffset));
+
+					if (chunk.type & BTRFS_BLOCK_GROUP_DATA)
 					{
 						foreach (ignoringOffset; [false, true])
 						{
 							try
 							{
 								bool called;
-								logicalIno(fd, offset,
+								logicalIno(fd, logicalOffset,
 									(u64 inode, u64 offset, u64 rootID)
 									{
 										called = true;

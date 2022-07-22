@@ -50,7 +50,7 @@ Use cases
 
 - **Understand btrfs space usage**
 
-  btdu shows explanations for hierarchy objects and common errors, which can help understand how btrfs uses disk space. The `--expert` mode enables collection and display of [additional size metrics](CONCEPTS.md#size-metrics), providing more insight into allocation of objects with non-trivial sharing.
+  btdu shows explanations for hierarchy objects and common errors, which can help understand how btrfs uses disk space. The `--expert` mode enables collection and display of [additional size metrics](CONCEPTS.md#size-metrics), providing more insight into allocation of objects with non-trivial sharing. [Logical and physical sampling modes](CONCEPTS.md#logical-vs-physical-space) can help understand RAID space usage, especially when using multiple profiles.
 
 
 Installation

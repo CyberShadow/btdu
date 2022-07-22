@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020, 2021  Vladimir Panteleev <btdu@cy.md>
+ * Copyright (C) 2020, 2021, 2022  Vladimir Panteleev <btdu@cy.md>
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public
@@ -19,6 +19,7 @@
 /// Global state definitions
 module btdu.state;
 
+import btrfs.c.ioctl : btrfs_ioctl_dev_info_args;
 import btrfs.c.kerncompat : u64;
 
 import btdu.paths;
@@ -30,8 +31,10 @@ __gshared: // btdu is single-threaded
 
 bool imported;
 bool expert;
+bool physical;
 string fsPath;
 ulong totalSize;
+btrfs_ioctl_dev_info_args[] devices;
 
 SubPath subPathRoot;
 GlobalPath*[u64] globalRoots;

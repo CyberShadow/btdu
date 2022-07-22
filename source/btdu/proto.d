@@ -27,6 +27,7 @@ import std.exception;
 import std.meta;
 import std.traits;
 
+import btrfs.c.ioctl : btrfs_ioctl_dev_info_args;
 import btrfs.c.kerncompat : u64, __u64;
 
 struct Error
@@ -39,6 +40,7 @@ struct Error
 struct StartMessage
 {
 	ulong totalSize;
+	btrfs_ioctl_dev_info_args[] devices;
 }
 
 struct NewRootMessage

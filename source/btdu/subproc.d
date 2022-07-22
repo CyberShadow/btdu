@@ -62,6 +62,7 @@ struct Subprocess
 				thisExePath,
 				"--subprocess",
 				"--seed", rndGen.uniform!Seed.text,
+				"--physical=" ~ physical.text,
 				"--",
 				fsPath,
 			],
@@ -123,7 +124,10 @@ struct Subprocess
 	void handleMessage(StartMessage m)
 	{
 		if (!totalSize)
+		{
 			totalSize = m.totalSize;
+			devices = m.devices;
+		}
 	}
 
 	void handleMessage(NewRootMessage m)
@@ -173,7 +177,9 @@ struct Subprocess
 			"RAID1C3",
 			"RAID1C4",
 		].amap!(s => "\0" ~ s);
-		if ((m.chunkFlags & BTRFS_BLOCK_GROUP_PROFILE_MASK) == 0)
+		if (result.logicalOffset == -1) // hole
+			result.browserPath = result.browserPath.appendName("\0UNALLOCATED");
+		else if ((m.chunkFlags & BTRFS_BLOCK_GROUP_PROFILE_MASK) == 0)
 			result.browserPath = result.browserPath.appendName("\0SINGLE");
 		foreach_reverse (b; 0 .. flagNames.length)
 			if (m.chunkFlags & (1UL << b))

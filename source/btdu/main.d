@@ -62,6 +62,7 @@ void program(
 	Option!(uint, "Number of sampling subprocesses\n (default is number of logical CPUs for this system)", "N", 'j') procs = 0,
 	Option!(Seed, "Random seed used to choose samples") seed = 0,
 	Switch!hiddenOption subprocess = false,
+	Switch!("Measure physical space (instead of logical).", 'p') physical = false,
 	Switch!("Expert mode: collect and show additional metrics.\nUses more memory.") expert = false,
 	Switch!hiddenOption man = false,
 	Switch!("Run without launching the result browser UI.") headless = false,
@@ -102,7 +103,7 @@ Please report defects and enhancement requests to the GitHub issue tracker:
 	Data importData; // Keep memory-mapped file alive, as directory names may reference it
 	if (doImport)
 	{
-		if (procs || seed || subprocess || expert || headless || maxSamples || maxTime || minResolution || exportPath)
+		if (procs || seed || subprocess || expert || physical || headless || maxSamples || maxTime || minResolution || exportPath)
 			throw new Exception("Conflicting command-line options");
 
 		stderr.writeln("Loading results from file...");
@@ -113,6 +114,7 @@ Please report defects and enhancement requests to the GitHub issue tracker:
 		auto s = json.jsonParse!SerializedState();
 
 		expert = s.expert;
+		physical = s.physical;
 		fsPath = s.fsPath;
 		totalSize = s.totalSize;
 		move(*s.root, browserRoot);
@@ -121,13 +123,17 @@ Please report defects and enhancement requests to the GitHub issue tracker:
 		debug importing = false;
 		imported = true;
 	}
-	else
+
+	.expert = expert;
+	.physical = physical;
+
+	if (!doImport)
 	{
 		rndGen = Random(seed);
 		fsPath = path.buildNormalizedPath;
 
 		if (subprocess)
-			return subprocessMain(path);
+			return subprocessMain(path, physical);
 
 		checkBtrfs(fsPath);
 
@@ -153,8 +159,6 @@ Please report defects and enhancement requests to the GitHub issue tracker:
 		stdinSocket = new Socket(cast(socket_t)stdin.fileno, AddressFamily.UNSPEC);
 		stdinSocket.blocking = false;
 	}
-
-	.expert = expert;
 
 	Browser browser;
 	if (!headless)
@@ -255,6 +259,7 @@ Please report defects and enhancement requests to the GitHub issue tracker:
 
 		SerializedState s;
 		s.expert = expert;
+		s.physical = physical;
 		s.fsPath = fsPath;
 		s.totalSize = totalSize;
 		s.root = &browserRoot;
@@ -302,6 +307,7 @@ Please report defects and enhancement requests to the GitHub issue tracker:
 struct SerializedState
 {
 	bool expert;
+	@JSONOptional bool physical;
 	string fsPath;
 	ulong totalSize;
 	BrowserPath* root;

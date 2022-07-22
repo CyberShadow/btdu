@@ -15,6 +15,22 @@ For the represented and exclusive size, btdu displays a confidence range, e.g.:
 
 This should be interpreted as: given the data btdu collected so far, it is [confident with 95% certainty](https://en.wikipedia.org/wiki/Confidence_interval) that the object size is within 16.9 GiB of 763.0 GiB.
 
+Logical vs. physical space
+--------------------------
+
+Quoting [On-disk format](https://btrfs.wiki.kernel.org/index.php/On-disk_Format):
+
+> Btrfs makes a distinction between logical and physical addresses. Logical addresses are used in the filesystem structures, while physical addresses are simply byte offsets on a disk. One logical address may correspond to physical addresses on any number of disks, depending on RAID settings.
+
+In this regard, btdu has two modes of operation:
+
+- In logical space mode, btdu samples the logical offset space. As such, a 1GB file (containing unique uncompressed unshared data) will show up with a size of 1GB, regardless of whether it is stored in a SINGLE, DUP, or RAID1 profile block group.
+- In physical space mode, btdu samples offsets from the underlying block devices, translating each to a logical offset first. The file in the example above will thus show up with a size of 2GB if it is stored on a block group using the RAID1 or DUP profiles.
+
+In physical space mode, btdu will also show unallocated space (represented as an `<UNALLOCATED>` node in the hierarchy root).
+
+Logical space mode is the default. To use physical space mode, run btdu with `--physical` (`-p`).
+
 Representative location
 -----------------------
 

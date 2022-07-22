@@ -481,6 +481,16 @@ struct Browser
 										"which could be reduced by running a balance on the DATA block group." ~
 										"\n\n" ~
 										"More precisely, this node represents samples for which BTRFS_IOC_LOGICAL_INO returned ENOENT.";
+								case "UNALLOCATED":
+									return
+										"This node represents sample points in physical device space which are not allocated to any block group.\n" ~
+										"As such, these samples do not have corresponding logical offsets." ~
+										"\n\n" ~
+										"A healthy btrfs filesystem should have at least some unallocated space, in order to allow the metadata block group to grow.\n " ~
+										"If you have too little unallocated space, consider running a balance on the DATA block group, to convert slack space to unallocated space.\n" ~
+										"(You will find slack space in btdu under a <SLACK> node.)" ~
+										"\n\n" ~
+										"More precisely, this node represents samples which are not covered by BTRFS_DEV_EXTENT_KEY entries in BTRFS_DEV_TREE_OBJECTID.";
 								default:
 									if (name.skipOver("TREE_"))
 										return
