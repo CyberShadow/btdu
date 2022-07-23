@@ -855,7 +855,7 @@ struct Browser
 						if (ratioDisplayMode & RatioDisplayMode.graph)
 						{
 							char[10] bar;
-							if (mostUnits)
+							if (mostUnits && childUnits != -real.infinity)
 							{
 								auto barPos = cast(size_t)(10 * childUnits / mostUnits);
 								bar[0 .. barPos] = '#';
