@@ -808,7 +808,7 @@ struct Browser
 						case SortMode.size:
 							auto samples = units;
 							return totalSamples
-								? "~" ~ humanSize(samples * real(totalSize) / totalSamples)
+								? "~" ~ humanSize(samples * real(totalSize) / totalSamples, true)
 								: "?";
 
 						case SortMode.time:

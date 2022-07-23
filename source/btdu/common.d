@@ -188,7 +188,7 @@ ref Errno getErrno(int errno)
 
 // Conversion
 
-string humanSize(real size)
+string humanSize(real size, bool aligned = false)
 {
 	static immutable prefixChars = " KMGTPEZY";
 	size_t power = 0;
@@ -202,7 +202,10 @@ string humanSize(real size)
 		size < 10 ? 3 :
 		size < 100 ? 2 :
 		1;
-	return format("%.*f %s%sB", digits, size, prefixChars[power], prefixChars[power] == ' ' ? ' ' : 'i');
+	if (aligned)
+		return format("%.*f %s%sB", digits, size, prefixChars[power], prefixChars[power] == ' ' ? ' ' : 'i');
+	else
+		return format("%.*f %s%sB", digits, size, prefixChars[power] == ' ' ? "" : prefixChars[power .. power + 1], prefixChars[power] == ' ' ? "" : "i");
 }
 
 real parseSize(string s)
