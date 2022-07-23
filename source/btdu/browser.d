@@ -934,7 +934,14 @@ struct Browser
 						null,
 						getFullPath(selection).to!dstring,
 						null,
-						"Press Shift+Y to confirm,",
+					] ~ (expert ? [
+						"This will free ~%s (±%s)."d.format(
+							humanSize(selection.data[SampleType.exclusive].samples * real(totalSize) / totalSamples),
+							humanSize(estimateError(totalSamples, selection.data[SampleType.exclusive].samples) * totalSize),
+						),
+						null,
+					] : null) ~ [
+						"Press Shift+Y to confirm,"d,
 						"any other key to cancel.",
 					];
 					break;
