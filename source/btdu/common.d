@@ -197,8 +197,12 @@ string humanSize(real size)
 		size /= 1024;
 		power++;
 	}
-	auto digits = size < 1 ? 3 : size < 10 ? 2 : 1;
-	return format("%4.*f %s%sB", digits, size, prefixChars[power], prefixChars[power] == ' ' ? ' ' : 'i');
+	auto digits =
+		size == 0 ? 1 :
+		size < 10 ? 3 :
+		size < 100 ? 2 :
+		1;
+	return format("%.*f %s%sB", digits, size, prefixChars[power], prefixChars[power] == ' ' ? ' ' : 'i');
 }
 
 real parseSize(string s)
