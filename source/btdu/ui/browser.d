@@ -992,8 +992,9 @@ struct Browser
 
 					attrSet(Attribute.reverse, child is selection, {
 						xOverflowEllipsis({
+							write(child.getEffectiveMark() ? '+' : ' ');
 							auto textWidth = measure({ writeUnits(childUnits); })[0];
-							write(formatted!"%*s"(max(0, 12 - textWidth), "")); writeUnits(childUnits); write(" ");
+							write(formatted!"%*s"(max(0, 11 - textWidth), "")); writeUnits(childUnits); write(" ");
 
 							auto effectiveRatioDisplayMode = ratioDisplayMode;
 							while (effectiveRatioDisplayMode && width < minWidth(effectiveRatioDisplayMode))
@@ -1162,6 +1163,7 @@ struct Browser
 									printKey("Show percentage and/or graph", button("g"));
 									printKey("Expand/collapse information panel", button("i"));
 									printKey("Delete the selected file or directory", button("d"));
+									printKey("Mark / unmark selected item", button("    "));
 									printKey("Close information panel or quit btdu", button("q"));
 									write(
 										endl,
@@ -1475,6 +1477,11 @@ struct Browser
 							break;
 						}
 						mode = Mode.deleteConfirm;
+						break;
+					case ' ':
+						if (selection)
+							selection.setMark(!selection.getEffectiveMark());
+						moveCursor(+1);
 						break;
 					default:
 						// TODO: show message

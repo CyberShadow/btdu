@@ -100,6 +100,10 @@ Example:
     # btdu --headless --export=results.json --max-time=10m /path/to/filesystem/root
     $ btdu --import results.json
 
+### Marking
+
+You can mark or unmark items under the cursor by pressing the space bar.
+
 ### Deleting
 
 You can delete the selected file or directory from the filesystem by pressing <kbd>d</kbd> <kbd>Y</kbd>. This will recursively delete the file or directory shown as "Full path".

@@ -406,6 +406,13 @@ enum SampleType
 	shared_,
 }
 
+enum Mark : ubyte
+{
+	parent,    /// Default state - see parent
+	marked,    /// Positive mark
+	unmarked,  /// Negative mark (cancels out a positive mark in an ancestor)
+}
+
 /// Browser path (GUI hierarchy)
 struct BrowserPath
 {
@@ -420,7 +427,7 @@ struct BrowserPath
 	}
 	Data[enumLength!SampleType] data;
 	double distributedSamples = 0, distributedDuration = 0;
-	bool deleting;
+	private bool deleting;
 
 	void addSample(SampleType type, Offset offset, ulong duration)
 	{
@@ -627,6 +634,55 @@ struct BrowserPath
 					);
 			}
 		}
+	}
+
+	// Marks
+
+	private Mark mark;
+	private bool childrenHaveMark;
+
+	/// Returns true for marked, false for unmarked.
+	bool getEffectiveMark()
+	{
+		final switch (mark)
+		{
+			case Mark.parent:
+				return parent.getEffectiveMark();
+			case Mark.marked:
+				return true;
+			case Mark.unmarked:
+				return false;
+		}
+	}
+
+	private void clearMark()
+	{
+		mark = Mark.parent;
+		if (childrenHaveMark)
+		{
+			for (auto p = firstChild; p; p = p.nextSibling)
+				p.clearMark();
+			childrenHaveMark = false;
+		}
+	}
+
+	void setMark(bool marked)
+	{
+		clearMark();
+		if (parent && getEffectiveMark() == marked)
+			return;
+		mark = marked ? Mark.marked : Mark.unmarked;
+		for (auto p = parent; p && !p.childrenHaveMark; p = p.parent)
+			p.childrenHaveMark = true;
+	}
+
+	void enumerateMarks(scope void delegate(ref BrowserPath, bool marked) callback)
+	{
+		if (mark != Mark.parent)
+			callback(this, mark == Mark.marked);
+		if (childrenHaveMark)
+			for (auto p = firstChild; p; p = p.nextSibling)
+				p.enumerateMarks(callback);
 	}
 }
 

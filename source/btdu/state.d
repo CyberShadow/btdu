@@ -40,6 +40,8 @@ SubPath subPathRoot;
 GlobalPath*[u64] globalRoots;
 BrowserPath browserRoot;
 
+shared static this() { browserRoot.setMark(false); }
+
 Subprocess[] subprocesses;
 bool paused;
 debug bool importing;
