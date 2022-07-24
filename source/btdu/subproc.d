@@ -265,6 +265,16 @@ struct Subprocess
 
 				auto exclusiveBrowserPath = BrowserPath.commonPrefix(browserPaths.peek());
 				exclusiveBrowserPath.addSample(SampleType.exclusive, result.offset, m.duration);
+
+				bool allMarked = true;
+				foreach (ref path; browserPaths.get())
+					if (!path.getEffectiveMark())
+					{
+						allMarked = false;
+						break;
+					}
+				if (allMarked)
+					markExclusiveSamples++;
 			}
 		}
 		else
@@ -274,8 +284,12 @@ struct Subprocess
 				representativeBrowserPath.addSample(SampleType.shared_, result.offset, m.duration);
 				representativeBrowserPath.addSample(SampleType.exclusive, result.offset, m.duration);
 				representativeBrowserPath.addDistributedSample(1, m.duration);
+				if (representativeBrowserPath.getEffectiveMark())
+					markExclusiveSamples++;
 			}
 		}
+		if (expert)
+			markTotalSamples++;
 
 		result = Result.init;
 		allPaths.clear();

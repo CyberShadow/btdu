@@ -1480,7 +1480,10 @@ struct Browser
 						break;
 					case ' ':
 						if (selection)
+						{
 							selection.setMark(!selection.getEffectiveMark());
+							invalidateMark();
+						}
 						moveCursor(+1);
 						break;
 					default:

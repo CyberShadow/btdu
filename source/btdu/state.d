@@ -42,6 +42,9 @@ BrowserPath browserRoot;
 
 shared static this() { browserRoot.setMark(false); }
 
+ulong markTotalSamples, markExclusiveSamples;
+void invalidateMark() { markTotalSamples = markExclusiveSamples = 0; }
+
 Subprocess[] subprocesses;
 bool paused;
 debug bool importing;
