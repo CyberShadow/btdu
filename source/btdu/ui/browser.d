@@ -322,7 +322,31 @@ struct Browser
 			reverse({
 				xOverflowEllipsis({
 					// Top bar
-					at(0, 0, { write(" btdu v" ~ btduVersion ~ " @ ", fsPath, endl); });
+					size_t numMarked, numUnmarked;
+					browserRoot.enumerateMarks((ref _, bool marked) { (marked ? numMarked : numUnmarked)++; });
+					if (numMarked)
+					{
+						assert(numUnmarked > 0); numUnmarked--; // Root is always unmarked
+						at(0, 0, {
+							if (expert)
+							{
+								if (markTotalSamples == 0)
+									write(" ? in");
+								else
+									write(formatted!" ~%s (±%s) in"(
+										humanSize(markExclusiveSamples * real(totalSize) / markTotalSamples),
+										humanSize(estimateError(markTotalSamples, markExclusiveSamples) * totalSize),
+									));
+							}
+							write(" ", numMarked);
+							if (numUnmarked)
+								write(" (-", numUnmarked, ")");
+							write(" marked item", numMarked + numUnmarked == 1 ? "" : "s");
+							write(endl);
+						});
+					}
+					else
+						at(0, 0, { write(" btdu v" ~ btduVersion ~ " @ ", fsPath, endl); });
 					if (imported)
 						at(width - 10, 0, { write(" [IMPORT] "); });
 					else
