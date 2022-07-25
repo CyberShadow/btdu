@@ -497,6 +497,7 @@ struct BrowserPath
 			@JSONOptional JSONFragment distributedDuration = JSONFragment("0");
 		}
 		SampleData data;
+		@JSONOptional Mark mark;
 
 		BrowserPath*[] children;
 	}
@@ -513,6 +514,7 @@ struct BrowserPath
 			s.data.distributedSamples.json = this.distributedSamples.format!"%17e";
 		if (this.distributedDuration !is 0.)
 			s.data.distributedDuration.json = this.distributedDuration.format!"%17e";
+		s.mark = this.mark;
 		return s;
 	}
 
@@ -530,6 +532,7 @@ struct BrowserPath
 			p.data[sampleType] = s.data.tupleof[sampleType];
 		p.distributedSamples = s.data.distributedSamples.json.strip.to!double;
 		p.distributedDuration = s.data.distributedDuration.json.strip.to!double;
+		p.mark = s.mark;
 		return p;
 	}
 
