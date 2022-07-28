@@ -6,8 +6,10 @@ The main process collects data from subprocesses, and arranges it into a tree.
 
 ## Source layout
 
+- `alloc.d` - Memory allocation utility code.
 - `browser.d` - The ncurses-based user interface.
 - `common.d` - Small module with common definitions.
+- `impexp.d` - Import/export code.
 - `main.d` - Entry point and event loop.
 - `paths.d` - Implements a trie for efficiently storing paths and associated hierarchical data.
 - `proto.d` - Describes the protocol used between the main process and subprocesses.

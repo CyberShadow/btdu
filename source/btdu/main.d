@@ -19,7 +19,6 @@
 /// btdu entry point
 module btdu.main;
 
-import core.lifetime : move;
 import core.runtime : Runtime;
 import core.time;
 
@@ -28,34 +27,28 @@ import std.algorithm.searching;
 import std.array;
 import std.conv : to;
 import std.exception;
-import std.math : ceil;
 import std.parallelism : totalCPUs;
 import std.path;
-import std.process : environment;
 import std.random;
 import std.socket;
 import std.stdio;
 import std.string;
 import std.typecons;
 
-import ae.sys.data;
-import ae.sys.datamm;
 import ae.sys.file : getMounts, getPathMountInfo;
 import ae.sys.shutdown;
 import ae.utils.funopt;
-import ae.utils.json;
 import ae.utils.main;
 import ae.utils.time.parsedur;
 import ae.utils.typecons : require;
 
 import btdu.ui.browser;
 import btdu.common;
+import btdu.impexp;
 import btdu.paths;
 import btdu.sample;
 import btdu.subproc;
 import btdu.state;
-
-alias imported = btdu.state.imported;
 
 @(`Sampling disk usage profiler for btrfs.`)
 void program(
@@ -103,28 +96,13 @@ Please report defects and enhancement requests to the GitHub issue tracker:
 		return;
 	}
 
-	static Data importData; // Keep memory-mapped file alive, as directory names may reference it
 	if (doImport)
 	{
 		if (procs || seed || subprocess || expert || physical || maxSamples || maxTime || minResolution || exportPath)
 			throw new Exception("Conflicting command-line options");
 
 		stderr.writeln("Loading results from file...");
-		importData = mapFile(path, MmMode.read);
-		auto json = cast(string)importData.unsafeContents; // Pinned by importData, which has static lifetime
-
-		debug importing = true;
-		auto s = json.jsonParse!SerializedState();
-
-		expert = s.expert;
-		physical = s.physical;
-		fsPath = s.fsPath;
-		totalSize = s.totalSize;
-		move(*s.root, browserRoot);
-
-		browserRoot.resetParents();
-		debug importing = false;
-		imported = true;
+		importData(path);
 	}
 
 	.expert = expert;
@@ -289,63 +267,12 @@ Please report defects and enhancement requests to the GitHub issue tracker:
 	if (exportPath)
 	{
 		stderr.writeln("Exporting results...");
-
-		SerializedState s;
-		s.expert = expert;
-		s.physical = physical;
-		s.fsPath = fsPath;
-		s.totalSize = totalSize;
-		s.root = &browserRoot;
-
-		alias LockingBinaryWriter = typeof(File.lockingBinaryWriter());
-		alias JsonFileSerializer = CustomJsonSerializer!(JsonWriter!LockingBinaryWriter);
-
-		{
-			JsonFileSerializer j;
-			auto file = exportPath == "-" ? stdout : File(exportPath, "wb");
-			j.writer.output = file.lockingBinaryWriter;
-			j.put(s);
-		}
+		exportData(exportPath);
 		stderr.writeln("Exported results to: ", exportPath);
 	}
 
 	if (du)
-	{
-		ulong blockSize = {
-			// As in du(1)
-			if ("POSIXLY_CORRECT" in environment)
-				return 512;
-			foreach (name; ["BTDU_BLOCK_SIZE", "DU_BLOCK_SIZE", "BLOCK_SIZE", "BLOCKSIZE"])
-				if (auto value = environment.get(name))
-					return value.to!ulong;
-			return 1024;
-		}();
-
-		auto totalSamples = browserRoot.data[SampleType.represented].samples;
-
-		void visit(BrowserPath* path)
-		{
-			for (auto child = path.firstChild; child; child = child.nextSibling)
-				visit(child);
-
-			auto samples = path.data[SampleType.represented].samples;
-			auto size = ceil(samples * real(totalSize) / totalSamples / blockSize).to!ulong;
-			writefln("%d\t%s%s", size, fsPath, path.pointerWriter);
-		}
-
-		if (totalSamples)
-			visit(&browserRoot);
-	}
-}
-
-/// Serialized
-struct SerializedState
-{
-	bool expert;
-	@JSONOptional bool physical;
-	string fsPath;
-	ulong totalSize;
-	BrowserPath* root;
+		exportDu();
 }
 
 void checkBtrfs(string fsPath)
