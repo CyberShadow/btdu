@@ -31,7 +31,7 @@ import std.file;
 import std.process;
 import std.random;
 import std.socket;
-import std.stdio;
+import std.stdio : stdin;
 import std.string;
 
 import ae.utils.array;

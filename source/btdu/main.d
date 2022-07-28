@@ -31,7 +31,7 @@ import std.parallelism : totalCPUs;
 import std.path;
 import std.random;
 import std.socket;
-import std.stdio;
+import std.stdio : stdin, stdout, stderr;
 import std.string;
 import std.typecons;
 
