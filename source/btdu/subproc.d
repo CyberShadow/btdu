@@ -296,7 +296,7 @@ private SubPath* appendError(ref SubPath path, ref btdu.proto.Error error)
 
 	import core.stdc.errno : ENOENT;
 	if (&path == &subPathRoot && error.errno == ENOENT && error.msg == "logical ino")
-		return result.appendName("\0SLACK");
+		return result.appendName("\0UNUSED");
 
 	result = result.appendName("\0ERROR");
 	result = result.appendName(error.msg);

@@ -482,7 +482,7 @@ struct Browser
 										"\n\n" ~
 										"More precisely, this node represents samples for which BTRFS_IOC_LOGICAL_INO returned zero results, " ~
 										"but BTRFS_IOC_LOGICAL_INO_V2 with BTRFS_LOGICAL_INO_ARGS_IGNORE_OFFSET returned something else.";
-								case "SLACK":
+								case "UNUSED":
 									return
 										"btrfs reports that there is nothing at the random sample location that btdu picked." ~
 										"\n\n" ~
@@ -496,8 +496,8 @@ struct Browser
 										"As such, these samples do not have corresponding logical offsets." ~
 										"\n\n" ~
 										"A healthy btrfs filesystem should have at least some unallocated space, in order to allow the metadata block group to grow.\n " ~
-										"If you have too little unallocated space, consider running a balance on the DATA block group, to convert slack space to unallocated space.\n" ~
-										"(You will find slack space in btdu under a <SLACK> node.)" ~
+										"If you have too little unallocated space, consider running a balance on the DATA block group, to convert unused DATA space to unallocated space.\n" ~
+										"(You will find unused DATA space in btdu under a <UNUSED> node.)" ~
 										"\n\n" ~
 										"More precisely, this node represents samples which are not covered by BTRFS_DEV_EXTENT_KEY entries in BTRFS_DEV_TREE_OBJECTID.";
 								default:
@@ -542,7 +542,7 @@ struct Browser
 									switch (name)
 									{
 										case "ENOENT":
-											assert(false); // Should have been rewritten into SLACK
+											assert(false); // Should have been rewritten into UNUSED
 										case "ENOTTY":
 											return
 												"An ENOTTY (\"Inappropriate ioctl for device\") error means that btdu issued an ioctl which the kernel btrfs code does not understand." ~
