@@ -20,9 +20,8 @@
 module btdu.sample;
 
 import core.stdc.errno;
-import core.sys.linux.fs : BLKGETSIZE64;
 import core.sys.posix.fcntl;
-import core.sys.posix.sys.ioctl : ioctl;
+import core.sys.posix.sys.ioctl : ioctl, _IOR;
 import core.sys.posix.unistd;
 
 import std.algorithm.comparison : among;
@@ -303,6 +302,8 @@ void subprocessMain(string fsPath, bool physical)
 }
 
 private:
+
+enum BLKGETSIZE64 = _IOR!size_t(0x12, 114);
 
 struct Root
 {
