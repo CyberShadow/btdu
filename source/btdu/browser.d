@@ -50,6 +50,7 @@ import ae.utils.time : stdDur, stdTime;
 import btdu.common;
 import btdu.state;
 import btdu.paths;
+import btdu.proto : logicalOffsetHole, logicalOffsetSlack;
 
 alias imported = btdu.state.imported;
 
@@ -345,7 +346,7 @@ struct Browser
 						(expert ? "  " : "") ~ "- Logical offsets: " ~ (currentPath.data[type].samples
 							? format!"%s%-(%s, %)"(
 								currentPath.data[type].samples > currentPath.data[type].offsets.length ? "..., " : "",
-								currentPath.data[type].offsets[].filter!(o => o != Offset.init).map!((ref o) => o.logical).map!(o => o == ulong.max ? "-" : o.text),
+								currentPath.data[type].offsets[].filter!(o => o != Offset.init).map!((ref o) => o.logical).map!(o => o.among(logicalOffsetHole, logicalOffsetSlack) ? "-" : o.text),
 							)
 							: "-"),
 
@@ -500,6 +501,19 @@ struct Browser
 										"(You will find unused DATA space in btdu under a <UNUSED> node.)" ~
 										"\n\n" ~
 										"More precisely, this node represents samples which are not covered by BTRFS_DEV_EXTENT_KEY entries in BTRFS_DEV_TREE_OBJECTID.";
+								case "SLACK":
+									return
+										"This node represents sample points in physical device space which are beyond the end of the btrfs filesystem.\n" ~
+										"As such, these samples do not have corresponding logical offsets." ~
+										"\n\n" ~
+										"The presence of this node indicates that the space allocated for the btrfs filesystem " ~
+										"is smaller than the underlying block device (usually a disk partition)." ~
+										"\n\n" ~
+										"To make this space available to the filesystem, the btrfs device can be resized to fill the entire block device " ~
+										"with `btrfs filesystem resize`, specifying `max` for the size parameter." ~
+										"\n\n" ~
+										"More precisely, this node represents samples in physical device space which are greater than btrfs_ioctl_dev_info_args::total_bytes " ~
+										"but less than the size of the file or block device at btrfs_ioctl_dev_info_args::path.";
 								default:
 									if (name.skipOver("TREE_"))
 										return

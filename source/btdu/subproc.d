@@ -177,8 +177,10 @@ struct Subprocess
 			"RAID1C3",
 			"RAID1C4",
 		].amap!(s => "\0" ~ s);
-		if (result.offset.logical == -1) // hole
+		if (result.offset.logical == logicalOffsetHole)
 			result.browserPath = result.browserPath.appendName("\0UNALLOCATED");
+		else if (result.offset.logical == logicalOffsetSlack)
+			result.browserPath = result.browserPath.appendName("\0SLACK");
 		else if ((m.chunkFlags & BTRFS_BLOCK_GROUP_PROFILE_MASK) == 0)
 			result.browserPath = result.browserPath.appendName("\0SINGLE");
 		foreach_reverse (b; 0 .. flagNames.length)

@@ -55,6 +55,12 @@ struct Offset
 	ulong devID = -1, physical = -1;
 }
 
+/// Used for Offset.logical to represent unallocated space in physical mode.
+enum u64 logicalOffsetHole = -1;
+
+/// Used for Offset.logical to represent device slack.
+enum u64 logicalOffsetSlack = -2;
+
 struct ResultStartMessage
 {
 	ulong chunkFlags;

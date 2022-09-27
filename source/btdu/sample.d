@@ -20,9 +20,12 @@
 module btdu.sample;
 
 import core.stdc.errno;
+import core.sys.linux.fs : BLKGETSIZE64;
 import core.sys.posix.fcntl;
+import core.sys.posix.sys.ioctl : ioctl;
 import core.sys.posix.unistd;
 
+import std.algorithm.comparison : among;
 import std.algorithm.iteration;
 import std.algorithm.searching : countUntil;
 import std.bigint;
@@ -61,9 +64,6 @@ void subprocessMain(string fsPath, bool physical)
 
 		// stderr.writeln("Reading chunks...");
 
-		/// Used for logicalOffset to represent unallocated space in physical mode.
-		enum u64 hole = -1;
-
 		/// Represents one continuous sampling zone,
 		/// in physical or logical space (depending on the mode).
 		/// Represents one physical extent or one logical chunk.
@@ -100,19 +100,21 @@ void subprocessMain(string fsPath, bool physical)
 				stripeLookup.addNew(offset, chunk.stripe.ptr[0 .. chunk.num_stripes].dup).enforce("Chunk with duplicate offset");
 			});
 
+			debug u64 totalSlack;
+
 			devices = getDevices(fd);
 
 			foreach (ref device; devices)
 			{
 				u64 lastOffset = 0;
-				void flushHole(u64 dataStart, u64 dataEnd)
+				void flushHole(u64 dataStart, u64 dataEnd, u64 holeType = logicalOffsetHole)
 				{
 					if (dataStart != lastOffset)
 					{
 						enforce(lastOffset < dataStart, "Unordered extents");
 						chunks ~= ChunkInfo(
 							0,
-							hole, 0,
+							holeType, 0,
 							device.devid,
 							lastOffset, dataStart - lastOffset,
 						);
@@ -135,9 +137,37 @@ void subprocessMain(string fsPath, bool physical)
 					);
 				}, [device.devid, device.devid]);
 				flushHole(device.total_bytes, device.total_bytes);
+
+				u64 deviceSize = {
+					int devFd = open(cast(char*)device.path.ptr, O_RDONLY);
+					if (devFd < 0)
+						return 0;
+					scope(exit) close(devFd);
+
+					stat_t st;
+					int ret = fstat(devFd, &st);
+					if (ret < 0)
+						return 0;
+					if (S_ISREG(st.st_mode))
+						return st.st_size;
+					if (!S_ISBLK(st.st_mode))
+						return 0;
+
+					u64 size;
+					if (ioctl(devFd, BLKGETSIZE64, &size) < 0)
+						return 0;
+					return size;
+				}();
+
+				if (deviceSize > device.total_bytes)
+				{
+					flushHole(deviceSize, deviceSize, logicalOffsetSlack);
+					debug totalSlack += deviceSize - device.total_bytes;
+				}
 			}
 
-			assert(chunks.map!((ref chunk) => chunk.I!length).sum == devices.map!((ref device) => device.total_bytes).sum);
+			// The sum of sizes of all chunks should be equal to the sum of sizes of all devices plus the total slack.
+			debug assert(chunks.map!((ref chunk) => chunk.I!length).sum == devices.map!((ref device) => device.total_bytes).sum + totalSlack);
 		}
 
 		u64 totalSize = chunks.map!((ref chunk) => chunk.I!length).sum;
@@ -163,9 +193,9 @@ void subprocessMain(string fsPath, bool physical)
 						u64 physicalOffsetInExtent = (targetPos - pos);
 						physicalOffset = chunk.physicalOffset + physicalOffsetInExtent;
 
-						if (chunk.logicalOffset == hole)
+						if (chunk.logicalOffset.among(logicalOffsetHole, logicalOffsetSlack))
 						{
-							logicalOffset = hole;
+							logicalOffset = chunk.logicalOffset;
 						}
 						else
 						{
