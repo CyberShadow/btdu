@@ -63,7 +63,7 @@ void program(
 	Option!(Seed, "Random seed used to choose samples") seed = 0,
 	Switch!hiddenOption subprocess = false,
 	Switch!("Measure physical space (instead of logical).", 'p') physical = false,
-	Switch!("Expert mode: collect and show additional metrics.\nUses more memory.") expert = false,
+	Switch!("Expert mode: collect and show additional metrics.\nUses more memory.", 'x') expert = false,
 	Switch!hiddenOption man = false,
 	Switch!("Run without launching the result browser UI.") headless = false,
 	Option!(ulong, "Stop after collecting N samples.", "N", 'n') maxSamples = 0,
