@@ -27,7 +27,7 @@ In this regard, btdu has two modes of operation:
 - In logical space mode, btdu samples the logical offset space. As such, a 1GB file (containing unique uncompressed unshared data) will show up with a size of 1GB, regardless of whether it is stored in a SINGLE, DUP, or RAID1 profile block group.
 - In physical space mode, btdu samples offsets from the underlying block devices, translating each to a logical offset first. The file in the example above will thus show up with a size of 2GB if it is stored on a block group using the RAID1 or DUP profiles.
 
-In physical space mode, btdu will also show unallocated space (represented as an `<UNALLOCATED>` node in the hierarchy root).
+In physical space mode, btdu will also show unallocated space (represented as an `<UNALLOCATED>` node in the hierarchy root) and any device slack (represented as a `<SLACK>` node).
 
 Logical space mode is the default. To use physical space mode, run btdu with `--physical` (`-p`).
 
