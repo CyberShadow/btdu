@@ -103,7 +103,7 @@ Please report defects and enhancement requests to the GitHub issue tracker:
 	Data importData; // Keep memory-mapped file alive, as directory names may reference it
 	if (doImport)
 	{
-		if (procs || seed || subprocess || expert || physical || headless || maxSamples || maxTime || minResolution || exportPath)
+		if (procs || seed || subprocess || expert || physical || maxSamples || maxTime || minResolution || exportPath)
 			throw new Exception("Conflicting command-line options");
 
 		stderr.writeln("Loading results from file...");
@@ -179,10 +179,16 @@ Please report defects and enhancement requests to the GitHub issue tracker:
 	auto exceptSet = new SocketSet;
 
 	bool run = true;
-	if (headless) // In non-headless mode, ncurses takes care of this
+	if (headless)
+	{
+		// In non-headless mode, ncurses takes care of this
 		addShutdownHandler((reason) {
 			run = false;
 		});
+
+		if (doImport)
+			run = false;
+	}
 
 	// Main event loop
 	while (run)
