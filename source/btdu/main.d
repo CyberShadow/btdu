@@ -173,7 +173,7 @@ Please report defects and enhancement requests to the GitHub issue tracker:
 
 	enum totalMaxDuration = 1.seconds / 60; // 60 FPS
 	// How much time we may spend processing one subprocess's output:
-	auto subprocMaxDuration = totalMaxDuration / subprocesses.length;
+	auto subprocMaxDuration = totalMaxDuration / (1 + subprocesses.length);
 
 	auto readSet = new SocketSet;
 	auto exceptSet = new SocketSet;
