@@ -641,7 +641,9 @@ struct Browser
 						.byKeyValue
 						.array
 						.sort!((ref a, ref b) => a.key < b.key)
-						.map!(pair => format("- %s (%d%%)", pair.key, pair.value * 100 / representedSamples))
+						.map!(pair => representedSamples
+							? format("- %s (%d%%)", pair.key, pair.value * 100 / representedSamples)
+							: format("- %s (-%%)", pair.key))
 						.array;
 				}
 
@@ -948,7 +950,7 @@ struct Browser
 						null,
 						getFullPath(selection).to!dstring,
 						null,
-					] ~ (expert ? [
+					] ~ (expert && totalSamples ? [
 						"This will free ~%s (±%s)."d.format(
 							humanSize(selection.data[SampleType.exclusive].samples * real(totalSize) / totalSamples),
 							humanSize(estimateError(totalSamples, selection.data[SampleType.exclusive].samples) * totalSize),

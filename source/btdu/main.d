@@ -305,7 +305,9 @@ Please report defects and enhancement requests to the GitHub issue tracker:
 			auto size = ceil(samples * real(totalSize) / totalSamples / blockSize).to!ulong;
 			writefln("%d\t%s%s", size, fsPath, path.pointerWriter);
 		}
-		visit(&browserRoot);
+
+		if (totalSamples)
+			visit(&browserRoot);
 	}
 }
 
