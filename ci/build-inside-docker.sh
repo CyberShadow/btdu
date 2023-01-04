@@ -5,6 +5,13 @@ cd "$(dirname "$0")"/..
 
 PATH=/tmp/ldc2-host/bin:$PATH
 
+(
+	cd ..
+	git clone -b fix32bit https://github.com/CyberShadow/d-btrfs.git
+)
+
+dub add-local ../d-btrfs
+
 host_arch=$(uname -m)
 target_arch=$BTDU_ARCH
 

@@ -5,6 +5,9 @@ target_arch=$BTDU_ARCH
 
 # Translate LDC target architecture to Debian architecture
 case "$target_arch" in
+	i686)
+		target_debian_arch=i386
+		;;
 	x86_64)
 		target_debian_arch=amd64
 		;;
