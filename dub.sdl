@@ -1,2 +1,0 @@
-name "btdu"
-dependency "btrfs" version="~>0.0.13"
