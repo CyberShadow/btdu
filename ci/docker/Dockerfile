@@ -10,4 +10,3 @@ RUN /root/setup-ldc.sh
 
 COPY setup-ldc-runtime.sh /root/setup-ldc-runtime.sh
 RUN /root/setup-ldc-runtime.sh
-RUN	apt-get install -y git

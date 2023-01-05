@@ -1,11 +1,2 @@
 name "btdu"
-description "sampling disk usage profiler for btrfs"
-license "GPL v2"
-targetType "executable"
-
-toolchainRequirements frontend=">=2.097"
-
-dependency "ae" version="==0.0.3228"
 dependency "btrfs" version="~>0.0.13"
-dependency "ncurses" version="~>0.0.149"
-dependency "emsi_containers" version="==0.9.0"

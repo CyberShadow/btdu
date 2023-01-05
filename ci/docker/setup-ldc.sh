@@ -1,6 +1,3 @@
-#!/bin/bash
-set -eEuo pipefail
-
 ldc_ver=1.30.0
 
 host_arch=$(uname -m)
