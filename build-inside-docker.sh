@@ -12,25 +12,12 @@ packages=(
 	xz-utils  # To unpack LDC archives
 	curl      # To download LDC
 	cmake     # To rebuild the LDC runtime
-)
-
-if [[ "$target_arch" == "$host_arch" ]]
-then
-	packages+=(
-	)
-else
-	packages+=(
-		gcc-"${target_arch/_/-}"-linux-gnu
-	)
-fi
-packages+=(
+	gcc-"${target_arch/_/-}"-linux-gnu
 )
 
 apt-get install -y "${packages[@]}"
 
 ldc_ver=1.30.0
-
-host_arch=$(uname -m)
 
 (
 	cd /tmp
