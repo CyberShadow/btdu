@@ -21,12 +21,31 @@ module btdu.common;
 
 import std.format : format;
 import std.random : Random;
+import std.traits;
 
 enum btduVersion = "0.5.0";
 
 alias Seed = typeof(Random.defaultSeed);
 
 // C error messages
+
+const(char)[] errorString(int errno)
+{
+	import core.stdc.string : strlen, strerror_r;
+	import std.traits : ReturnType;
+
+	char[1024] buf = void;
+	const(char)* s;
+	static if (is(ReturnType!strerror_r == int))
+	{
+		import std.exception : errnoEnforce;
+		errnoEnforce(strerror_r(errno, buf.ptr, buf.length) == 0, "strerror_r");
+		s = buf.ptr;
+	}
+	else // GNU
+		s = strerror_r(errno, buf.ptr, buf.length);
+	return s[0 .. s.strlen];
+}
 
 struct Errno
 {
@@ -177,10 +196,7 @@ ref Errno getErrno(int errno)
 		}
 		errnoLookup.require(m.name, errno);
 
-		import core.stdc.string : strlen, strerror_r;
-		char[1024] buf = void;
-		auto s = strerror_r(errno, buf.ptr, buf.length);
-		m.description = s[0 .. s.strlen].idup;
+		m.description = errorString(errno).idup;
 
 		return m;
 	}());

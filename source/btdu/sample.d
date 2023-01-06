@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020, 2021, 2022  Vladimir Panteleev <btdu@cy.md>
+ * Copyright (C) 2020, 2021, 2022, 2023  Vladimir Panteleev <btdu@cy.md>
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public
@@ -45,6 +45,7 @@ import btrfs.c.ioctl : btrfs_ioctl_dev_info_args;
 import btrfs.c.kerncompat;
 import btrfs.c.kernel_shared.ctree;
 
+import btdu.common : errorString;
 import btdu.proto;
 
 void subprocessMain(string fsPath, bool physical)
@@ -360,12 +361,8 @@ btdu.proto.Error toError(Exception e)
 	if (auto ex = cast(ErrnoException) e)
 	{
 		// Convert to errno + string
-		import core.stdc.string : strlen, strerror_r;
-		char[1024] buf = void;
-		auto s = strerror_r(errno, buf.ptr, buf.length);
-
 		import std.range : chain;
-		auto suffix = chain(" (".representation, s[0 .. s.strlen].representation, ")".representation);
+		auto suffix = chain(" (".representation, errorString(ex.errno).representation, ")".representation);
 		if (error.msg.endsWith(suffix))
 		{
 			error.msg = error.msg[0 .. $ - suffix.length];
