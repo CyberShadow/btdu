@@ -1,0 +1,22 @@
+diff --git a/src/core/sys/posix/sys/stat.d b/src/core/sys/posix/sys/stat.d
+index 1fb4e44c..f783e62b 100644
+--- a/src/core/sys/posix/sys/stat.d
++++ b/src/core/sys/posix/sys/stat.d
+@@ -1657,7 +1657,16 @@ else version (CRuntime_Bionic)
+ }
+ else version (CRuntime_Musl)
+ {
+-    alias __mode_t = uint;
++    version (RISCV_Any) {} else
++    version (ARM) {} else
++    version (AArch64) {} else
++    version (SPARC_Any) {} else
++    version (S390) {} else
++    version (SystemZ) {} else
++    {
++        alias __mode_t = uint;
++    }
++
+     enum {
+         S_IRUSR    = 0x100, // octal 0400
+         S_IWUSR    = 0x080, // octal 0200
