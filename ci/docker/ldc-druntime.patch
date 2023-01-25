@@ -1,5 +1,224 @@
+diff --git a/src/core/stdc/config.d b/src/core/stdc/config.d
+index 198e9340..c55fc40a 100644
+--- a/src/core/stdc/config.d
++++ b/src/core/stdc/config.d
+@@ -243,3 +243,28 @@ alias c_complex_float = __c_complex_float;
+ alias c_complex_double = __c_complex_double;
+ alias c_complex_real = __c_complex_real;
+ }
++
++
++// Returns the mangled name for the 64-bit time_t versions of
++// functions affected by musl's transition to 64-bit time_t.
++// https://musl.libc.org/time64.html
++version (CRuntime_Musl)
++{
++    version (CRuntime_Musl_Pre_Time64)
++        enum muslRedirTime64 = false;
++    else
++    {
++        // time_t was defined as a C long in older Musl versions.
++        enum muslRedirTime64 = (c_long.sizeof == 4);
++    }
++}
++else
++    enum muslRedirTime64 = false;
++
++package(core) template muslRedirTime64Mangle(string name, string redirectedName)
++{
++    static if (muslRedirTime64)
++        enum muslRedirTime64Mangle = redirectedName;
++    else
++        enum muslRedirTime64Mangle = name;
++}
+diff --git a/src/core/stdc/time.d b/src/core/stdc/time.d
+index b19c3c7a..d7a57655 100644
+--- a/src/core/stdc/time.d
++++ b/src/core/stdc/time.d
+@@ -30,19 +30,25 @@ nothrow:
+ @nogc:
+ 
+ ///
++pragma(mangle, muslRedirTime64Mangle!("difftime", "__difftime64"))
+ pure double  difftime(time_t time1, time_t time0); // MT-Safe
+ ///
++pragma(mangle, muslRedirTime64Mangle!("mktime", "__mktime64"))
+ @system time_t  mktime(scope tm* timeptr); // @system: MT-Safe env locale
+ ///
++pragma(mangle, muslRedirTime64Mangle!("time", "__time64"))
+ time_t  time(scope time_t* timer);
+ 
+ ///
+ @system char*   asctime(const scope tm* timeptr); // @system: MT-Unsafe race:asctime locale
+ ///
++pragma(mangle, muslRedirTime64Mangle!("ctime", "__ctime64"))
+ @system char*   ctime(const scope time_t* timer); // @system: MT-Unsafe race:tmbuf race:asctime env locale
+ ///
++pragma(mangle, muslRedirTime64Mangle!("gmtime", "__gmtime64"))
+ @system tm*     gmtime(const scope time_t* timer); // @system: MT-Unsafe race:tmbuf env locale
+ ///
++pragma(mangle, muslRedirTime64Mangle!("localtime", "__localtime64"))
+ @system tm*     localtime(const scope time_t* timer); // @system: MT-Unsafe race:tmbuf env locale
+ ///
+ @system size_t  strftime(scope char* s, size_t maxsize, const scope char* format, const scope tm* timeptr); // @system: MT-Safe env locale
+diff --git a/src/core/sys/posix/aio.d b/src/core/sys/posix/aio.d
+index a76846e9..b566a7a9 100644
+--- a/src/core/sys/posix/aio.d
++++ b/src/core/sys/posix/aio.d
+@@ -8,6 +8,7 @@
+  */
+ module core.sys.posix.aio;
+ 
++import core.stdc.config;
+ import core.sys.posix.signal;
+ import core.sys.posix.sys.types;
+ 
+@@ -393,6 +394,7 @@ else
+     int aio_fsync(int op, aiocb* aiocbp);
+     int aio_error(const(aiocb)* aiocbp);
+     ssize_t aio_return(aiocb* aiocbp);
++    pragma(mangle, muslRedirTime64Mangle!("aio_suspend", "__aio_suspend_time64"))
+     int aio_suspend(const(aiocb*)* aiocb_list, int nitems, const(timespec)* timeout);
+     int aio_cancel(int fd, aiocb* aiocbp);
+     int lio_listio(int mode, const(aiocb*)* aiocb_list, int nitems, sigevent* sevp);
+diff --git a/src/core/sys/posix/dlfcn.d b/src/core/sys/posix/dlfcn.d
+index a9519ca2..6d1b4bbe 100644
+--- a/src/core/sys/posix/dlfcn.d
++++ b/src/core/sys/posix/dlfcn.d
+@@ -178,6 +178,38 @@ version (CRuntime_Glibc)
+         void* dli_saddr;
+     }
+ }
++else
++version (CRuntime_Musl)
++{
++    enum RTLD_LAZY   = 1;
++    enum RTLD_NOW    = 2;
++    enum RTLD_NOLOAD = 4;
++    enum RTLD_NODELETE = 4096;
++    enum RTLD_GLOBAL = 256;
++    enum RTLD_LOCAL  = 0;
++
++    enum RTLD_NEXT    = cast(void *)-1;
++    enum RTLD_DEFAULT = cast(void *)0;
++
++    enum RTLD_DI_LINKMAP = 2;
++
++    int    dlclose(void *);
++    char  *dlerror();
++    void  *dlopen(const(char) *, int);
++
++    pragma(mangle, muslRedirTime64Mangle!("dlsym", "__dlsym_time64"))
++    void  *dlsym(void *__restrict, const(char) *__restrict);
++
++    struct Dl_info
++    {
++        const(char)* dli_fname;
++        void* dli_fbase;
++        const(char)* dli_sname;
++        void* dli_saddr;
++    }
++    int dladdr(const(void) *, Dl_info *);
++    int dlinfo(void *, int, void *);
++}
+ else version (Darwin)
+ {
+     enum RTLD_LAZY      = 0x00001;
+diff --git a/src/core/sys/posix/mqueue.d b/src/core/sys/posix/mqueue.d
+index 2f1a8c69..8e9a15fe 100644
+--- a/src/core/sys/posix/mqueue.d
++++ b/src/core/sys/posix/mqueue.d
+@@ -179,6 +179,7 @@ ssize_t mq_receive (mqd_t mqdes, char* msg_ptr, size_t msg_len, uint* msg_prio);
+  *   On success, mq_receive() returns the number of bytes in the received
+  *   message; on error, -1 is returned, with errno set to indicate the error
+  */
++pragma(mangle, muslRedirTime64Mangle!("mq_timedreceive", "__mq_timedreceive_time64"))
+ ssize_t mq_timedreceive (mqd_t mqdes, char* msg_ptr, size_t msg_len,
+                          uint* msg_prio, const(timespec)* abs_timeout);
+ 
+@@ -217,5 +218,6 @@ int mq_send (mqd_t mqdes, const(char)* msg_ptr, size_t msg_len, uint msg_prio);
+  *   with errno set to indicate the error.
+  *
+  */
++pragma(mangle, muslRedirTime64Mangle!("mq_timedsend", "__mq_timedsend_time64"))
+ int mq_timedsend (mqd_t mqdes, const(char)* msg_ptr, size_t msg_len,
+                    uint msg_prio, const(timespec)* abs_timeout);
+diff --git a/src/core/sys/posix/sched.d b/src/core/sys/posix/sched.d
+index 35463d4f..e6961a9e 100644
+--- a/src/core/sys/posix/sched.d
++++ b/src/core/sys/posix/sched.d
+@@ -66,7 +66,10 @@ version (linux)
+         {
+             int sched_priority;
+             int __reserved1;
+-            timespec[2] __reserved2;
++            static if (muslRedirTime64)
++                c_long[2] __reserved2;
++            else
++                timespec[2] __reserved2;
+             int __reserved3;
+         }
+     }
+@@ -283,6 +286,7 @@ else version (CRuntime_Musl)
+ {
+     int sched_get_priority_max(int);
+     int sched_get_priority_min(int);
++    pragma(mangle, muslRedirTime64Mangle!("sched_rr_get_interval", "__sched_rr_get_interval_time64"))
+     int sched_rr_get_interval(pid_t, timespec*);
+ }
+ else version (CRuntime_UClibc)
+diff --git a/src/core/sys/posix/semaphore.d b/src/core/sys/posix/semaphore.d
+index a163e592..3dfcd846 100644
+--- a/src/core/sys/posix/semaphore.d
++++ b/src/core/sys/posix/semaphore.d
+@@ -217,6 +217,7 @@ else version (CRuntime_Bionic)
+ }
+ else version (CRuntime_Musl)
+ {
++    pragma(mangle, muslRedirTime64Mangle!("sem_timedwait", "__sem_timedwait_time64"))
+     int sem_timedwait(sem_t*, const scope timespec*);
+ }
+ else version (CRuntime_UClibc)
+diff --git a/src/core/sys/posix/signal.d b/src/core/sys/posix/signal.d
+index 68aee980..63c51fb6 100644
+--- a/src/core/sys/posix/signal.d
++++ b/src/core/sys/posix/signal.d
+@@ -3067,6 +3067,7 @@ else version (CRuntime_Bionic)
+ else version (CRuntime_Musl)
+ {
+     int sigqueue(pid_t, int, const sigval);
++    pragma(mangle, muslRedirTime64Mangle!("sigtimedwait", "__sigtimedwait_time64"))
+     int sigtimedwait(const scope sigset_t*, siginfo_t*, const scope timespec*);
+     int sigwaitinfo(const scope sigset_t*, siginfo_t*);
+ }
+diff --git a/src/core/sys/posix/sys/resource.d b/src/core/sys/posix/sys/resource.d
+index 5ab01744..2d1cc909 100644
+--- a/src/core/sys/posix/sys/resource.d
++++ b/src/core/sys/posix/sys/resource.d
+@@ -548,6 +548,7 @@ else version (CRuntime_Musl)
+     int setrlimit(int, const scope rlimit*);
+     alias getrlimit getrlimit64;
+     alias setrlimit setrlimit64;
++    pragma(mangle, muslRedirTime64Mangle!("getrusage", "__getrusage_time64"))
+     int getrusage(int, rusage*);
+ }
+ else version (Solaris)
+diff --git a/src/core/sys/posix/sys/select.d b/src/core/sys/posix/sys/select.d
+index 2a659c30..908993cd 100644
+--- a/src/core/sys/posix/sys/select.d
++++ b/src/core/sys/posix/sys/select.d
+@@ -502,7 +502,9 @@ else version (CRuntime_Musl)
+     {
+         fdset.fds_bits[0 .. $] = 0;
+     }
++    pragma(mangle, muslRedirTime64Mangle!("pselect", "__pselect_time64"))
+     int pselect(int, fd_set*, fd_set*, fd_set*, const scope timespec*, const scope sigset_t*);
++    pragma(mangle, muslRedirTime64Mangle!("select", "__select_time64"))
+     int select(int, fd_set*, fd_set*, fd_set*, timeval*);
+ }
+ else version (CRuntime_UClibc)
 diff --git a/src/core/sys/posix/sys/stat.d b/src/core/sys/posix/sys/stat.d
-index 1fb4e44c..f783e62b 100644
+index 1fb4e44c..c1903b79 100644
 --- a/src/core/sys/posix/sys/stat.d
 +++ b/src/core/sys/posix/sys/stat.d
 @@ -1657,7 +1657,16 @@ else version (CRuntime_Bionic)
@@ -20,3 +239,87 @@ index 1fb4e44c..f783e62b 100644
      enum {
          S_IRUSR    = 0x100, // octal 0400
          S_IWUSR    = 0x080, // octal 0200
+@@ -1891,8 +1900,11 @@ else version (CRuntime_Bionic)
+ }
+ else version (CRuntime_Musl)
+ {
++    pragma(mangle, muslRedirTime64Mangle!("stat", "__stat_time64"))
+     int stat(const scope char*, stat_t*);
++    pragma(mangle, muslRedirTime64Mangle!("fstat", "__fstat_time64"))
+     int fstat(int, stat_t*);
++    pragma(mangle, muslRedirTime64Mangle!("lstat", "__lstat_time64"))
+     int lstat(const scope char*, stat_t*);
+ 
+     alias fstat fstat64;
+diff --git a/src/core/sys/posix/sys/time.d b/src/core/sys/posix/sys/time.d
+index 95cf8836..fd0935e5 100644
+--- a/src/core/sys/posix/sys/time.d
++++ b/src/core/sys/posix/sys/time.d
+@@ -90,7 +90,9 @@ else version (CRuntime_Musl)
+         time_t      tv_sec;
+         suseconds_t tv_usec;
+     }
++    pragma(mangle, muslRedirTime64Mangle!("gettimeofday", "__gettimeofday_time64"))
+     int gettimeofday(timeval*, void*);
++    pragma(mangle, muslRedirTime64Mangle!("utimes", "__utimes_time64"))
+     int utimes(const scope char*, ref const(timeval)[2]);
+ }
+ else version (Darwin)
+diff --git a/src/core/sys/posix/time.d b/src/core/sys/posix/time.d
+index a9be87c8..ad8b1db9 100644
+--- a/src/core/sys/posix/time.d
++++ b/src/core/sys/posix/time.d
+@@ -84,6 +84,7 @@ else version (CRuntime_Bionic)
+ }
+ else version (CRuntime_Musl)
+ {
++    pragma(mangle, muslRedirTime64Mangle!("timegm", "__timegm_time64"))
+     time_t timegm(tm*);
+ }
+ else version (CRuntime_UClibc)
+@@ -424,15 +425,21 @@ else version (CRuntime_Musl)
+ 
+     int nanosleep(const scope timespec*, timespec*);
+ 
++    pragma(mangle, muslRedirTime64Mangle!("clock_getres", "__clock_getres_time64"))
+     int clock_getres(clockid_t, timespec*);
++    pragma(mangle, muslRedirTime64Mangle!("clock_gettime", "__clock_gettime64"))
+     int clock_gettime(clockid_t, timespec*);
++    pragma(mangle, muslRedirTime64Mangle!("clock_settime", "__clock_settime64"))
+     int clock_settime(clockid_t, const scope timespec*);
++    pragma(mangle, muslRedirTime64Mangle!("clock_nanosleep", "__clock_nanosleep_time64"))
+     int clock_nanosleep(clockid_t, int, const scope timespec*, timespec*);
+     int clock_getcpuclockid(pid_t, clockid_t *);
+ 
+     int timer_create(clockid_t, sigevent*, timer_t*);
+     int timer_delete(timer_t);
++    pragma(mangle, muslRedirTime64Mangle!("timer_gettime", "__timer_gettime64"))
+     int timer_gettime(timer_t, itimerspec*);
++    pragma(mangle, muslRedirTime64Mangle!("timer_settime", "__timer_settime64"))
+     int timer_settime(timer_t, int, const scope itimerspec*, itimerspec*);
+     int timer_getoverrun(timer_t);
+ }
+@@ -537,8 +544,11 @@ else version (CRuntime_Bionic)
+ else version (CRuntime_Musl)
+ {
+     char* asctime_r(const scope tm*, char*);
++    pragma(mangle, muslRedirTime64Mangle!("ctime_r", "__ctime64_r"))
+     char* ctime_r(const scope time_t*, char*);
++    pragma(mangle, muslRedirTime64Mangle!("gmtime_r", "__gmtime64_r"))
+     tm*   gmtime_r(const scope time_t*, tm*);
++    pragma(mangle, muslRedirTime64Mangle!("localtime_r", "__localtime64_r"))
+     tm*   localtime_r(const scope time_t*, tm*);
+ }
+ else version (CRuntime_UClibc)
+diff --git a/src/core/sys/posix/utime.d b/src/core/sys/posix/utime.d
+index 66aea58d..e9ea6bd5 100644
+--- a/src/core/sys/posix/utime.d
++++ b/src/core/sys/posix/utime.d
+@@ -63,6 +63,7 @@ else version (CRuntime_Musl)
+         time_t  modtime;
+     }
+ 
++    pragma(mangle, muslRedirTime64Mangle!("utime", "__utime64"))
+     int utime(const scope char*, const scope utimbuf*);
+ }
+ else version (Darwin)

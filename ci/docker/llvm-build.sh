@@ -6,7 +6,7 @@ cd /build/src/llvm
 target_arch=$BTDU_ARCH
 
 case "$target_arch" in
-	x86_64)
+	i686|x86_64)
 		target_llvm_arch=X86
 		;;
 	aarch64)
@@ -36,4 +36,4 @@ mkdir llvm.build
 	) ; "${args[@]}"
 	ninja install
 )
-rm -rf llvm.build
+# rm -rf llvm.build

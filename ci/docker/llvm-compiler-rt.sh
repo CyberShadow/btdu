@@ -17,16 +17,6 @@ cd /build/src/llvm
 
 target_arch=$BTDU_ARCH
 
-case "$target_arch" in
-	x86_64)
-		target_llvm_arch=X86
-		;;
-	aarch64)
-		target_llvm_arch=AArch64
-		;;
-esac
-
-
 # find /build/target/include -name atomic
 # find /build/target/include -name cstring 
 # exit 1
@@ -119,4 +109,4 @@ rm -rf compiler-rt.build
 
 
 
-rm -rf /build/src
+# rm -rf /build/src

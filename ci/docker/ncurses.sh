@@ -2,30 +2,89 @@
 set -eEuo pipefail
 shopt -s lastpipe
 
+
+# grep -R libc_start_main /build/target/lib
+# exit 123
+
+
+# # mkdir /build/src
+# cd /build/src
+# cat > test.c <<EOF
+# int main() { return 0; }
+# EOF
+
+
+# args=(
+# 	# strace
+# 	/build/host/bin/clang
+# 	-L /build/target/lib/linux
+# 	-fuse-ld=/build/host/bin/ld.lld
+# 	--rtlib=compiler-rt
+# 	-static
+# 	--sysroot=/build/target
+# 	-resource-dir=/build/target
+# 	-flto=full
+# 	test.c
+
+# 	--verbose
+# 	-Wl,--verbose
+# ) ; "${args[@]}"
+
+# echo COMPILED OK
+# exit 123
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 target_dir=/build/target
 
 ncurses_version=6.4
 
-# arch=$BTDU_ARCH
-# triple="$arch"-linux-musl
+arch=$BTDU_ARCH
+triple="$arch"-pc-linux-musl
 
 cflags=(
-	-Ofast
-	# -ffunction-sections
-	# -fdata-sections
-	-flto=full
-	# -static
-	# --target="$triple"
-	# -DHAVE_SETENV
-	# -DHAVE_PUTENV
+	-Os
+	-ffunction-sections
+	-fdata-sections
+	# -flto=full
 	-fuse-ld=/build/host/bin/ld.lld
 	--rtlib=compiler-rt
 	-static
 	--sysroot=/build/target
+	-resource-dir=/build/target
+	# --target="$triple"
+	# -DHAVE_SETENV
+	# -DHAVE_PUTENV
 )
 ldflags=(
 	# "-Wl,--gc-sections"
-	
+	--verbose
+	-L--verbose
+	-Wl,--verbose
 )
 
 # find / -mount -name crt1.o
@@ -48,8 +107,8 @@ args=(
 	LDFLAGS="${ldflags[*]}"
 	./configure
 	--prefix=/build/target
-	# --host="$triple"
-	# --target="$triple"
+	--host="$triple"
+	--target="$triple"
 	--with-default-terminfo-dir=/usr/share/terminfo
 	--with-terminfo-dirs="/etc/terminfo:/lib/terminfo:/usr/share/terminfo"
 	--enable-pc-files

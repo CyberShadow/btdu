@@ -3,6 +3,8 @@ set -eEuo pipefail
 
 cd "$(dirname "$0")"
 
+git -C ~/work/extern/ldc/runtime/druntime diff ldc-v1.30.0..musl32 > docker/ldc-druntime.patch
+
 docker=${DOCKER-docker}
 
 arches=("$@")
