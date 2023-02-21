@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020, 2021, 2022  Vladimir Panteleev <btdu@cy.md>
+ * Copyright (C) 2020, 2021, 2022, 2023  Vladimir Panteleev <btdu@cy.md>
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public
@@ -228,9 +228,13 @@ Please report defects and enhancement requests to the GitHub issue tracker:
 			nextRefresh = now + refreshInterval;
 		}
 
-		if ((maxSamples && browserRoot.data[SampleType.represented].samples >= maxSamples) ||
-			(maxTime && now > startTime + parsedMaxTime) ||
-			(minResolution && (totalSize / browserRoot.data[SampleType.represented].samples) <= parsedMinResolution))
+		if ((maxSamples
+				&& browserRoot.data[SampleType.represented].samples >= maxSamples) ||
+			(maxTime
+				&& now > startTime + parsedMaxTime) ||
+			(minResolution
+				&& browserRoot.data[SampleType.represented].samples
+				&& (totalSize / browserRoot.data[SampleType.represented].samples) <= parsedMinResolution))
 		{
 			if (headless)
 				break;
