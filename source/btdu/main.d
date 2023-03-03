@@ -46,6 +46,7 @@ import ae.utils.funopt;
 import ae.utils.json;
 import ae.utils.main;
 import ae.utils.time.parsedur;
+import ae.utils.typecons;
 
 import btdu.browser;
 import btdu.common;
@@ -68,7 +69,7 @@ void program(
 	Switch!("Run without launching the result browser UI.") headless = false,
 	Option!(ulong, "Stop after collecting N samples.", "N", 'n') maxSamples = 0,
 	Option!(string, "Stop after running for this duration.", "DURATION") maxTime = null,
-	Option!(string, "Stop after achieving this resolution.", "SIZE") minResolution = null,
+	Option!(string, `Stop after achieving this resolution (e.g. "1MB" or "1%").`, "SIZE") minResolution = null,
 	Option!(string, "On exit, export the collected results to the given file.", "PATH", 'o', "export") exportPath = null,
 	Switch!("On exit, export represented size estimates in 'du' format to standard output.") du = false,
 	Switch!("Instead of analyzing a btrfs filesystem, read previously collected results saved with --export from PATH.", 'f', "import") doImport = false,
@@ -149,9 +150,16 @@ Please report defects and enhancement requests to the GitHub issue tracker:
 	if (maxTime)
 		parsedMaxTime = parseDuration(maxTime);
 
-	real parsedMinResolution;
-	if (minResolution)
-		parsedMinResolution = parseSize(minResolution);
+	@property real parsedMinResolution()
+	{
+		static Nullable!real value;
+		assert(minResolution && totalSize);
+		return value.require({
+			if (minResolution.value.endsWith("%"))
+				return minResolution[0 .. $-1].to!real / 100 * totalSize;
+			return parseSize(minResolution);
+		}());
+	}
 
 	Socket stdinSocket;
 	if (!headless)
@@ -234,6 +242,7 @@ Please report defects and enhancement requests to the GitHub issue tracker:
 				&& now > startTime + parsedMaxTime) ||
 			(minResolution
 				&& browserRoot.data[SampleType.represented].samples
+				&& totalSize
 				&& (totalSize / browserRoot.data[SampleType.represented].samples) <= parsedMinResolution))
 		{
 			if (headless)
