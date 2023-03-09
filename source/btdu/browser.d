@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020, 2021, 2022  Vladimir Panteleev <btdu@cy.md>
+ * Copyright (C) 2020, 2021, 2022, 2023  Vladimir Panteleev <btdu@cy.md>
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public
@@ -1034,19 +1034,11 @@ struct Browser
 		selection = items[pos];
 	}
 
-	// https://github.com/D-Programming-Deimos/ncurses/pull/43
-	align(1)
-	struct cchar_t
-	{
-		attr_t attr;
-		wchar_t[CCHARW_MAX] chars;
-	}
-
 	static cchar_t toCChar(dchar c, uint attr)
 	{
 		dchar[2] d = [c, 0];
 		cchar_t cchar;
-		if (setcchar(cast(deimos.ncurses.curses.cchar_t*)&cchar, d.ptr, attr, 0, null) != OK)
+		if (setcchar(&cchar, d.ptr, attr, 0, null) != OK)
 			return toCChar('\U0000FFFD', attr);
 		return cchar;
 	}
@@ -1057,7 +1049,7 @@ struct Browser
 		ccharBuf.clear();
 		foreach (dchar c; (cast(string)str).sanitize)
 			ccharBuf.put(toCChar(c, attr));
-		mvadd_wchnstr(y, x, cast(deimos.ncurses.curses.cchar_t*)ccharBuf.get().ptr, ccharBuf.get().length.to!int);
+		mvadd_wchnstr(y, x, ccharBuf.get().ptr, ccharBuf.get().length.to!int);
 	}
 
 	/// Pausing has the following effects:

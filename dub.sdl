@@ -7,5 +7,5 @@ toolchainRequirements frontend=">=2.097"
 
 dependency "ae" version="==0.0.3236"
 dependency "btrfs" version="~>0.0.16"
-dependency "ncurses" version="~>0.0.149"
+dependency "ncurses" version="~>1.0.0"
 dependency "emsi_containers" version="==0.9.0"

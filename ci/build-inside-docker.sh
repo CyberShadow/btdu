@@ -51,6 +51,7 @@ args=(
 	-v
 	-mtriple "$target_arch"-linux-gnu
 	-i
+	-i=-deimos  # https://issues.dlang.org/show_bug.cgi?id=23597
 	-of"$fn"
 	-L-Lrelease
 	-L-l:libtermcap.a
