@@ -33,7 +33,7 @@ import std.algorithm.searching;
 import std.algorithm.sorting;
 import std.conv;
 import std.encoding : sanitize;
-import std.exception : errnoEnforce;
+import std.exception : errnoEnforce, enforce;
 import std.format;
 import std.range;
 import std.string;
@@ -41,7 +41,7 @@ import std.traits;
 
 import deimos.ncurses;
 
-import ae.sys.file : listDir;
+import ae.sys.file : listDir, getMounts;
 import ae.utils.appender;
 import ae.utils.meta;
 import ae.utils.text;
@@ -1266,6 +1266,7 @@ struct Browser
 						auto path = getFullPath(selection).idup;
 						deleteCurrent = path;
 						deleteStop = false;
+						ulong initialDeviceID;
 						deleteThread = new Thread({
 							listDir!((e) {
 								synchronized(deleteThread)
@@ -1278,8 +1279,27 @@ struct Browser
 									throw new Exception("User abort");
 								}
 
+								if (!initialDeviceID)
+									initialDeviceID = e.needStat!(e.StatTarget.dirEntry)().st_dev;
+
 								if (e.entryIsDir)
+								{
+									auto stat = e.needStat!(e.StatTarget.dirEntry)();
+
+									// A subvolume root, or a different btrfs filesystem is mounted here
+									auto isTreeRoot = stat.st_ino.among(2, 256);
+
+									if (stat.st_dev != initialDeviceID || isTreeRoot)
+									{
+										if (getMounts().canFind!(mount => mount.file == e.fullNameFS))
+											throw new Exception("Path resides in another filesystem, stopping");
+										enforce(isTreeRoot, "Unexpected st_dev change");
+										// Can only be a subvolume going forward.
+
+										// TODO: delete entire subvolumes in whole
+									}
 									e.recurse();
+								}
 
 								int ret = unlinkat(e.dirFD, e.baseNameFSPtr,
 									e.entryIsDir ? AT_REMOVEDIR : 0);
