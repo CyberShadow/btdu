@@ -5,7 +5,7 @@ btdu - sampling disk usage profiler for btrfs
 
 Some [btrfs](https://btrfs.wiki.kernel.org/) features may make it difficult to estimate what disk space is being used for:
 
-- **Subvolumes** allow cheap copy-on-write snapshots of entire filesystem trees, with data that hasn't been modified being shared among snapshots
+- **Subvolumes** allow cheap copy-on-write snapshots of entire filesystem trees, with unmodified data being shared among snapshots
 - **File and extent cloning** allow creating cheap copies of files or parts thereof, with extents being stored only once
 - **Compression** transparently allows further reducing disk usage
 
@@ -34,7 +34,7 @@ Use cases
 
 - **Quickly summarize space usage**
 
-  btdu needs to collect only 100 samples to achieve a ~1% resolution, which means it can identify space hogs very quickly. This is useful if the disk is full and some space must be freed ASAP to get things back up and running.
+  btdu needs to collect only 100 samples to achieve a ~1% resolution, which means it can identify space hogs very quickly. This is useful if the disk is full, and some space must be freed urgently to restore normal operation.
 
 - **Estimate snapshot size**
 
@@ -42,15 +42,15 @@ Use cases
 
 - **Estimate compressed data size**
 
-  If you use btrfs data compression (whether to save space / improve performance / conserve flash writes), btdu can be used to estimate how much real disk space compressed data uses.
+  If you use btrfs data compression (whether to save space, improve performance, or conserve flash writes), btdu can be used to estimate how much real disk space compressed data uses.
 
 - **Estimate unreachable extent size**
 
-  A feature unique to btdu is the ability to estimate the amount of space used by unreachable parts of extents, i.e. data in extents containing older versions of file content which has since been overwritten. This btrfs "dark matter" can be an easy to overlook space hog, which could be eliminated by rewriting or defragmenting affected files.
+  A feature unique to btdu is the ability to estimate the amount of space used by unreachable parts of extents, i.e. data in extents containing older versions of file content which has since been overwritten. This btrfs "dark matter" can be an easily overlooked space hog, which can be eliminated by rewriting or defragmenting affected files.
 
 - **Understand btrfs space usage**
 
-  btdu shows explanations for hierarchy objects and common errors, which can help understand how btrfs uses disk space. The `--expert` mode enables collection and display of [additional size metrics](CONCEPTS.md#size-metrics), providing more insight into allocation of objects with non-trivial sharing. [Logical and physical sampling modes](CONCEPTS.md#logical-vs-physical-space) can help understand RAID space usage, especially when using multiple profiles.
+  btdu shows explanations for hierarchy objects and common errors, which can help understand how btrfs uses disk space. The `--expert` mode enables the collection and display of [additional size metrics](CONCEPTS.md#size-metrics), providing more insight into the allocation of objects with non-trivial sharing. [Logical and physical sampling modes](CONCEPTS.md#logical-vs-physical-space) can help understand RAID space usage, especially when using multiple profiles.
 
 
 Installation
@@ -69,19 +69,21 @@ btdu can be installed in one of the following ways:
 Building
 --------
 
-- Install [a D compiler](https://dlang.org/download.html).  
-  Note that you will need a compiler supporting D v2.097 or newer - the compiler in your distribution's repositories might be too old.
-- Install [Dub](https://github.com/dlang/dub), if it wasn't included with your D compiler.
-- Install `libncursesw5-dev`, or your distribution's equivalent.
-- Run `dub build -b release`
+1. Install [a D compiler](https://dlang.org/download.html).  
+   Note that you will need a compiler supporting D v2.097 or newer - the compiler in your distribution's repositories might be too old.
+2. Install [Dub](https://github.com/dlang/dub), if it wasn't included with your D compiler.
+3. Install `libncursesw5-dev`, or your distribution's equivalent package.
+4. Run `dub build -b release`
 
 
 Usage
 -----
 
+Run btdu with root privileges as follows:
+
     # btdu /path/to/filesystem/root
 
-Note that the indicated path must be to the top-level subvolume (otherwise btdu will be unable to open other subvolumes for inode resolution). If in doubt, mount the filesystem to a new mountpoint with `-o subvol=/,subvolid=5`.
+Note: The indicated path must be to the top-level subvolume (otherwise btdu will be unable to open other subvolumes for inode resolution). If in doubt, mount the filesystem to a new mountpoint with `-o subvol=/,subvolid=5`.
 
 You can start browsing the results instantly; btdu will keep collecting samples to improve accuracy until it is stopped by quitting or pausing (which you can do by pressing <kbd>p</kbd>).
 
@@ -93,11 +95,16 @@ See [CONCEPTS.md](CONCEPTS.md) for information about some btdu / btrfs concepts,
 
 With the `--headless` switch, btdu will run without the user interface. This is useful together with the `--export` option, which saves results to a file that can later be viewed in the UI using the `--import` option. For automated invocations, don't forget to specify a stop condition such as `--max-time`.
 
+Example:
+
+    # btdu --headless --export=results.json --max-time=10m /path/to/filesystem/root
+    $ btdu --import results.json
+
 ### Deleting
 
 You can delete the selected file or directory from the filesystem by pressing <kbd>d</kbd> <kbd>Y</kbd>. This will recursively delete the file or directory shown as "Full path".
 
-Deleting files during a btdu run (whether via btdu or not) skews the results, though when deleting files from btdu, it will make a best-effort attempt to adjust the results to match. Statistics such as exclusive size may be inaccurate. Re-run btdu to obtain fresh results.
+Deleting files during a btdu run (whether via btdu or externally) skews the results. When deleting files from btdu, it will make a best-effort attempt to adjust the results to match. Statistics such as exclusive size may be inaccurate. Re-run btdu to obtain fresh results.
 
 License
 -------
