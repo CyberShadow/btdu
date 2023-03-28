@@ -949,7 +949,7 @@ struct Browser
 				break;
 		}
 
-		refresh();
+		wnoutrefresh(stdscr);
 
 		// Pop-up
 		(){
@@ -1047,8 +1047,10 @@ struct Browser
 				mvwprintw(win, (2 + y).to!int, 3, "%.*s", s.length, s.ptr);
 			}
 
-			wrefresh(win);
+			wnoutrefresh(win);
 		}();
+
+		doupdate();
 	}
 
 	void moveCursor(sizediff_t delta)
