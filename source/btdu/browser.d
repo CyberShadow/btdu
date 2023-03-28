@@ -22,6 +22,8 @@ module btdu.browser;
 import core.stdc.config;
 import core.stdc.locale;
 import core.stdc.stddef : wchar_t;
+import core.sync.event;
+import core.sys.posix.fcntl : O_RDONLY;
 import core.sys.posix.stdio : FILE;
 import core.thread : Thread;
 import core.time;
@@ -46,6 +48,8 @@ import ae.utils.appender;
 import ae.utils.meta;
 import ae.utils.text;
 import ae.utils.time : stdDur, stdTime;
+
+import btrfs;
 
 import btdu.common;
 import btdu.state;
@@ -75,6 +79,8 @@ struct Browser
 		deleteConfirm,
 		deleteProgress,
 		deleteError,
+		deleteSubvolumeConfirm,
+		deleteSubvolumeProgress,
 	}
 	Mode mode;
 
@@ -108,6 +114,7 @@ struct Browser
 	Thread deleteThread;
 	string deleteCurrent, deleteError;
 	bool deleteStop;
+	Event deleteSubvolumeResume;
 
 	void start()
 	{
@@ -274,6 +281,7 @@ struct Browser
 				mode = Mode.deleteError;
 			}
 			deleteThread = null;
+			deleteSubvolumeResume.terminate();
 		}
 
 		items = null;
@@ -322,6 +330,8 @@ struct Browser
 			case Mode.deleteConfirm:
 			case Mode.deleteProgress:
 			case Mode.deleteError:
+			case Mode.deleteSubvolumeConfirm:
+			case Mode.deleteSubvolumeProgress:
 			{
 				string[][] info;
 
@@ -681,6 +691,8 @@ struct Browser
 				case Mode.deleteConfirm:
 				case Mode.deleteProgress:
 				case Mode.deleteError:
+				case Mode.deleteSubvolumeConfirm:
+				case Mode.deleteSubvolumeProgress:
 					contentHeight = items.length;
 					contentAreaHeight -= min(textLines.length, contentAreaHeight / 2);
 					contentAreaHeight = min(contentAreaHeight, contentHeight + 1);
@@ -704,6 +716,8 @@ struct Browser
 				case Mode.deleteConfirm:
 				case Mode.deleteProgress:
 				case Mode.deleteError:
+				case Mode.deleteSubvolumeConfirm:
+				case Mode.deleteSubvolumeProgress:
 				{
 					// Ensure the selected item is visible
 					auto pos = selection && items ? items.countUntil(selection) : 0;
@@ -780,6 +794,8 @@ struct Browser
 				case Mode.deleteConfirm:
 				case Mode.deleteProgress:
 				case Mode.deleteError:
+				case Mode.deleteSubvolumeConfirm:
+				case Mode.deleteSubvolumeProgress:
 					auto displayedPath = currentPath is &browserRoot ? "/" : currentPath.pointerWriter.text;
 					auto maxPathWidth = w - 8 - prefix.length;
 					if (displayedPath.length > maxPathWidth)
@@ -803,6 +819,8 @@ struct Browser
 			case Mode.deleteConfirm:
 			case Mode.deleteProgress:
 			case Mode.deleteError:
+			case Mode.deleteSubvolumeConfirm:
+			case Mode.deleteSubvolumeProgress:
 			{
 				real getUnits(BrowserPath* path)
 				{
@@ -962,9 +980,23 @@ struct Browser
 					];
 					break;
 
+				case Mode.deleteSubvolumeConfirm:
+					lines = [
+						"Are you sure you want to delete the subvolume:"d,
+						null,
+						deleteCurrent.to!dstring,
+						null,
+						"Press Shift+Y to confirm,"d,
+						"any other key to cancel.",
+					];
+					break;
+
 				case Mode.deleteProgress:
+				case Mode.deleteSubvolumeProgress:
 					synchronized(deleteThread) lines = [
-						deleteStop ? "Stopping deletion:"d : "Deleting:"d,
+						deleteStop
+						? "Stopping deletion:"d
+						: "Deleting" ~ (mode == Mode.deleteSubvolumeProgress ? " the subvolume"d : "") ~ ":"d,
 						null,
 						deleteCurrent.to!dstring,
 						null,
@@ -1267,6 +1299,7 @@ struct Browser
 						deleteCurrent = path;
 						deleteStop = false;
 						ulong initialDeviceID;
+						deleteSubvolumeResume.initialize(false, false);
 						deleteThread = new Thread({
 							listDir!((e) {
 								synchronized(deleteThread)
@@ -1296,8 +1329,20 @@ struct Browser
 										enforce(isTreeRoot, "Unexpected st_dev change");
 										// Can only be a subvolume going forward.
 
-										// TODO: delete entire subvolumes in whole
+										mode = Mode.deleteSubvolumeConfirm;
+										deleteSubvolumeResume.wait();
+										if (deleteStop)
+											throw new Exception("User abort");
+
+										auto fd = openat(e.dirFD, e.baseNameFSPtr, O_RDONLY);
+										errnoEnforce(fd >= 0, "openat");
+										auto subvolumeID = getSubvolumeID(fd);
+										deleteSubvolume(fd, subvolumeID);
+
+										mode = Mode.deleteProgress;
+										return; // The ioctl will also unlink the directory entry
 									}
+
 									e.recurse();
 								}
 
@@ -1306,8 +1351,8 @@ struct Browser
 								errnoEnforce(ret == 0, "unlinkat failed");
 							}, Yes.includeRoot)(path);
 						});
-						deleteThread.start();
 						mode = Mode.deleteProgress;
+						deleteThread.start();
 						break;
 
 					default:
@@ -1317,7 +1362,24 @@ struct Browser
 				}
 				break;
 
+			case Mode.deleteSubvolumeConfirm:
+				switch (ch)
+				{
+					case 'Y':
+						mode = Mode.deleteSubvolumeProgress;
+						deleteSubvolumeResume.set();
+						break;
+
+					default:
+						mode = Mode.deleteProgress;
+						deleteStop = true;
+						deleteSubvolumeResume.set();
+						break;
+				}
+				break;
+
 			case Mode.deleteProgress:
+			case Mode.deleteSubvolumeProgress:
 				switch (ch)
 				{
 					case 'q':
@@ -1382,6 +1444,7 @@ struct Browser
 private:
 
 // TODO: upstream into Druntime
+extern (C) int openat(int fd, const char *path, int oflag, ...) nothrow @nogc;
 extern (C) int unlinkat(int fd, const(char)* pathname, int flags);
 enum AT_REMOVEDIR = 0x200;
 
