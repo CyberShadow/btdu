@@ -260,7 +260,7 @@ struct Browser
 	void update()
 	{
 		int h, w;
-		getmaxyx(stdscr, h, w); h++; w++;
+		getmaxyx(stdscr, h, w);
 
 		if (mode == Mode.deleteProgress && !deleteThread.isRunning())
 		{
