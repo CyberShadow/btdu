@@ -128,11 +128,15 @@ void subprocessMain(string fsPath, bool physical)
 					auto stripeIndex = stripes.countUntil!((ref stripe) => stripe.devid == devid && stripe.offset == offset);
 					enforce(stripeIndex >= 0, "Stripe for extent not found in chunk");
 
+					auto logicalOffset = extent.chunk_offset;
+					auto logicalLength = chunk.length;
+					auto physicalOffset = offset;
+					auto physicalLength = extent.length;
 					chunks ~= ChunkInfo(
 						chunk.type,
-						offset, chunk.length,
+						logicalOffset, logicalLength,
 						devid,
-						extent.chunk_offset, extent.length,
+						physicalOffset, physicalLength,
 						chunk.num_stripes, stripeIndex, chunk.stripe_len,
 					);
 				}, [device.devid, device.devid]);
