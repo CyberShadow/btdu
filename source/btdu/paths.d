@@ -441,7 +441,7 @@ struct BrowserPath
 				foreach_reverse (j; 0 .. i + 1)
 					data[type].offsets = j == 0
 						? Offset.init
-						: data[type].offsets[j + 1];
+						: data[type].offsets[j - 1];
 		if (parent)
 			parent.removeSamples(type, samples, offsets, duration);
 	}
