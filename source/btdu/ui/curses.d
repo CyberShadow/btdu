@@ -171,13 +171,14 @@ struct Curses
 		/// Low-level write primitive
 		void poke(xy_t x, xy_t y, cchar_t c)
 		{
-			assert(x < width && y < height);
+			assert(x >= 0 && x < width && y >= 0 && y < height);
 			mvwadd_wchnstr(window, y.to!int, x.to!int, &c, 1).ncenforce("mvwadd_wchnstr");
 		}
 
 		/// Low-level read primitive
 		cchar_t peek(xy_t x, xy_t y)
 		{
+			assert(x >= 0 && x < width && y >= 0 && y < height);
 			cchar_t wch;
 			mvwin_wch(window, y.to!int, x.to!int, &wch).ncenforce("mvwin_wch");
 			return wch;
@@ -226,6 +227,7 @@ struct Curses
 		/// Put a raw `cchar_t`, obeying overflow and advancing the cursor.
 		void put(cchar_t c)
 		{
+			assert(x >= 0, "X underflow");
 			if (x >= width)
 				final switch (xOverflow)
 				{
@@ -251,11 +253,11 @@ struct Curses
 						return;
 				}
 
-			if (y >= height)
+			if (y < 0 || y >= height)
 				final switch (yOverflow)
 				{
 					case YOverflow.never:
-						assert(y < height, "Y overflow");
+						assert(y >= 0 && y < height, "Y overflow");
 						x++; // advance cursor and give up
 						return;
 
