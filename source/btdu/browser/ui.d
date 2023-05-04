@@ -918,8 +918,6 @@ struct Browser
 				break;
 		}
 
-		wnoutrefresh(stdscr);
-
 		// Pop-up
 		(){
 			dstring[] lines;
@@ -1014,20 +1012,19 @@ struct Browser
 			auto winH = (lines.length + 4).to!int;
 			auto winX = (w - winW) / 2;
 			auto winY = (h - winH) / 2;
-			auto win = newwin(winH, winW, winY, winX);
+			auto win = derwin(stdscr, winH, winW, winY, winX);
 			scope(exit) delwin(win);
 
+			wclear(win);
 			box(win, 0, 0);
 			foreach (y, line; lines)
 			{
 				auto s = line.to!string;
 				mvwprintw(win, (2 + y).to!int, 3, "%.*s", s.length, s.ptr);
 			}
-
-			wnoutrefresh(win);
 		}();
 
-		doupdate();
+		refresh();
 	}
 
 	void moveCursor(sizediff_t delta)
