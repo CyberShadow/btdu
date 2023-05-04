@@ -309,7 +309,7 @@ struct Browser
 					}(),
 
 					["- Average query duration: " ~ (currentPath.data[SampleType.represented].samples
-							? stdDur(currentPath.data[SampleType.represented].duration / currentPath.data[SampleType.represented].samples).toDecimalString()
+							? stdDur(currentPath.data[SampleType.represented].duration / currentPath.data[SampleType.represented].samples).DurationAsDecimalString().text
 							: "-")],
 				).array;
 
@@ -1317,13 +1317,18 @@ double estimateError(
 	return z * error;
 }
 
-string toDecimalString(Duration d)
+struct DurationAsDecimalString
 {
-	assert(d >= Duration.zero);
-	auto ticks = d.stdTime;
-	enum secondsPerTick = 1.seconds / 1.stdDur;
-	static assert(secondsPerTick == 10L ^^ 7);
-	return format!"%d.%07d seconds"(ticks / secondsPerTick, ticks % secondsPerTick);
+	Duration d;
+
+	void toString(void delegate(const(char)[]) sink) const
+	{
+		assert(d >= Duration.zero);
+		auto ticks = d.stdTime;
+		enum secondsPerTick = 1.seconds / 1.stdDur;
+		static assert(secondsPerTick == 10L ^^ 7);
+		sink.formattedWrite!"%d.%07d seconds"(ticks / secondsPerTick, ticks % secondsPerTick);
+	}
 }
 
 static immutable string[] help = q"EOF
