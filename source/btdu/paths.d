@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020, 2021, 2022  Vladimir Panteleev <btdu@cy.md>
+ * Copyright (C) 2020, 2021, 2022, 2023  Vladimir Panteleev <btdu@cy.md>
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public
@@ -421,8 +421,11 @@ struct BrowserPath
 		data[type].duration += duration;
 		foreach (offset; offsets)
 			if (offset != data[type].offsets[$-1])
-				foreach (i, ref l0; data[type].offsets)
-					l0 = i + 1 == Data.offsets.length ? offset : data[type].offsets[i + 1];
+				// Add new offsets at the end, pushing existing ones towards 0
+				foreach (i; 0 .. data[type].offsets.length)
+					data[type].offsets[i] = i + 1 == Data.offsets.length
+						? offset
+						: data[type].offsets[i + 1];
 		if (parent)
 			parent.addSamples(type, samples, offsets, duration);
 	}
@@ -432,10 +435,13 @@ struct BrowserPath
 		assert(samples <= data[type].samples && duration <= data[type].duration);
 		data[type].samples -= samples;
 		data[type].duration -= duration;
-		foreach (i, lMy; data[type].offsets)
-			if (offsets.canFind(lMy))
+		foreach (i; 0 .. data[type].offsets.length)
+			if (offsets.canFind(data[type].offsets[i]))
+				// Delete matching offsets, pushing existing ones from the start towards the end
 				foreach_reverse (j; 0 .. i + 1)
-					data[type].offsets = j == 0 ? Offset.init : data[type].offsets[j + 1];
+					data[type].offsets = j == 0
+						? Offset.init
+						: data[type].offsets[j + 1];
 		if (parent)
 			parent.removeSamples(type, samples, offsets, duration);
 	}
