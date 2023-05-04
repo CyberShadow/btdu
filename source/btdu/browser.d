@@ -1071,22 +1071,53 @@ struct Browser
 		selection = items[pos];
 	}
 
-	static cchar_t toCChar(dchar c, uint attr)
+	/// Convert nul-terminated string of wchar_t `c` to `cchar_t`, using `setcchar`.
+	static cchar_t toCChar(const(wchar_t)* c, uint attr)
 	{
-		dchar[2] d = [c, 0];
+		import std.utf : replacementDchar;
+		static immutable wchar_t[2] fallback = [replacementDchar, 0];
 		cchar_t cchar;
-		if (setcchar(&cchar, d.ptr, attr, 0, null) != OK)
-			return toCChar('\U0000FFFD', attr);
+		if (setcchar(&cchar, c, attr, 0, null) != OK)
+			enforce(setcchar(&cchar, fallback.ptr, attr, 0, null) == OK, "Can't encode replacement character");
 		return cchar;
+	}
+
+	/// Convert UTF-8 string `str` to a `cchar_t` array with the given attribute.
+	/// The return value is valid until the next call.
+	static cchar_t[] toCChars(const(char)[] str, uint attr)
+	{
+		import std.utf : byDchar;
+		static FastAppender!cchar_t ccharBuf;
+		ccharBuf.clear(); // Reuse buffer
+		auto dchars = str.byDchar(); // This will also replace bad UTF-8 with replacementDchar.
+		while (!dchars.empty)
+		{
+			// Discard leading nonspacing characters. ncurses cannot accept them anyway.
+			while (!dchars.empty && wcwidth(dchars.front) == 0)
+				dchars.popFront();
+			// Copy one spacing and up to CCHARW_MAX-1 nonspacing characters
+			if (dchars.empty)
+				break;
+			assert(wcwidth(dchars.front) > 0);
+			wchar_t[CCHARW_MAX + /*nul-terminator*/ 1] wchars;
+			size_t i = 0;
+			wchars[i++] = dchars.front;
+			dchars.popFront();
+			while (i < CCHARW_MAX && !dchars.empty && wcwidth(dchars.front) == 0)
+			{
+				wchars[i++] = dchars.front;
+				dchars.popFront();
+			}
+			wchars[i] = 0;
+			ccharBuf.put(toCChar(wchars.ptr, attr));
+		}
+		return ccharBuf.get();
 	}
 
 	static void rawWrite(int y, int x, const(char)[] str, uint attr)
 	{
-		static FastAppender!cchar_t ccharBuf;
-		ccharBuf.clear();
-		foreach (dchar c; (cast(string)str).sanitize)
-			ccharBuf.put(toCChar(c, attr));
-		mvadd_wchnstr(y, x, ccharBuf.get().ptr, ccharBuf.get().length.to!int);
+		auto cchars = toCChars(str, attr);
+		mvadd_wchnstr(y, x, cchars.ptr, cchars.length.to!int);
 	}
 
 	/// Pausing has the following effects:
@@ -1451,6 +1482,7 @@ private:
 // TODO: upstream into Druntime
 extern (C) int openat(int fd, const char *path, int oflag, ...) nothrow @nogc;
 extern (C) int unlinkat(int fd, const(char)* pathname, int flags);
+extern (C) int wcwidth(wchar_t c);
 enum AT_REMOVEDIR = 0x200;
 
 /// https://en.wikipedia.org/wiki/1.96
