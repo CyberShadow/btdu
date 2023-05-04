@@ -22,10 +22,7 @@ module btdu.browser.ui;
 import core.stdc.config;
 import core.stdc.locale;
 import core.stdc.stddef : wchar_t;
-import core.sync.event;
-import core.sys.posix.fcntl : O_RDONLY;
 import core.sys.posix.stdio : FILE;
-import core.thread : Thread;
 import core.time;
 
 import std.algorithm.comparison;
@@ -43,7 +40,6 @@ import std.traits;
 
 import deimos.ncurses;
 
-import ae.sys.file : listDir, getMounts;
 import ae.utils.appender;
 import ae.utils.meta;
 import ae.utils.text;
@@ -51,6 +47,7 @@ import ae.utils.time : stdDur, stdTime;
 
 import btrfs;
 
+import btdu.browser.deletion;
 import btdu.common;
 import btdu.state;
 import btdu.paths;
@@ -78,9 +75,6 @@ struct Browser
 		help,
 		deleteConfirm,
 		deleteProgress,
-		deleteError,
-		deleteSubvolumeConfirm,
-		deleteSubvolumeProgress,
 	}
 	Mode mode;
 
@@ -111,10 +105,7 @@ struct Browser
 	}
 	RatioDisplayMode ratioDisplayMode = RatioDisplayMode.graph;
 
-	Thread deleteThread;
-	string deleteCurrent, deleteError;
-	bool deleteStop;
-	Event deleteSubvolumeResume;
+	Deleter deleter;
 
 	void start()
 	{
@@ -180,7 +171,9 @@ struct Browser
 
 	@property bool needRefresh()
 	{
-		return mode == Mode.deleteProgress;
+		if (mode == Mode.deleteProgress)
+			return deleter.needRefresh;
+		return false;
 	}
 
 	@disable this(this);
@@ -262,26 +255,14 @@ struct Browser
 		int h, w;
 		getmaxyx(stdscr, h, w);
 
-		if (mode == Mode.deleteProgress && !deleteThread.isRunning())
+		deleter.update();
+		if (deleter.state == Deleter.State.success)
 		{
-			try
-			{
-				deleteThread.join();
-
-				// Success:
-				showMessage("Deleted " ~ selection.humanName ~ ".");
-				mode = Mode.browser;
-				selection.remove();
-				selection = null;
-			}
-			catch (Exception e)
-			{
-				// Failure:
-				deleteError = e.msg;
-				mode = Mode.deleteError;
-			}
-			deleteThread = null;
-			deleteSubvolumeResume.terminate();
+			showMessage("Deleted " ~ selection.humanName ~ ".");
+			mode = Mode.browser;
+			deleter.state = Deleter.State.none;
+			selection.remove();
+			selection = null;
 		}
 
 		items = null;
@@ -329,9 +310,6 @@ struct Browser
 			case Mode.info:
 			case Mode.deleteConfirm:
 			case Mode.deleteProgress:
-			case Mode.deleteError:
-			case Mode.deleteSubvolumeConfirm:
-			case Mode.deleteSubvolumeProgress:
 			{
 				string[][] info;
 
@@ -693,9 +671,6 @@ struct Browser
 				case Mode.browser:
 				case Mode.deleteConfirm:
 				case Mode.deleteProgress:
-				case Mode.deleteError:
-				case Mode.deleteSubvolumeConfirm:
-				case Mode.deleteSubvolumeProgress:
 					contentHeight = items.length;
 					contentAreaHeight -= min(textLines.length, contentAreaHeight / 2);
 					contentAreaHeight = min(contentAreaHeight, contentHeight + 1);
@@ -718,9 +693,6 @@ struct Browser
 				case Mode.browser:
 				case Mode.deleteConfirm:
 				case Mode.deleteProgress:
-				case Mode.deleteError:
-				case Mode.deleteSubvolumeConfirm:
-				case Mode.deleteSubvolumeProgress:
 				{
 					// Ensure the selected item is visible
 					auto pos = selection && items ? items.countUntil(selection) : 0;
@@ -796,9 +768,6 @@ struct Browser
 				case Mode.browser:
 				case Mode.deleteConfirm:
 				case Mode.deleteProgress:
-				case Mode.deleteError:
-				case Mode.deleteSubvolumeConfirm:
-				case Mode.deleteSubvolumeProgress:
 					auto displayedPath = currentPath is &browserRoot ? "/" : currentPath.pointerWriter.text;
 					auto maxPathWidth = w - 8 - prefix.length;
 					if (displayedPath.length > maxPathWidth)
@@ -821,9 +790,6 @@ struct Browser
 			case Mode.browser:
 			case Mode.deleteConfirm:
 			case Mode.deleteProgress:
-			case Mode.deleteError:
-			case Mode.deleteSubvolumeConfirm:
-			case Mode.deleteSubvolumeProgress:
 			{
 				real getUnits(BrowserPath* path)
 				{
@@ -983,41 +949,49 @@ struct Browser
 					];
 					break;
 
-				case Mode.deleteSubvolumeConfirm:
-					lines = [
-						"Are you sure you want to delete the subvolume:"d,
-						null,
-						deleteCurrent.to!dstring,
-						null,
-						"Press Shift+Y to confirm,"d,
-						"any other key to cancel.",
-					];
-					break;
-
 				case Mode.deleteProgress:
-				case Mode.deleteSubvolumeProgress:
-					synchronized(deleteThread) lines = [
-						deleteStop
-						? "Stopping deletion:"d
-						: "Deleting" ~ (mode == Mode.deleteSubvolumeProgress ? " the subvolume"d : "") ~ ":"d,
-						null,
-						deleteCurrent.to!dstring,
-						null,
-						"Press Esc or q to cancel.",
-					];
-					break;
+					final switch (deleter.state)
+					{
+						case Deleter.State.none:
+						case Deleter.State.success:
+							assert(false);
+						case Deleter.State.subvolumeConfirm:
+							lines = [
+								"Are you sure you want to delete the subvolume:"d,
+								null,
+								deleter.current.to!dstring,
+								null,
+								"Press Shift+Y to confirm,"d,
+								"any other key to cancel.",
+							];
+							break;
 
-				case Mode.deleteError:
-					lines = [
-						"Error deleting:"d,
-						null,
-						deleteCurrent.to!dstring,
-						null,
-						deleteError.to!dstring,
-						null,
-						"Displayed usage may be inaccurate;"d,
-						"please restart btdu."d,
-					];
+						case Deleter.State.progress:
+						case Deleter.State.subvolumeProgress:
+							synchronized(deleter.thread) lines = [
+								deleter.stopping
+								? "Stopping deletion:"d
+								: "Deleting" ~ (deleter.state == Deleter.State.subvolumeProgress ? " the subvolume"d : "") ~ ":"d,
+								null,
+								deleter.current.to!dstring,
+								null,
+								"Press Esc or q to cancel.",
+							];
+							break;
+
+						case Deleter.State.error:
+							lines = [
+								"Error deleting:"d,
+								null,
+								deleter.current.to!dstring,
+								null,
+								deleter.error.to!dstring,
+								null,
+								"Displayed usage may be inaccurate;"d,
+								"please restart btdu."d,
+							];
+							break;
+					}
 					break;
 			}
 
@@ -1331,64 +1305,8 @@ struct Browser
 				switch (ch)
 				{
 					case 'Y':
-						auto path = getFullPath(selection).idup;
-						deleteCurrent = path;
-						deleteStop = false;
-						ulong initialDeviceID;
-						deleteSubvolumeResume.initialize(false, false);
-						deleteThread = new Thread({
-							listDir!((e) {
-								synchronized(deleteThread)
-									deleteCurrent = e.fullName;
-
-								if (deleteStop)
-								{
-									// e.stop();
-									// return;
-									throw new Exception("User abort");
-								}
-
-								if (!initialDeviceID)
-									initialDeviceID = e.needStat!(e.StatTarget.dirEntry)().st_dev;
-
-								if (e.entryIsDir)
-								{
-									auto stat = e.needStat!(e.StatTarget.dirEntry)();
-
-									// A subvolume root, or a different btrfs filesystem is mounted here
-									auto isTreeRoot = stat.st_ino.among(2, 256);
-
-									if (stat.st_dev != initialDeviceID || isTreeRoot)
-									{
-										if (getMounts().canFind!(mount => mount.file == e.fullNameFS))
-											throw new Exception("Path resides in another filesystem, stopping");
-										enforce(isTreeRoot, "Unexpected st_dev change");
-										// Can only be a subvolume going forward.
-
-										mode = Mode.deleteSubvolumeConfirm;
-										deleteSubvolumeResume.wait();
-										if (deleteStop)
-											throw new Exception("User abort");
-
-										auto fd = openat(e.dirFD, e.baseNameFSPtr, O_RDONLY);
-										errnoEnforce(fd >= 0, "openat");
-										auto subvolumeID = getSubvolumeID(fd);
-										deleteSubvolume(fd, subvolumeID);
-
-										mode = Mode.deleteProgress;
-										return; // The ioctl will also unlink the directory entry
-									}
-
-									e.recurse();
-								}
-
-								int ret = unlinkat(e.dirFD, e.baseNameFSPtr,
-									e.entryIsDir ? AT_REMOVEDIR : 0);
-								errnoEnforce(ret == 0, "unlinkat failed");
-							}, Yes.includeRoot)(path);
-						});
 						mode = Mode.deleteProgress;
-						deleteThread.start();
+						deleter.start(getFullPath(selection).idup);
 						break;
 
 					default:
@@ -1398,47 +1316,54 @@ struct Browser
 				}
 				break;
 
-			case Mode.deleteSubvolumeConfirm:
-				switch (ch)
-				{
-					case 'Y':
-						mode = Mode.deleteSubvolumeProgress;
-						deleteSubvolumeResume.set();
-						break;
-
-					default:
-						mode = Mode.deleteProgress;
-						deleteStop = true;
-						deleteSubvolumeResume.set();
-						break;
-				}
-				break;
-
 			case Mode.deleteProgress:
-			case Mode.deleteSubvolumeProgress:
-				switch (ch)
+				final switch (deleter.state)
 				{
-					case 'q':
-					case 27: // ESC
-						deleteStop = true;
+					case Deleter.State.none:
+					case Deleter.State.success:
+						assert(false);
+
+					case Deleter.State.subvolumeConfirm:
+						switch (ch)
+						{
+							case 'Y':
+								deleter.confirm(Yes.proceed);
+								break;
+
+							default:
+								deleter.confirm(No.proceed);
+								break;
+						}
 						break;
 
-					default:
-						// TODO: show message
-						break;
-				}
-				break;
+					case Deleter.State.progress:
+					case Deleter.State.subvolumeProgress:
+						switch (ch)
+						{
+							case 'q':
+							case 27: // ESC
+								deleter.stop();
+								break;
 
-			case Mode.deleteError:
-				switch (ch)
-				{
-					case 'q':
-					case 27: // ESC
-						mode = Mode.browser;
+							default:
+								// TODO: show message
+								break;
+						}
 						break;
 
-					default:
-						// TODO: show message
+					case Deleter.State.error:
+						switch (ch)
+						{
+							case 'q':
+							case 27: // ESC
+								deleter.finish();
+								mode = Mode.browser;
+								break;
+
+							default:
+								// TODO: show message
+								break;
+						}
 						break;
 				}
 				break;
@@ -1480,10 +1405,7 @@ struct Browser
 private:
 
 // TODO: upstream into Druntime
-extern (C) int openat(int fd, const char *path, int oflag, ...) nothrow @nogc;
-extern (C) int unlinkat(int fd, const(char)* pathname, int flags);
 extern (C) int wcwidth(wchar_t c);
-enum AT_REMOVEDIR = 0x200;
 
 /// https://en.wikipedia.org/wiki/1.96
 // enum z_975 = normalDistributionInverse(0.975);
