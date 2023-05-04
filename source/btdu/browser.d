@@ -475,7 +475,10 @@ struct Browser
 										"This node represents sample points for which btrfs successfully completed our request " ~
 										"to look up inodes at the given logical offset, but did not actually return any inodes." ~
 										"\n\n" ~
-										"One possible cause is data which was deleted recently.";
+										"One possible cause is data which was deleted recently." ~
+										"\n\n" ~
+										"Due to a bug, under Linux versions 6.2 and 6.3, samples which would otherwise be classified as <UNREACHABLE> will appear here instead. " ~
+										"If your kernel is affected by this bug, try a different version to obtain more information about how this space is used.";
 								case "NO_PATH":
 									return
 										"This node represents sample points for which btrfs successfully completed our request " ~
