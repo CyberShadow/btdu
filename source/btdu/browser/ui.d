@@ -597,8 +597,8 @@ struct Browser
 											return
 												"btdu failed to open the filesystem root containing an inode." ~
 												"\n\n" ~
-												"The most likely reason for this is that you didn't specify the path to the volume root when starting btdu, " ~
-												"and instead specified the path to a subvolume or subdirectory." ~
+												"The most likely reason for this is that the subvolume containing this inode has been deleted since btdu was started. " ~
+												"You can restart btdu to see accurate results." ~
 												"\n\n" ~
 												"You can descend into this node to see the path that btdu failed to open.";
 										default:
