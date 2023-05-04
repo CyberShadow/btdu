@@ -444,7 +444,7 @@ struct Browser
 										"The contents of METADATA chunks is opaque to btdu, so this node does not have children.";
 								case "SYSTEM":
 									return
-										"This node holds samples from chunks in the SYSTEM block group " ~
+										"This node holds samples from chunks in the SYSTEM block group, " ~
 										"which contains some core btrfs information, such as how to map physical device space to linear logical space or vice-versa." ~
 										"\n\n" ~
 										"The contents of SYSTEM chunks is opaque to btdu, so this node does not have children.";
