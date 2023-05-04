@@ -19,7 +19,7 @@
 /// Common definitions
 module btdu.common;
 
-import std.format : format;
+import std.format : format, formattedWrite;
 import std.random : Random;
 import std.traits;
 
@@ -204,24 +204,31 @@ ref Errno getErrno(int errno)
 
 // Conversion
 
-string humanSize(real size, bool aligned = false)
+struct HumanSize
 {
-	static immutable prefixChars = " KMGTPEZY";
-	size_t power = 0;
-	while (size > 1000 && power + 1 < prefixChars.length)
+	real size;
+	bool aligned = false;
+
+	void toString(void delegate(const(char)[]) sink) const
 	{
-		size /= 1024;
-		power++;
+		static immutable prefixChars = " KMGTPEZY";
+		size_t power = 0;
+		real size = this.size;
+		while (size > 1000 && power + 1 < prefixChars.length)
+		{
+			size /= 1024;
+			power++;
+		}
+		auto digits =
+			size == 0 ? 1 :
+			size < 10 ? 3 :
+			size < 100 ? 2 :
+			1;
+		if (aligned)
+			sink.formattedWrite!"%.*f %s%sB"(digits, size, prefixChars[power], prefixChars[power] == ' ' ? ' ' : 'i');
+		else
+			sink.formattedWrite!"%.*f %s%sB"(digits, size, prefixChars[power] == ' ' ? "" : prefixChars[power .. power + 1], prefixChars[power] == ' ' ? "" : "i");
 	}
-	auto digits =
-		size == 0 ? 1 :
-		size < 10 ? 3 :
-		size < 100 ? 2 :
-		1;
-	if (aligned)
-		return format("%.*f %s%sB", digits, size, prefixChars[power], prefixChars[power] == ' ' ? ' ' : 'i');
-	else
-		return format("%.*f %s%sB", digits, size, prefixChars[power] == ' ' ? "" : prefixChars[power .. power + 1], prefixChars[power] == ' ' ? "" : "i");
 }
 
 real parseSize(string s)
@@ -260,22 +267,27 @@ unittest
 	assert(parseSize("1.5kib") == 1024 + 512);
 }
 
-string humanDuration(real hnsecs)
+struct HumanDuration
 {
-	if (hnsecs == 0)
-		return "0";
-	auto d = hnsecs * 100; // nanoseconds
+	real hnsecs;
 
-	static immutable units = ["ns", "µs", "ms", "s", "m", "h", "d", "w"];
-	static immutable unitSize = [1000, 1000, 1000, 60,  60,  24,  7];
-	size_t unitIndex = 0;
-	while (unitIndex < unitSize.length && d > unitSize[unitIndex])
+	void toString(void delegate(const(char)[]) sink) const
 	{
-		d /= unitSize[unitIndex];
-		unitIndex++;
+		if (hnsecs == 0)
+			return sink("0");
+		auto d = hnsecs * 100; // nanoseconds
+
+		static immutable units = ["ns", "µs", "ms", "s", "m", "h", "d", "w"];
+		static immutable unitSize = [1000, 1000, 1000, 60,  60,  24,  7];
+		size_t unitIndex = 0;
+		while (unitIndex < unitSize.length && d > unitSize[unitIndex])
+		{
+			d /= unitSize[unitIndex];
+			unitIndex++;
+		}
+		auto digits = d < 1 ? 3 : d < 10 ? 2 : 1;
+		sink.formattedWrite!"%4.*f%s"(digits, d, units[unitIndex]);
 	}
-	auto digits = d < 1 ? 3 : d < 10 ? 2 : 1;
-	return format("%4.*f%s", digits, d, units[unitIndex]);
 }
 
 /// Helper type for formatting pointers without passing their contents by-value.

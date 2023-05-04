@@ -19,10 +19,6 @@
 /// ncurses interface for browsing results
 module btdu.browser.ui;
 
-import core.stdc.config;
-import core.stdc.locale;
-import core.stdc.stddef : wchar_t;
-import core.sys.posix.stdio : FILE;
 import core.time;
 
 import std.algorithm.comparison;
@@ -38,8 +34,6 @@ import std.range;
 import std.string;
 import std.traits;
 
-import deimos.ncurses;
-
 import ae.utils.appender;
 import ae.utils.meta;
 import ae.utils.text;
@@ -47,6 +41,7 @@ import ae.utils.time : stdDur, stdTime;
 
 import btrfs;
 
+import btdu.browser.curses;
 import btdu.browser.deletion;
 import btdu.common;
 import btdu.state;
@@ -57,8 +52,7 @@ alias imported = btdu.state.imported;
 
 struct Browser
 {
-	int ttyFD = -1;
-	FILE* inputFile, outputFile;
+	Curses curses;
 
 	BrowserPath* currentPath;
 	sizediff_t top; // Scroll offset (row number, in the content, corresponding to the topmost displayed line)
@@ -109,64 +103,9 @@ struct Browser
 
 	void start()
 	{
-		setlocale(LC_CTYPE, "");
-
-		// Smarter alternative to initscr()
-		{
-			import core.stdc.stdlib : getenv;
-			import core.sys.posix.unistd : isatty, STDIN_FILENO, STDOUT_FILENO, STDERR_FILENO;
-			import core.sys.posix.fcntl : open, O_RDWR, O_NOCTTY;
-			import core.sys.posix.stdio : fdopen;
-
-			int inputFD = {
-				if (isatty(STDIN_FILENO))
-					return STDIN_FILENO;
-				ttyFD = open("/dev/tty", O_RDWR);
-				if (ttyFD >= 0 && isatty(ttyFD))
-					return ttyFD;
-				throw new Exception("Could not detect a TTY to read interactive input from.");
-			}();
-			int outputFD = {
-				if (isatty(STDOUT_FILENO))
-					return STDOUT_FILENO;
-				if (isatty(STDERR_FILENO))
-					return STDERR_FILENO;
-				if (ttyFD < 0)
-					ttyFD = open("/dev/tty", O_RDWR);
-				if (ttyFD >= 0 && isatty(ttyFD))
-					return ttyFD;
-				throw new Exception("Could not detect a TTY to display interactive UI on.");
-			}();
-
-			inputFile = fdopen(inputFD, "rb");
-			outputFile = fdopen(outputFD, "wb");
-			newterm(getenv("TERM"), outputFile, inputFile);
-		}
-
-		timeout(0); // Use non-blocking read
-		cbreak(); // Disable line buffering
-		noecho(); // Disable keyboard echo
-		keypad(stdscr, true); // Enable arrow keys
-		curs_set(0); // Hide cursor
+		curses.start();
 
 		currentPath = &browserRoot;
-	}
-
-	~this()
-	{
-		endwin();
-
-		{
-			import core.stdc.stdio : fclose;
-			import core.sys.posix.unistd : close;
-
-			if (inputFile)
-				fclose(inputFile);
-			if (outputFile)
-				fclose(outputFile);
-			if (ttyFD >= 0)
-				close(ttyFD);
-		}
 	}
 
 	@property bool needRefresh()
@@ -252,8 +191,7 @@ struct Browser
 
 	void update()
 	{
-		int h, w;
-		getmaxyx(stdscr, h, w);
+		auto w = curses.getWand();
 
 		deleter.update();
 		if (deleter.state == Deleter.State.success)
@@ -320,10 +258,10 @@ struct Browser
 					return [
 						"- " ~ name ~ ": " ~ (totalSamples
 							? format!"~%s (%d sample%s)%s"(
-								humanSize(currentPath.data[type].samples * real(totalSize) / totalSamples),
+								HumanSize(currentPath.data[type].samples * real(totalSize) / totalSamples),
 								currentPath.data[type].samples,
 								currentPath.data[type].samples == 1 ? "" : "s",
-								showError ? ", ±" ~ humanSize(estimateError(totalSamples, currentPath.data[type].samples) * totalSize) : "",
+								showError ? ", ±" ~ HumanSize(estimateError(totalSamples, currentPath.data[type].samples) * totalSize).text : "",
 							)
 							: "-"),
 
@@ -380,7 +318,7 @@ struct Browser
 					info ~= showSampleType(SampleType.represented, "Represented size", true);
 					info ~= ["- Distributed size: " ~ (totalSamples
 						? format!"~%s (%1.3f sample%s)"(
-							humanSize(currentPath.distributedSamples * real(totalSize) / totalSamples),
+							HumanSize(currentPath.distributedSamples * real(totalSize) / totalSamples),
 							currentPath.distributedSamples,
 							currentPath.distributedSamples == 1 ? "" : "s",
 						)
@@ -612,7 +550,7 @@ struct Browser
 					}();
 
 					if (explanation)
-						info ~= ["--- Explanation: "] ~ explanation.verbatimWrap(w).replace("\n ", "\n").strip().split("\n");
+						info ~= ["--- Explanation: "] ~ explanation.verbatimWrap(w.width).replace("\n ", "\n").strip().split("\n");
 				}
 
 				bool showSeenAs;
@@ -659,12 +597,12 @@ struct Browser
 
 		// Hard-wrap
 		for (size_t i = 0; i < textLines.length; i++)
-			if (textLines[i].length > w)
-				textLines = textLines[0 .. i] ~ textLines[i][0 .. w] ~ textLines[i][w .. $] ~ textLines[i + 1 .. $];
+			if (textLines[i].length > w.width)
+				textLines = textLines[0 .. i] ~ textLines[i][0 .. w.width] ~ textLines[i][w.width .. $] ~ textLines[i + 1 .. $];
 
 		// Scrolling and cursor upkeep
 		{
-			contentAreaHeight = h - 3;
+			contentAreaHeight = w.height - 3;
 			size_t contentHeight;
 			final switch (mode)
 			{
@@ -711,8 +649,6 @@ struct Browser
 		// Rendering
 		sizediff_t minWidth;
 		{
-			erase();
-
 			minWidth =
 				"  100.0 KiB ".length +
 				[
@@ -724,40 +660,50 @@ struct Browser
 				"/".length +
 				6;
 
-			if (h < 10 || w < minWidth)
+			if (w.height < 10 || w.width < minWidth)
 			{
-				mvprintw(0, 0, "Window too small");
-				refresh();
+				w.xOverflowWords({ w.yOverflowHidden({
+					w.put("Window too small");
+				}); });
 				return;
 			}
 
-			attron(A_REVERSE);
-			mvhline(0, 0, ' ', w);
-			mvprintw(0, 0, " btdu v" ~ btduVersion ~ " @ %.*s", fsPath.length, fsPath.ptr);
-			if (imported)
-				mvprintw(0, w - 10, " [IMPORT] ");
-			else
-			if (paused)
-				mvprintw(0, w - 10, " [PAUSED] ");
+			w.reverse({
+				w.xOverflowEllipsis({
+					// Top bar
+					w.at(0, 0, {
+						w.sink.formattedWrite!(" btdu v" ~ btduVersion ~ " @ %s")(fsPath);
+						w.newLine();
+						if (imported)
+							w.at(w.width - 10, 0, { w.put(" [IMPORT] "); });
+						else
+						if (paused)
+							w.at(w.width - 10, 0, { w.put(" [PAUSED] "); });
+					});
 
-			mvhline(h - 1, 0, ' ', w);
-			if (message && MonoTime.currTime < showMessageUntil)
-				mvprintw(h - 1, 0, " %.*s", message.length, message.ptr);
-			else
-			{
-				auto resolution = totalSamples
-					? "~" ~ (totalSize / totalSamples).humanSize()
-					: "-";
-				auto status = format(
-					" Samples: %d  Resolution: %s",
-					totalSamples,
-					resolution,
-				);
-				if (expert)
-					status ~= "  Size metric: %s".format(sizeDisplayMode.to!string.chomp("_"));
-				mvprintw(h - 1, 0, "%.*s", status.length, status.ptr);
-			}
-			attroff(A_REVERSE);
+					// Bottom bar
+					w.at(0, w.height - 1, {
+						if (message && MonoTime.currTime < showMessageUntil)
+							w.xOverflowEllipsis({
+								w.sink.formattedWrite!" %s"(message);
+							});
+						else
+						{
+							w.sink.formattedWrite!" Samples: %d"(totalSamples);
+
+							w.sink.formattedWrite!"  Resolution: "();
+							if (totalSamples)
+								w.sink.formattedWrite!"~%s"((totalSize / totalSamples).HumanSize());
+							else
+								w.put("-");
+
+							if (expert)
+								w.sink.formattedWrite!"  Size metric: %s"(sizeDisplayMode.to!string.chomp("_"));
+						}
+						w.newLine();
+					});
+				});
+			});
 
 			string prefix = "";
 			final switch (mode)
@@ -769,16 +715,14 @@ struct Browser
 				case Mode.deleteConfirm:
 				case Mode.deleteProgress:
 					auto displayedPath = currentPath is &browserRoot ? "/" : currentPath.pointerWriter.text;
-					auto maxPathWidth = w - 8 - prefix.length;
+					auto maxPathWidth = w.width - 8 - prefix.length;
 					if (displayedPath.length > maxPathWidth)
 						displayedPath = "..." ~ displayedPath[$ - (maxPathWidth - 3) .. $];
 
-					mvhline(1, 0, '-', w);
-					mvprintw(1, 3,
-						" %s%.*s ",
-						prefix.ptr,
-						displayedPath.length, displayedPath.ptr,
-					);
+					w.at(0, 1, {
+						w.sink.formattedWrite!"--- %s%s "(prefix, displayedPath);
+						w.newLine('-');
+					});
 					break;
 				case Mode.help:
 					break;
@@ -811,14 +755,14 @@ struct Browser
 						case SortMode.size:
 							auto samples = units;
 							return totalSamples
-								? "~" ~ humanSize(samples * real(totalSize) / totalSamples, true)
+								? "~" ~ HumanSize(samples * real(totalSize) / totalSamples, true).text
 								: "?";
 
 						case SortMode.time:
 							auto hnsecs = units;
 							if (hnsecs == -real.infinity)
 								return "?";
-							return humanDuration(hnsecs);
+							return HumanDuration(hnsecs).text;
 					}
 				}
 
@@ -834,73 +778,73 @@ struct Browser
 
 					auto childUnits = child.I!getUnits();
 
-					if (child is selection)
-						attron(A_REVERSE);
-					else
-						attroff(A_REVERSE);
-					mvhline(y, 0, ' ', w);
+					w.attrSet(w.Attribute.reverse, child is selection, {
+						w.at(0, y, {
+							buf.clear();
+							buf.formattedWrite!"%12s "(getUnitsStr(childUnits));
 
-					buf.clear();
-					buf.formattedWrite!"%12s "(getUnitsStr(childUnits));
-
-					if (ratioDisplayMode)
-					{
-						buf.put('[');
-						if (ratioDisplayMode & RatioDisplayMode.percentage)
-						{
-							if (currentPathUnits)
-								buf.formattedWrite!"%5.1f%%"(100.0 * childUnits / currentPathUnits);
-							else
-								buf.put("    -%");
-						}
-						if (ratioDisplayMode == RatioDisplayMode.both)
-							buf.put(' ');
-						if (ratioDisplayMode & RatioDisplayMode.graph)
-						{
-							char[10] bar;
-							if (mostUnits && childUnits != -real.infinity)
+							if (ratioDisplayMode)
 							{
-								auto barPos = cast(size_t)(10 * childUnits / mostUnits);
-								bar[0 .. barPos] = '#';
-								bar[barPos .. $] = ' ';
+								buf.put('[');
+								if (ratioDisplayMode & RatioDisplayMode.percentage)
+								{
+									if (currentPathUnits)
+										buf.formattedWrite!"%5.1f%%"(100.0 * childUnits / currentPathUnits);
+									else
+										buf.put("    -%");
+								}
+								if (ratioDisplayMode == RatioDisplayMode.both)
+									buf.put(' ');
+								if (ratioDisplayMode & RatioDisplayMode.graph)
+								{
+									char[10] bar;
+									if (mostUnits && childUnits != -real.infinity)
+									{
+										auto barPos = cast(size_t)(10 * childUnits / mostUnits);
+										bar[0 .. barPos] = '#';
+										bar[barPos .. $] = ' ';
+									}
+									else
+										bar[] = '-';
+									buf.put(bar[]);
+								}
+								buf.put("] ");
 							}
-							else
-								bar[] = '-';
-							buf.put(bar[]);
-						}
-						buf.put("] ");
-					}
-					buf.put(child.firstChild is null ? ' ' : '/');
+							buf.put(child.firstChild is null ? ' ' : '/');
 
-					{
-						auto displayedItem = child.humanName;
-						auto maxItemWidth = w - (minWidth - 5);
-						if (displayedItem.length > maxItemWidth)
-						{
-							auto leftLength = (maxItemWidth - "...".length) / 2;
-							auto rightLength = maxItemWidth - "...".length - leftLength;
-							displayedItem =
-								displayedItem[0 .. leftLength] ~ "..." ~
-								displayedItem[$ - rightLength .. $];
-						}
-						buf.put(displayedItem);
-					}
+							{
+								auto displayedItem = child.humanName;
+								auto maxItemWidth = w.width - (minWidth - 5);
+								if (displayedItem.length > maxItemWidth)
+								{
+									auto leftLength = (maxItemWidth - "...".length) / 2;
+									auto rightLength = maxItemWidth - "...".length - leftLength;
+									displayedItem =
+										displayedItem[0 .. leftLength] ~ "..." ~
+										displayedItem[$ - rightLength .. $];
+								}
+								buf.put(displayedItem);
+							}
 
-					rawWrite(y, 0, buf.get(), child is selection ? A_REVERSE : 0);
+							w.put(buf.get());
+							w.newLine();
+						});
+					});
 				}
-				attroff(A_REVERSE);
 
 				foreach (i, line; textLines)
 				{
 					auto y = cast(int)(contentAreaHeight + i);
 					y += 2;
-					if (y == h - 2 && i + 1 < textLines.length)
+					if (y == w.height - 2 && i + 1 < textLines.length)
 					{
-						mvprintw(y, 0, " --- more - press i to view --- ");
+						w.at(0, y, { w.put(" --- more - press i to view --- "); });
 						break;
 					}
-					mvhline(y, 0, i ? ' ' : '-', w);
-					mvprintw(y, 0, "%.*s", line.length, line.ptr);
+					w.at(0, y, {
+						w.put(line);
+						w.newLine(i ? ' ' : '-');
+					});
 				}
 				break;
 			}
@@ -913,7 +857,7 @@ struct Browser
 					if (y < 0 || y >= contentAreaHeight)
 						continue;
 					y += 2;
-					mvprintw(y, 0, "%.*s", line.length, line.ptr);
+					w.at(0, y, { w.put(line); });
 				}
 				break;
 		}
@@ -937,8 +881,8 @@ struct Browser
 						null,
 					] ~ (expert && totalSamples ? [
 						"This will free ~%s (±%s)."d.format(
-							humanSize(selection.data[SampleType.exclusive].samples * real(totalSize) / totalSamples),
-							humanSize(estimateError(totalSamples, selection.data[SampleType.exclusive].samples) * totalSize),
+							HumanSize(selection.data[SampleType.exclusive].samples * real(totalSize) / totalSamples),
+							HumanSize(estimateError(totalSamples, selection.data[SampleType.exclusive].samples) * totalSize),
 						),
 						null,
 					] : null) ~ [
@@ -993,7 +937,7 @@ struct Browser
 					break;
 			}
 
-			auto maxW = w - 6;
+			auto maxW = w.width - 6;
 			for (size_t i = 0; i < lines.length; i++)
 			{
 				auto line = lines[i];
@@ -1010,21 +954,17 @@ struct Browser
 
 			auto winW = (lines.map!(line => line.length).reduce!max + 6).to!int;
 			auto winH = (lines.length + 4).to!int;
-			auto winX = (w - winW) / 2;
-			auto winY = (h - winH) / 2;
-			auto win = derwin(stdscr, winH, winW, winY, winX);
-			scope(exit) delwin(win);
-
-			wclear(win);
-			box(win, 0, 0);
-			foreach (y, line; lines)
-			{
-				auto s = line.to!string;
-				mvwprintw(win, (2 + y).to!int, 3, "%.*s", s.length, s.ptr);
-			}
+			auto winX = (w.width - winW) / 2;
+			auto winY = (w.height - winH) / 2;
+			w.withWindow(winX, winY, winW, winH, {
+				w.box();
+				foreach (y, line; lines)
+				{
+					auto s = line.to!string;
+					w.at(3, (2 + y).to!int, { w.put(s); });
+				}
+			});
 		}();
-
-		refresh();
 	}
 
 	void moveCursor(sizediff_t delta)
@@ -1040,55 +980,6 @@ struct Browser
 		if (pos > items.length - 1)
 			pos = items.length - 1;
 		selection = items[pos];
-	}
-
-	/// Convert nul-terminated string of wchar_t `c` to `cchar_t`, using `setcchar`.
-	static cchar_t toCChar(const(wchar_t)* c, uint attr)
-	{
-		import std.utf : replacementDchar;
-		static immutable wchar_t[2] fallback = [replacementDchar, 0];
-		cchar_t cchar;
-		if (setcchar(&cchar, c, attr, 0, null) != OK)
-			enforce(setcchar(&cchar, fallback.ptr, attr, 0, null) == OK, "Can't encode replacement character");
-		return cchar;
-	}
-
-	/// Convert UTF-8 string `str` to a `cchar_t` array with the given attribute.
-	/// The return value is valid until the next call.
-	static cchar_t[] toCChars(const(char)[] str, uint attr)
-	{
-		import std.utf : byDchar;
-		static FastAppender!cchar_t ccharBuf;
-		ccharBuf.clear(); // Reuse buffer
-		auto dchars = str.byDchar(); // This will also replace bad UTF-8 with replacementDchar.
-		while (!dchars.empty)
-		{
-			// Discard leading nonspacing characters. ncurses cannot accept them anyway.
-			while (!dchars.empty && wcwidth(dchars.front) == 0)
-				dchars.popFront();
-			// Copy one spacing and up to CCHARW_MAX-1 nonspacing characters
-			if (dchars.empty)
-				break;
-			assert(wcwidth(dchars.front) > 0);
-			wchar_t[CCHARW_MAX + /*nul-terminator*/ 1] wchars;
-			size_t i = 0;
-			wchars[i++] = dchars.front;
-			dchars.popFront();
-			while (i < CCHARW_MAX && !dchars.empty && wcwidth(dchars.front) == 0)
-			{
-				wchars[i++] = dchars.front;
-				dchars.popFront();
-			}
-			wchars[i] = 0;
-			ccharBuf.put(toCChar(wchars.ptr, attr));
-		}
-		return ccharBuf.get();
-	}
-
-	static void rawWrite(int y, int x, const(char)[] str, uint attr)
-	{
-		auto cchars = toCChars(str, attr);
-		mvadd_wchnstr(y, x, cchars.ptr, cchars.length.to!int);
 	}
 
 	/// Pausing has the following effects:
@@ -1131,9 +1022,9 @@ struct Browser
 
 	bool handleInput()
 	{
-		auto ch = getch();
+		auto ch = curses.readKey();
 
-		if (ch == ERR)
+		if (ch == Curses.Key.none)
 			return false; // no events - would have blocked
 		else
 			message = null;
@@ -1144,7 +1035,7 @@ struct Browser
 				togglePause();
 				return true;
 			case '?':
-			case KEY_F0 + 1:
+			case Curses.Key.f1:
 				mode = Mode.help;
 				top = 0;
 				break;
@@ -1157,7 +1048,7 @@ struct Browser
 			case Mode.browser:
 				switch (ch)
 				{
-					case KEY_LEFT:
+					case Curses.Key.left:
 					case 'h':
 					case '<':
 						if (currentPath.parent)
@@ -1169,7 +1060,7 @@ struct Browser
 						else
 							showMessage("Already at top-level");
 						break;
-					case KEY_RIGHT:
+					case Curses.Key.right:
 					case '\n':
 						if (selection)
 						{
@@ -1180,24 +1071,24 @@ struct Browser
 						else
 							showMessage("Nowhere to descend into");
 						break;
-					case KEY_UP:
+					case Curses.Key.up:
 					case 'k':
 						moveCursor(-1);
 						break;
-					case KEY_DOWN:
+					case Curses.Key.down:
 					case 'j':
 						moveCursor(+1);
 						break;
-					case KEY_PPAGE:
+					case Curses.Key.pageUp:
 						moveCursor(-contentAreaHeight);
 						break;
-					case KEY_NPAGE:
+					case Curses.Key.pageDown:
 						moveCursor(+contentAreaHeight);
 						break;
-					case KEY_HOME:
+					case Curses.Key.home:
 						moveCursor(-items.length);
 						break;
-					case KEY_END:
+					case Curses.Key.end:
 						moveCursor(+items.length);
 						break;
 					case 'i':
@@ -1257,7 +1148,7 @@ struct Browser
 			case Mode.info:
 				switch (ch)
 				{
-					case KEY_LEFT:
+					case Curses.Key.left:
 					case 'h':
 					case '<':
 						mode = Mode.browser;
@@ -1273,7 +1164,7 @@ struct Browser
 						if (items.length)
 							goto case 'i';
 						else
-							goto case KEY_LEFT;
+							goto case Curses.Key.left;
 					case 'i':
 						mode = Mode.browser;
 						top = 0;
@@ -1368,24 +1259,24 @@ struct Browser
 			textScroll:
 				switch (ch)
 				{
-					case KEY_UP:
+					case Curses.Key.up:
 					case 'k':
 						top += -1;
 						break;
-					case KEY_DOWN:
+					case Curses.Key.down:
 					case 'j':
 						top += +1;
 						break;
-					case KEY_PPAGE:
+					case Curses.Key.pageUp:
 						top += -contentAreaHeight;
 						break;
-					case KEY_NPAGE:
+					case Curses.Key.pageDown:
 						top += +contentAreaHeight;
 						break;
-					case KEY_HOME:
+					case Curses.Key.home:
 						top -= textLines.length;
 						break;
-					case KEY_END:
+					case Curses.Key.end:
 						top += textLines.length;
 						break;
 					default:
@@ -1400,9 +1291,6 @@ struct Browser
 }
 
 private:
-
-// TODO: upstream into Druntime
-extern (C) int wcwidth(wchar_t c);
 
 /// https://en.wikipedia.org/wiki/1.96
 // enum z_975 = normalDistributionInverse(0.975);
