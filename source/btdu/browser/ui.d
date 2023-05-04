@@ -17,7 +17,7 @@
  */
 
 /// ncurses interface for browsing results
-module btdu.browser;
+module btdu.browser.ui;
 
 import core.stdc.config;
 import core.stdc.locale;

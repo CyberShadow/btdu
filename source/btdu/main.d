@@ -48,7 +48,7 @@ import ae.utils.main;
 import ae.utils.time.parsedur;
 import ae.utils.typecons;
 
-import btdu.browser;
+import btdu.browser.ui;
 import btdu.common;
 import btdu.paths;
 import btdu.sample;
