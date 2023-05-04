@@ -272,7 +272,7 @@ struct Browser
 						(expert ? "  " : "") ~ "- Logical offsets: " ~ (currentPath.data[type].samples
 							? format!"%s%-(%s, %)"(
 								currentPath.data[type].samples > currentPath.data[type].offsets.length ? "..., " : "",
-								currentPath.data[type].offsets[].filter!(o => o != Offset.init).map!((ref o) => o.logical).map!(o => o.among(logicalOffsetHole, logicalOffsetSlack) ? "-" : o.text),
+								currentPath.data[type].offsets[].filter!(o => o != Offset.init).map!((ref o) => o.logical).map!(o => o == logicalOffsetHole ? "<UNALLOCATED>" : o == logicalOffsetSlack ? "<SLACK>" : o.text),
 							)
 							: "-"),
 
