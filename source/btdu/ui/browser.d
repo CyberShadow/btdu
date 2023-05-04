@@ -56,10 +56,10 @@ struct Browser
 
 	BrowserPath* currentPath;
 	sizediff_t top; // Scroll offset (row number, in the content, corresponding to the topmost displayed line)
+	sizediff_t contentHeight; // Number of total rows in the content
 	sizediff_t contentAreaHeight; // Number of rows where scrolling content is displayed
 	BrowserPath* selection;
 	BrowserPath*[] items;
-	string[] textLines;
 	bool done;
 
 	enum Mode
@@ -243,412 +243,7 @@ struct Browser
 
 		auto totalSamples = browserRoot.data[SampleType.represented].samples;
 
-		// Build info
-		final switch (mode)
-		{
-			case Mode.browser:
-			case Mode.info:
-			case Mode.deleteConfirm:
-			case Mode.deleteProgress:
-			{
-				string[][] info;
-
-				auto fullPath = getFullPath(currentPath);
-
-				string[] showSampleType(SampleType type, string name, bool showError)
-				{
-					return [
-						"- " ~ name ~ ": " ~ (totalSamples
-							? format!"~%s (%d sample%s)%s"(
-								HumanSize(currentPath.data[type].samples * real(totalSize) / totalSamples),
-								currentPath.data[type].samples,
-								currentPath.data[type].samples == 1 ? "" : "s",
-								showError ? ", ±" ~ HumanSize(estimateError(totalSamples, currentPath.data[type].samples) * totalSize).text : "",
-							)
-							: "-"),
-
-						// "  - Average query duration: " ~ (currentPath.data[type].samples
-						// 	? stdDur(currentPath.data[type].duration / currentPath.data[type].samples).toString()
-						// 	: "-"),
-
-						(expert ? "  " : "") ~ "- Logical offsets: " ~ (currentPath.data[type].samples
-							? format!"%s%-(%s, %)"(
-								currentPath.data[type].samples > currentPath.data[type].offsets.length ? "..., " : "",
-								currentPath.data[type].offsets[].filter!(o => o != Offset.init).map!((ref o) => o.logical).map!(o => o == logicalOffsetHole ? "<UNALLOCATED>" : o == logicalOffsetSlack ? "<SLACK>" : o.text),
-							)
-							: "-"),
-
-					] ~ (physical ? [
-						(expert ? "  " : "") ~ "- Physical offsets: " ~ (currentPath.data[type].samples
-							? format!"%s%(%s, %)"(
-								currentPath.data[type].samples > currentPath.data[type].offsets.length ? "..., " : "",
-								currentPath.data[type].offsets[].filter!(o => o != Offset.init).map!((ref o) => formatted!"%d:%d"(o.devID, o.physical)),
-							)
-							: "-"),
-						] : []) ~ [
-					];
-				}
-
-				info ~= chain(
-					["--- Details: "],
-
-					fullPath ? ["- Full path: " ~ cast(string)fullPath] : [],
-
-					(){
-						string[] result;
-						if (currentPath.parent && currentPath.parent.parent && currentPath.parent.parent.name[] == "\0ERROR")
-						{
-							auto errno = currentPath.name[] in errnoLookup;
-							if (errno)
-							{
-								result ~= "- Error code: " ~ text(*errno);
-								auto description = getErrno(*errno).description;
-								if (description)
-									result ~= "- Error message: " ~ description;
-							}
-						}
-						return result;
-					}(),
-
-					["- Average query duration: " ~ (currentPath.data[SampleType.represented].samples
-							? stdDur(currentPath.data[SampleType.represented].duration / currentPath.data[SampleType.represented].samples).DurationAsDecimalString().text
-							: "-")],
-				).array;
-
-				if (expert)
-				{
-					info ~= showSampleType(SampleType.represented, "Represented size", true);
-					info ~= ["- Distributed size: " ~ (totalSamples
-						? format!"~%s (%1.3f sample%s)"(
-							HumanSize(currentPath.distributedSamples * real(totalSize) / totalSamples),
-							currentPath.distributedSamples,
-							currentPath.distributedSamples == 1 ? "" : "s",
-						)
-						: "-")];
-
-					info ~= showSampleType(SampleType.exclusive, "Exclusive size", true);
-					info ~= showSampleType(SampleType.shared_, "Shared size", false);
-				}
-				else
-				{
-					info[$-1] ~= showSampleType(SampleType.represented, "Represented size", true);
-				}
-
-				{
-					string explanation = {
-						if (currentPath is &browserRoot)
-							return
-								"Welcome to btdu. You are in the hierarchy root; " ~
-								"results will be arranged according to their block group and profile, and then by path." ~
-								"\n\n" ~
-								"Use the arrow keys to navigate, press ? for help.";
-
-						string name = currentPath.name[];
-						if (name.skipOverNul())
-						{
-							switch (name)
-							{
-								case "DATA":
-									return
-										"This node holds samples from chunks in the DATA block group, " ~
-										"which mostly contains file data.";
-								case "METADATA":
-									return
-										"This node holds samples from chunks in the METADATA block group, " ~
-										"which contains btrfs internal metadata arranged in b-trees." ~
-										"\n\n" ~
-										"The contents of small files may be stored here, in line with their metadata." ~
-										"\n\n" ~
-										"The contents of METADATA chunks is opaque to btdu, so this node does not have children.";
-								case "SYSTEM":
-									return
-										"This node holds samples from chunks in the SYSTEM block group, " ~
-										"which contains some core btrfs information, such as how to map physical device space to linear logical space or vice-versa." ~
-										"\n\n" ~
-										"The contents of SYSTEM chunks is opaque to btdu, so this node does not have children.";
-								case "SINGLE":
-								case "RAID0":
-								case "RAID1":
-								case "DUP":
-								case "RAID10":
-								case "RAID5":
-								case "RAID6":
-								case "RAID1C3":
-								case "RAID1C4":
-									return
-										"This node holds samples from chunks in the " ~ name ~ " profile.";
-								case "ERROR":
-									return
-										"This node represents sample points for which btdu encountered an error when attempting to query them." ~
-										"\n\n" ~
-										"Children of this node indicate the encountered error, and may have a more detailed explanation attached.";
-								case "ROOT_TREE":
-									return
-										"This node holds samples with inodes contained in the BTRFS_ROOT_TREE_OBJECTID object." ~
-										"\n\n" ~
-										"These samples are not resolvable to paths, and most likely indicate some kind of metadata. " ~
-										"(If you know, please tell me!)";
-								case "NO_INODE":
-									return
-										"This node represents sample points for which btrfs successfully completed our request " ~
-										"to look up inodes at the given logical offset, but did not actually return any inodes." ~
-										"\n\n" ~
-										"One possible cause is data which was deleted recently." ~
-										"\n\n" ~
-										"Due to a bug, under Linux versions 6.2 and 6.3, samples which would otherwise be classified as <UNREACHABLE> will appear here instead. " ~
-										"If your kernel is affected by this bug, try a different version to obtain more information about how this space is used.";
-								case "NO_PATH":
-									return
-										"This node represents sample points for which btrfs successfully completed our request " ~
-										"to look up filesystem paths for the given inode, but did not actually return any paths.";
-								case "UNREACHABLE":
-									return
-										"This node represents sample points in extents which are not used by any files.\n" ~
-										"Despite not being directly used, these blocks are kept because another part of the extent they belong to is actually used by files." ~
-										"\n\n" ~
-										"This can happen if a large file is written in one go, and then later one block is overwritten - " ~
-										"btrfs may keep the old extent which still contains the old copy of the overwritten block." ~
-										"\n\n" ~
-										"Children of this node indicate the path of files using the extent containing the unreachable samples. " ~
-										"Defragmentation of these files may reduce the amount of such unreachable blocks." ~
-										"\n\n" ~
-										"More precisely, this node represents samples for which BTRFS_IOC_LOGICAL_INO returned zero results, " ~
-										"but BTRFS_IOC_LOGICAL_INO_V2 with BTRFS_LOGICAL_INO_ARGS_IGNORE_OFFSET returned something else.";
-								case "UNUSED":
-									return
-										"btrfs reports that there is nothing at the random sample location that btdu picked." ~
-										"\n\n" ~
-										"This most likely represents allocated but unused space, " ~
-										"which could be reduced by running a balance on the DATA block group." ~
-										"\n\n" ~
-										"More precisely, this node represents samples for which BTRFS_IOC_LOGICAL_INO returned ENOENT.";
-								case "UNALLOCATED":
-									return
-										"This node represents sample points in physical device space which are not allocated to any block group.\n" ~
-										"As such, these samples do not have corresponding logical offsets." ~
-										"\n\n" ~
-										"A healthy btrfs filesystem should have at least some unallocated space, in order to allow the metadata block group to grow.\n " ~
-										"If you have too little unallocated space, consider running a balance on the DATA block group, to convert unused DATA space to unallocated space.\n" ~
-										"(You will find unused DATA space in btdu under a <UNUSED> node.)" ~
-										"\n\n" ~
-										"More precisely, this node represents samples which are not covered by BTRFS_DEV_EXTENT_KEY entries in BTRFS_DEV_TREE_OBJECTID.";
-								case "SLACK":
-									return
-										"This node represents sample points in physical device space which are beyond the end of the btrfs filesystem.\n" ~
-										"As such, these samples do not have corresponding logical offsets." ~
-										"\n\n" ~
-										"The presence of this node indicates that the space allocated for the btrfs filesystem " ~
-										"is smaller than the underlying block device (usually a disk partition)." ~
-										"\n\n" ~
-										"To make this space available to the filesystem, the btrfs device can be resized to fill the entire block device " ~
-										"with `btrfs filesystem resize`, specifying `max` for the size parameter." ~
-										"\n\n" ~
-										"More precisely, this node represents samples in physical device space which are greater than btrfs_ioctl_dev_info_args::total_bytes " ~
-										"but less than the size of the file or block device at btrfs_ioctl_dev_info_args::path.";
-								default:
-									if (name.skipOver("TREE_"))
-										return
-											"This node holds samples with inodes contained in the tree #" ~ name ~ ", " ~
-											"but btdu failed to resolve this tree number to an absolute path." ~
-											"\n\n" ~
-											"One possible cause is subvolumes which were deleted recently." ~
-											"\n\n" ~
-											"Another possible cause is \"ghost subvolumes\", a form of corruption which causes some orphan subvolumes to not get cleaned up.";
-									debug assert(false, "Unknown special node: " ~ name);
-							}
-						}
-
-						if (currentPath.parent && currentPath.parent.name[] == "\0ERROR")
-						{
-							switch (name)
-							{
-								case "Unresolvable root":
-									return
-										"btdu failed to resolve this tree number to an absolute path.";
-								case "logical ino":
-									return
-										"An error occurred while trying to look up which inodes use a particular logical offset." ~
-										"\n\n" ~
-										"Children of this node indicate the encountered error code, and may have a more detailed explanation attached.";
-								case "open":
-									return
-										"btdu failed to open the filesystem root containing an inode." ~
-										"\n\n" ~
-										"Children of this node indicate the encountered error code, and may have a more detailed explanation attached.";
-								default:
-							}
-						}
-
-						if (currentPath.parent && currentPath.parent.parent && currentPath.parent.parent.name[] == "\0ERROR")
-						{
-							switch (currentPath.parent.name[])
-							{
-								case "logical ino":
-									switch (name)
-									{
-										case "ENOENT":
-											assert(false); // Should have been rewritten into UNUSED
-										case "ENOTTY":
-											return
-												"An ENOTTY (\"Inappropriate ioctl for device\") error means that btdu issued an ioctl which the kernel btrfs code does not understand." ~
-												"\n\n" ~
-												"The most likely cause is that you are running an old kernel version. " ~
-												"If you update your kernel, btdu might be able to show more information instead of this error.";
-										default:
-									}
-									break;
-								case "ino paths":
-									switch (name)
-									{
-										case "ENOENT":
-											// Reproducible with e.g.: ( dd if=/dev/zero bs=1M count=512 ; rm a ; sleep infinity ) > a
-											// on 5.17.9
-											// https://gist.github.com/CyberShadow/10c1c1f66ba3808fdaf9497b22f5896c#file-ino-paths-enoent-sh
-											return
-												"This node represents samples in files for which btrfs provided an inode, " ~
-												"but responded with \"not found\" when attempting to look up filesystem paths for the given inode." ~
-												"\n\n" ~
-												"One likely explanation is files which are awaiting deletion, " ~
-												"but are still kept alive by an open file descriptor held by some process. " ~
-												"This space could be reclaimed by killing the respective tasks or restarting the system." ~
-												"\n\n" ~
-												(currentPath.parent.parent.parent && currentPath.parent.parent.parent.name[] == "\0UNREACHABLE"
-													? (
-														// Reproducible on 5.17.9 with e.g.:
-														// https://gist.github.com/CyberShadow/10c1c1f66ba3808fdaf9497b22f5896c#file-unreachable-ino-paths-enoent-sh
-														// Was also seen on 5.10.115 in weird (leaky?) circumstances.
-														"Because this node is under <UNREACHABLE>, the space represented by this node is actually in extents which are not used by any file (deleted or not), " ~
-														"but are kept because another part of the extent they belong to is actually used by a deleted-but-still-open file." ~
-														"\n\n" ~
-														"More precisely, this node represents samples for which BTRFS_IOC_LOGICAL_INO returned zero results, " ~
-														"then BTRFS_IOC_LOGICAL_INO_V2 with BTRFS_LOGICAL_INO_ARGS_IGNORE_OFFSET returned one or more inodes, " ~
-														"then attempting to resolve these inodes with BTRFS_IOC_INO_PATHS returned ENOENT."
-													) : (
-														"More precisely, this node represents samples for which BTRFS_IOC_INO_PATHS returned ENOENT."
-													)
-												);
-										default:
-									}
-									break;
-								case "open":
-									switch (name)
-									{
-										case "ENOENT":
-											return
-												"btdu failed to open the filesystem root containing an inode." ~
-												"\n\n" ~
-												"The most likely reason for this is that the subvolume containing this inode has been deleted since btdu was started. " ~
-												"You can restart btdu to see accurate results." ~
-												"\n\n" ~
-												"You can descend into this node to see the path that btdu failed to open.";
-										default:
-									}
-									break;
-								default:
-							}
-						}
-
-						return null;
-					}();
-
-					if (explanation)
-						info ~= ["--- Explanation: "] ~ explanation.verbatimWrap(w.width).replace("\n ", "\n").strip().split("\n");
-				}
-
-				bool showSeenAs;
-				if (currentPath.seenAs.empty)
-					showSeenAs = false;
-				else
-				if (fullPath is null && currentPath.seenAs.length == 1)
-					showSeenAs = false; // Not a real file
-				else
-					showSeenAs = true;
-
-				if (showSeenAs)
-				{
-					auto representedSamples = currentPath.data[SampleType.represented].samples;
-					info ~= ["--- Shares data with: "] ~
-						currentPath.seenAs
-						.byKeyValue
-						.array
-						.sort!((ref a, ref b) => a.key < b.key)
-						.map!(pair => representedSamples
-							? format("- %s (%d%%)", pair.key, pair.value * 100 / representedSamples)
-							: format("- %s (-%%)", pair.key))
-						.array;
-				}
-
-				textLines = info.join([""]);
-				if (mode == Mode.info)
-				{
-					if (!textLines.length)
-					{
-						if (items.length)
-							textLines = ["  (no info for this node - press i or q to exit)"];
-						else
-							textLines = ["  (empty node)"];
-					}
-					textLines = [""] ~ textLines;
-				}
-				break;
-			}
-			case Mode.help:
-				textLines = help.dup;
-				break;
-		}
-
-		// Hard-wrap
-		for (size_t i = 0; i < textLines.length; i++)
-			if (textLines[i].length > w.width)
-				textLines = textLines[0 .. i] ~ textLines[i][0 .. w.width] ~ textLines[i][w.width .. $] ~ textLines[i + 1 .. $];
-
-		// Scrolling and cursor upkeep
-		{
-			contentAreaHeight = w.height - 3;
-			size_t contentHeight;
-			final switch (mode)
-			{
-				case Mode.browser:
-				case Mode.deleteConfirm:
-				case Mode.deleteProgress:
-					contentHeight = items.length;
-					contentAreaHeight -= min(textLines.length, contentAreaHeight / 2);
-					contentAreaHeight = min(contentAreaHeight, contentHeight + 1);
-					break;
-				case Mode.info:
-				case Mode.help:
-					contentHeight = textLines.length;
-					break;
-			}
-
-			// Ensure there is no unnecessary space at the bottom
-			if (top + contentAreaHeight > contentHeight)
-				top = contentHeight - contentAreaHeight;
-			// Ensure we are never scrolled "above" the first row
-			if (top < 0)
-				top = 0;
-
-			final switch (mode)
-			{
-				case Mode.browser:
-				case Mode.deleteConfirm:
-				case Mode.deleteProgress:
-				{
-					// Ensure the selected item is visible
-					auto pos = selection && items ? items.countUntil(selection) : 0;
-					top = top.clamp(
-						pos - contentAreaHeight + 1,
-						pos,
-					);
-					break;
-				}
-				case Mode.info:
-				case Mode.help:
-					break;
-			}
-		}
-
-		// Rendering
+		// Render outer frame
 		sizediff_t minWidth;
 		{
 			minWidth =
@@ -674,7 +269,7 @@ struct Browser
 				w.xOverflowEllipsis({
 					// Top bar
 					w.at(0, 0, {
-						w.sink.formattedWrite!(" btdu v" ~ btduVersion ~ " @ %s")(fsPath);
+						w.format!(" btdu v" ~ btduVersion ~ " @ %s")(fsPath);
 						w.newLine();
 						if (imported)
 							w.at(w.width - 10, 0, { w.put(" [IMPORT] "); });
@@ -687,20 +282,20 @@ struct Browser
 					w.at(0, w.height - 1, {
 						if (message && MonoTime.currTime < showMessageUntil)
 							w.xOverflowEllipsis({
-								w.sink.formattedWrite!" %s"(message);
+								w.format!" %s"(message);
 							});
 						else
 						{
-							w.sink.formattedWrite!" Samples: %d"(totalSamples);
+							w.format!" Samples: %d"(totalSamples);
 
-							w.sink.formattedWrite!"  Resolution: "();
+							w.format!"  Resolution: "();
 							if (totalSamples)
-								w.sink.formattedWrite!"~%s"((totalSize / totalSamples).HumanSize());
+								w.format!"~%s"((totalSize / totalSamples).HumanSize());
 							else
 								w.put("-");
 
 							if (expert)
-								w.sink.formattedWrite!"  Size metric: %s"(sizeDisplayMode.to!string.chomp("_"));
+								w.format!"  Size metric: %s"(sizeDisplayMode.to!string.chomp("_"));
 						}
 						w.newLine();
 					});
@@ -722,7 +317,7 @@ struct Browser
 						displayedPath = "..." ~ displayedPath[$ - (maxPathWidth - 3) .. $];
 
 					w.at(0, 1, {
-						w.sink.formattedWrite!"--- %s%s "(prefix, displayedPath);
+						w.format!"--- %s%s "(prefix, displayedPath);
 						w.newLine('-');
 					});
 					break;
@@ -731,12 +326,429 @@ struct Browser
 			}
 		}
 
+		void drawInfo(BrowserPath* p, bool inline)
+		{
+			auto fullPath = getFullPath(p);
+
+			void showSampleType(SampleType type, string name, bool showError)
+			{
+				struct LogicalOffsetPrinter
+				{
+					Offset offset;
+					void toString(void delegate(const(char)[]) sink) const
+					{
+						offset.logical == logicalOffsetHole ? sink("<UNALLOCATED>") :
+						offset.logical == logicalOffsetSlack ? sink("<SLACK>") :
+						sink.formattedWrite!"%s"(offset.logical);
+					}
+				}
+
+				return
+					w.newLine(),
+
+					w.format!"- %s: "(name), totalSamples
+					? w.format!"~%s (%d sample%s)"(
+							HumanSize(currentPath.data[type].samples * real(totalSize) / totalSamples),
+							currentPath.data[type].samples,
+							currentPath.data[type].samples == 1 ? "" : "s",
+						), showError
+							? w.format!", ±%s"(HumanSize(estimateError(totalSamples, currentPath.data[type].samples) * totalSize))
+							: {}()
+					: w.put("-"),
+					w.newLine(),
+
+					// w.put("  - Average query duration: "), currentPath.data[type].samples
+					// 	? w.format!"%s"(stdDur(currentPath.data[type].duration / currentPath.data[type].samples))
+					// 	: w.put("-"),
+					// w.newLine(),
+
+					w.put(expert ? "  " : ""), w.put("- Logical offsets: "), currentPath.data[type].samples
+					? w.format!"%s%-(%s, %)"(
+						currentPath.data[type].samples > currentPath.data[type].offsets.length ? "..., " : "",
+						currentPath.data[type].offsets[].filter!(o => o != Offset.init).map!((ref o) => LogicalOffsetPrinter(o)),
+					)
+					: w.put("-"),
+					w.newLine(),
+
+					physical ?
+						w.put(expert ? "  " : ""), w.put("- Physical offsets: "), currentPath.data[type].samples
+						? w.format!"%s%(%s, %)"(
+							currentPath.data[type].samples > currentPath.data[type].offsets.length ? "..., " : "",
+							currentPath.data[type].offsets[].filter!(o => o != Offset.init).map!((ref o) => formatted!"%d:%d"(o.devID, o.physical)),
+						)
+						: w.put("-"),
+						w.newLine()
+					: {}()
+				;
+			}
+
+			w.xOverflowWords({
+				if (!inline)
+					w.newLine();
+				w.put("--- Details: ");
+				if (inline)
+					w.newLine('-');
+				else
+					w.newLine();
+
+				if (fullPath) w.put("- Full path: "), w.xOverflowChars({ w.put(fullPath); }), w.newLine();
+
+				if (currentPath.parent && currentPath.parent.parent && currentPath.parent.parent.name[] == "\0ERROR")
+				{
+					auto errno = currentPath.name[] in errnoLookup;
+					if (errno)
+					{
+						w.format!"- Error code: %d"(*errno); w.newLine();
+						auto description = getErrno(*errno).description;
+						if (description)
+							w.format!"- Error message: %s"(description);
+					}
+				}
+
+				w.put("- Average query duration: "), currentPath.data[SampleType.represented].samples
+						? w.format!"%s"(stdDur(currentPath.data[SampleType.represented].duration / currentPath.data[SampleType.represented].samples).DurationAsDecimalString())
+						: w.put("-"),
+					w.newLine();
+
+				if (expert)
+				{
+					showSampleType(SampleType.represented, "Represented size", true);
+					w.newLine(), w.put("- Distributed size: "), totalSamples
+						? w.format!"~%s (%1.3f sample%s)"(
+							HumanSize(currentPath.distributedSamples * real(totalSize) / totalSamples),
+							currentPath.distributedSamples,
+							currentPath.distributedSamples == 1 ? "" : "s",
+						)
+						: w.put("-"),
+						w.newLine();
+
+					showSampleType(SampleType.exclusive, "Exclusive size", true);
+					showSampleType(SampleType.shared_, "Shared size", false);
+				}
+				else
+					showSampleType(SampleType.represented, "Represented size", true);
+
+				{
+					auto explanation = delegate void delegate(Curses.Wand*) {
+						if (currentPath is &browserRoot)
+							return w => (
+								w.put("Welcome to btdu. You are in the hierarchy root; "),
+								w.put("results will be arranged according to their block group and profile, and then by path."),
+								w.newLine(), w.newLine(),
+								w.put("Use the arrow keys to navigate, press ? for help.")
+							);
+
+						string name = currentPath.name[];
+						if (name.skipOverNul())
+						{
+							switch (name)
+							{
+								case "DATA":
+									return w => (
+										w.put("This node holds samples from chunks in the DATA block group, "),
+										w.put("which mostly contains file data.")
+									);
+								case "METADATA":
+									return w => (
+										w.put("This node holds samples from chunks in the METADATA block group, "),
+										w.put("which contains btrfs internal metadata arranged in b-trees."),
+										w.newLine(), w.newLine(),
+										w.put("The contents of small files may be stored here, in line with their metadata."),
+										w.newLine(), w.newLine(),
+										w.put("The contents of METADATA chunks is opaque to btdu, so this node does not have children.")
+									);
+								case "SYSTEM":
+									return w => (
+										w.put("This node holds samples from chunks in the SYSTEM block group, "),
+										w.put("which contains some core btrfs information, such as how to map physical device space to linear logical space or vice-versa."),
+										w.newLine(), w.newLine(),
+										w.put("The contents of SYSTEM chunks is opaque to btdu, so this node does not have children.")
+									);
+								case "SINGLE":
+								case "RAID0":
+								case "RAID1":
+								case "DUP":
+								case "RAID10":
+								case "RAID5":
+								case "RAID6":
+								case "RAID1C3":
+								case "RAID1C4":
+									return w => w.format!
+										"This node holds samples from chunks in the %s profile."(name);
+								case "ERROR":
+									return w => (
+										w.put("This node represents sample points for which btdu encountered an error when attempting to query them."),
+										w.newLine(), w.newLine(),
+										w.put("Children of this node indicate the encountered error, and may have a more detailed explanation attached.")
+									);
+								case "ROOT_TREE":
+									return w => (
+										w.put("This node holds samples with inodes contained in the BTRFS_ROOT_TREE_OBJECTID object."),
+										w.newLine(), w.newLine(),
+										w.put("These samples are not resolvable to paths, and most likely indicate some kind of metadata. "),
+										w.put("(If you know, please tell me!)")
+									);
+								case "NO_INODE":
+									return w => (
+										w.put("This node represents sample points for which btrfs successfully completed our request "),
+										w.put("to look up inodes at the given logical offset, but did not actually return any inodes."),
+										w.newLine(), w.newLine(),
+										w.put("One possible cause is data which was deleted recently."),
+										w.newLine(), w.newLine(),
+										w.put("Due to a bug, under Linux versions 6.2 and 6.3, samples which would otherwise be classified as <UNREACHABLE> will appear here instead. "),
+										w.put("If your kernel is affected by this bug, try a different version to obtain more information about how this space is used.")
+									);
+								case "NO_PATH":
+									return w => (
+										w.put("This node represents sample points for which btrfs successfully completed our request "),
+										w.put("to look up filesystem paths for the given inode, but did not actually return any paths.")
+									);
+								case "UNREACHABLE":
+									return w => (
+										w.put("This node represents sample points in extents which are not used by any files."), w.newLine(),
+										w.put("Despite not being directly used, these blocks are kept because another part of the extent they belong to is actually used by files."),
+										w.newLine(), w.newLine(),
+										w.put("This can happen if a large file is written in one go, and then later one block is overwritten - "),
+										w.put("btrfs may keep the old extent which still contains the old copy of the overwritten block."),
+										w.newLine(), w.newLine(),
+										w.put("Children of this node indicate the path of files using the extent containing the unreachable samples. "),
+										w.put("Defragmentation of these files may reduce the amount of such unreachable blocks."),
+										w.newLine(), w.newLine(),
+										w.put("More precisely, this node represents samples for which BTRFS_IOC_LOGICAL_INO returned zero results, "),
+										w.put("but BTRFS_IOC_LOGICAL_INO_V2 with BTRFS_LOGICAL_INO_ARGS_IGNORE_OFFSET returned something else.")
+									);
+								case "UNUSED":
+									return w => (
+										w.put("btrfs reports that there is nothing at the random sample location that btdu picked."),
+										w.newLine(), w.newLine(),
+										w.put("This most likely represents allocated but unused space, "),
+										w.put("which could be reduced by running a balance on the DATA block group."),
+										w.newLine(), w.newLine(),
+										w.put("More precisely, this node represents samples for which BTRFS_IOC_LOGICAL_INO returned ENOENT.")
+									);
+								case "UNALLOCATED":
+									return w => (
+										w.put("This node represents sample points in physical device space which are not allocated to any block group."), w.newLine(),
+										w.put("As such, these samples do not have corresponding logical offsets."),
+										w.newLine(), w.newLine(),
+										w.put("A healthy btrfs filesystem should have at least some unallocated space, in order to allow the metadata block group to grow."), w.newLine(),
+										w.put("If you have too little unallocated space, consider running a balance on the DATA block group, to convert unused DATA space to unallocated space."), w.newLine(),
+										w.put("(You will find unused DATA space in btdu under a <UNUSED> node.)"),
+										w.newLine(), w.newLine(),
+										w.put("More precisely, this node represents samples which are not covered by BTRFS_DEV_EXTENT_KEY entries in BTRFS_DEV_TREE_OBJECTID.")
+									);
+								case "SLACK":
+									return w => (
+										w.put("This node represents sample points in physical device space which are beyond the end of the btrfs filesystem."), w.newLine(),
+										w.put("As such, these samples do not have corresponding logical offsets."),
+										w.newLine(), w.newLine(),
+										w.put("The presence of this node indicates that the space allocated for the btrfs filesystem "),
+										w.put("is smaller than the underlying block device (usually a disk partition)."),
+										w.newLine(), w.newLine(),
+										w.put("To make this space available to the filesystem, the btrfs device can be resized to fill the entire block device "),
+										w.put("with `btrfs filesystem resize`, specifying `max` for the size parameter."),
+										w.newLine(), w.newLine(),
+										w.put("More precisely, this node represents samples in physical device space which are greater than btrfs_ioctl_dev_info_args::total_bytes "),
+										w.put("but less than the size of the file or block device at btrfs_ioctl_dev_info_args::path.")
+									);
+								default:
+									if (name.skipOver("TREE_"))
+										return w => (
+											w.put("This node holds samples with inodes contained in the tree #" ~ name ~ ", "),
+											w.put("but btdu failed to resolve this tree number to an absolute path."),
+											w.newLine(), w.newLine(),
+											w.put("One possible cause is subvolumes which were deleted recently."),
+											w.newLine(), w.newLine(),
+											w.put("Another possible cause is \"ghost subvolumes\", a form of corruption which causes some orphan subvolumes to not get cleaned up.")
+										);
+									debug assert(false, "Unknown special node: " ~ name);
+							}
+						}
+
+						if (currentPath.parent && currentPath.parent.name[] == "\0ERROR")
+						{
+							switch (name)
+							{
+								case "Unresolvable root":
+									return w => (
+										w.put("btdu failed to resolve this tree number to an absolute path.")
+									);
+								case "logical ino":
+									return w => (
+										w.put("An error occurred while trying to look up which inodes use a particular logical offset."),
+										w.newLine(), w.newLine(),
+										w.put("Children of this node indicate the encountered error code, and may have a more detailed explanation attached.")
+									);
+								case "open":
+									return w => (
+										w.put("btdu failed to open the filesystem root containing an inode."),
+										w.newLine(), w.newLine(),
+										w.put("Children of this node indicate the encountered error code, and may have a more detailed explanation attached.")
+									);
+								default:
+							}
+						}
+
+						if (currentPath.parent && currentPath.parent.parent && currentPath.parent.parent.name[] == "\0ERROR")
+						{
+							switch (currentPath.parent.name[])
+							{
+								case "logical ino":
+									switch (name)
+									{
+										case "ENOENT":
+											assert(false); // Should have been rewritten into UNUSED
+										case "ENOTTY":
+											return w => (
+												w.put("An ENOTTY (\"Inappropriate ioctl for device\") error means that btdu issued an ioctl which the kernel btrfs code does not understand."),
+												w.newLine(), w.newLine(),
+												w.put("The most likely cause is that you are running an old kernel version. "),
+												w.put("If you update your kernel, btdu might be able to show more information instead of this error.")
+											);
+										default:
+									}
+									break;
+								case "ino paths":
+									switch (name)
+									{
+										case "ENOENT":
+											// Reproducible with e.g.: ( dd if=/dev/zero bs=1M count=512 ; rm a ; sleep infinity ) > a
+											// on 5.17.9
+											// https://gist.github.com/CyberShadow/10c1c1f66ba3808fdaf9497b22f5896c#file-ino-paths-enoent-sh
+											return w => (
+												w.put("This node represents samples in files for which btrfs provided an inode, "),
+												w.put("but responded with \"not found\" when attempting to look up filesystem paths for the given inode."),
+												w.newLine(), w.newLine(),
+												w.put("One likely explanation is files which are awaiting deletion, "),
+												w.put("but are still kept alive by an open file descriptor held by some process. "),
+												w.put("This space could be reclaimed by killing the respective tasks or restarting the system."),
+												w.newLine(), w.newLine(),
+												(currentPath.parent.parent.parent && currentPath.parent.parent.parent.name[] == "\0UNREACHABLE"
+													? (
+														// Reproducible on 5.17.9 with e.g.:
+														// https://gist.github.com/CyberShadow/10c1c1f66ba3808fdaf9497b22f5896c#file-unreachable-ino-paths-enoent-sh
+														// Was also seen on 5.10.115 in weird (leaky?) circumstances.
+														w.put("Because this node is under <UNREACHABLE>, the space represented by this node is actually in extents which are not used by any file (deleted or not), "),
+														w.put("but are kept because another part of the extent they belong to is actually used by a deleted-but-still-open file."),
+														w.newLine(), w.newLine(),
+														w.put("More precisely, this node represents samples for which BTRFS_IOC_LOGICAL_INO returned zero results, "),
+														w.put("then BTRFS_IOC_LOGICAL_INO_V2 with BTRFS_LOGICAL_INO_ARGS_IGNORE_OFFSET returned one or more inodes, "),
+														w.put("then attempting to resolve these inodes with BTRFS_IOC_INO_PATHS returned ENOENT.")
+													) : (
+														w.put("More precisely, this node represents samples for which BTRFS_IOC_INO_PATHS returned ENOENT.")
+													)
+												));
+										default:
+									}
+									break;
+								case "open":
+									switch (name)
+									{
+										case "ENOENT":
+											return w => (
+												w.put("btdu failed to open the filesystem root containing an inode."),
+												w.newLine(), w.newLine(),
+												w.put("The most likely reason for this is that the subvolume containing this inode has been deleted since btdu was started. "),
+												w.put("You can restart btdu to see accurate results."),
+												w.newLine(), w.newLine(),
+												w.put("You can descend into this node to see the path that btdu failed to open.")
+											);
+										default:
+									}
+									break;
+								default:
+							}
+						}
+
+						return null;
+					}();
+
+					if (explanation)
+					{
+						w.newLine();
+						w.put("--- Explanation: "), w.newLine();
+						explanation(&w), w.newLine();
+					}
+				}
+
+				bool showSeenAs;
+				if (currentPath.seenAs.empty)
+					showSeenAs = false;
+				else
+				if (fullPath is null && currentPath.seenAs.length == 1)
+					showSeenAs = false; // Not a real file
+				else
+					showSeenAs = true;
+
+				if (showSeenAs)
+				{
+					auto representedSamples = currentPath.data[SampleType.represented].samples;
+					w.newLine();
+					w.put("--- Shares data with: "); w.newLine();
+					currentPath.seenAs
+						.byKeyValue
+						.array
+						.sort!((ref a, ref b) => a.key < b.key)
+						.each!(pair => representedSamples
+							? w.format!"- %s (%d%%)"(pair.key, pair.value * 100 / representedSamples)
+							: w.format!"- %s (-%%)"(pair.key))
+					;
+				}
+			});
+		}
+
+		// Scrolling and cursor upkeep
+		void fixTop()
+		{
+			// Ensure there is no unnecessary space at the bottom
+			if (top + contentAreaHeight > contentHeight)
+				top = contentHeight - contentAreaHeight;
+			// Ensure we are never scrolled "above" the first row
+			if (top < 0)
+				top = 0;
+		}
+
+		// Used to draw full-screen text content (info and help screens).
+		void drawTextScreen(scope void delegate() fn)
+		{
+			w.withWindow(0, 2, w.width, w.height - 3, {
+				auto topY = (-top).to!int;
+				w.y = topY;
+				w.yOverflowHidden({
+					fn();
+				});
+				// TODO: draw overflow markers on top and bottom
+
+				contentHeight = w.y - topY;
+				contentAreaHeight = w.height;
+				// Ideally we would want to 1) measure the content 2) perform this upkeep 3) render the content,
+				// but as we are rendering info directly to the screen, steps 1 and 3 are one and the same.
+				fixTop();
+			});
+		}
+
+		contentAreaHeight = (w.height - 4) / 2; // TODO!
+
 		final switch (mode)
 		{
 			case Mode.browser:
 			case Mode.deleteConfirm:
 			case Mode.deleteProgress:
 			{
+				contentHeight = items.length;
+				contentAreaHeight = w.height - 3;
+				contentAreaHeight -= min(/*textLines.length TODO*/10, contentAreaHeight / 2);
+				contentAreaHeight = min(contentAreaHeight, contentHeight + 1);
+				fixTop();
+				{
+					// Ensure the selected item is visible
+					auto pos = selection && items ? items.countUntil(selection) : 0;
+					top = top.clamp(
+						pos - contentAreaHeight + 1,
+						pos,
+					);
+				}
+
 				real getUnits(BrowserPath* path)
 				{
 					final switch (sortMode)
@@ -834,33 +846,31 @@ struct Browser
 					});
 				}
 
-				foreach (i, line; textLines)
-				{
-					auto y = cast(int)(contentAreaHeight + i);
-					y += 2;
-					if (y == w.height - 2 && i + 1 < textLines.length)
-					{
-						w.at(0, y, { w.put(" --- more - press i to view --- "); });
-						break;
-					}
-					w.at(0, y, {
-						w.put(line);
-						w.newLine(i ? ' ' : '-');
+				auto y = contentAreaHeight + 2;
+				w.withWindow(0, y.to!int, w.width, (w.height - y - 1).to!int, {
+					w.yOverflowHidden({
+						drawInfo(currentPath, true);
 					});
-				}
+					if (w.y > w.height)
+						w.at(0, w.height - 1, { w.put(" --- more - press i to view --- "), w.newLine(); });
+				});
 				break;
 			}
 
 			case Mode.info:
+				drawTextScreen({
+					drawInfo(currentPath, false);
+				});
+				break;
+
 			case Mode.help:
-				foreach (i, line; textLines)
-				{
-					auto y = cast(int)(i - top);
-					if (y < 0 || y >= contentAreaHeight)
-						continue;
-					y += 2;
-					w.at(0, y, { w.put(line); });
-				}
+				drawTextScreen({
+					foreach (line; help)
+					{
+						w.put(line);
+						w.newLine();
+					}
+				});
 				break;
 		}
 
@@ -1276,10 +1286,10 @@ struct Browser
 						top += +contentAreaHeight;
 						break;
 					case Curses.Key.home:
-						top -= textLines.length;
+						top -= contentHeight;
 						break;
 					case Curses.Key.end:
-						top += textLines.length;
+						top += contentHeight;
 						break;
 					default:
 						// TODO: show message

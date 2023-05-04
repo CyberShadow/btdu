@@ -368,6 +368,12 @@ struct Curses
 
 		@property void delegate(const(char)[] str) sink() return { return &put; }
 
+		void format(string fmt, Args...)(Args args)
+		{
+			import std.format : formattedWrite;
+			formattedWrite!fmt(sink, args);
+		}
+
 		void newLine(dchar filler = ' ')
 		{
 			// Fill with current background color / attributes
