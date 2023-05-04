@@ -203,9 +203,11 @@ struct Browser
 			selection = null;
 		}
 
-		items = null;
+		static FastAppender!(BrowserPath*) itemsBuf;
+		itemsBuf.clear;
 		for (auto child = currentPath.firstChild; child; child = child.nextSibling)
-			items ~= child;
+			itemsBuf.put(child);
+		items = itemsBuf.get();
 
 		final switch (sortMode)
 		{
