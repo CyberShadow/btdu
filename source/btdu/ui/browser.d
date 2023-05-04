@@ -17,7 +17,7 @@
  */
 
 /// ncurses interface for browsing results
-module btdu.browser.ui;
+module btdu.ui.browser;
 
 import core.time;
 
@@ -41,8 +41,8 @@ import ae.utils.time : stdDur, stdTime;
 
 import btrfs;
 
-import btdu.browser.curses;
-import btdu.browser.deletion;
+import btdu.ui.curses;
+import btdu.ui.deletion;
 import btdu.common;
 import btdu.state;
 import btdu.paths;

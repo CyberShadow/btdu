@@ -17,7 +17,7 @@
  */
 
 /// Interactive deletion logic
-module btdu.browser.deletion;
+module btdu.ui.deletion;
 
 import std.algorithm.comparison;
 import std.algorithm.searching;

@@ -17,7 +17,7 @@
  */
 
 /// ncurses wrapper
-module btdu.browser.curses;
+module btdu.ui.curses;
 
 import std.algorithm.comparison : min;
 import std.conv;
