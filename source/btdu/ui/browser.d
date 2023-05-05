@@ -785,15 +785,15 @@ struct Browser
 
 				foreach (i, child; items)
 				{
-					auto y = cast(int)(i - top);
-					if (y < 0 || y >= contentAreaHeight)
+					auto childY = cast(int)(i - top);
+					if (childY < 0 || childY >= contentAreaHeight)
 						continue;
-					y += 2;
+					childY += 2;
 
 					auto childUnits = child.I!getUnits();
 
 					w.attrSet(w.Attribute.reverse, child is selection, {
-						w.at(0, y, {
+						w.at(0, childY, {
 							buf.clear();
 							buf.formattedWrite!"%12s "(getUnitsStr(childUnits));
 
@@ -846,8 +846,8 @@ struct Browser
 					});
 				}
 
-				auto y = contentAreaHeight + 2;
-				w.withWindow(0, y.to!int, w.width, (w.height - y - 1).to!int, {
+				auto infoY = contentAreaHeight + 2;
+				w.withWindow(0, infoY.to!int, w.width, (w.height - infoY - 1).to!int, {
 					w.yOverflowHidden({
 						drawInfo(currentPath, true);
 					});
@@ -970,10 +970,10 @@ struct Browser
 			auto winY = (w.height - winH) / 2;
 			w.withWindow(winX, winY, winW, winH, {
 				w.box();
-				foreach (y, line; lines)
+				foreach (i, line; lines)
 				{
 					auto s = line.to!string;
-					w.at(3, (2 + y).to!int, { w.put(s); });
+					w.at(3, (2 + i).to!int, { w.put(s); });
 				}
 			});
 		}();
