@@ -37,6 +37,7 @@ import std.traits;
 import ae.utils.appender;
 import ae.utils.meta;
 import ae.utils.text;
+import ae.utils.text.fctr;
 import ae.utils.time : stdDur, stdTime;
 
 import btrfs;
@@ -191,792 +192,788 @@ struct Browser
 
 	void update()
 	{
-		auto w = curses.getWand();
-
-		deleter.update();
-		if (deleter.state == Deleter.State.success)
+		auto wand = curses.getWand();
+		with (wand)
 		{
-			showMessage("Deleted " ~ selection.humanName ~ ".");
-			mode = Mode.browser;
-			deleter.state = Deleter.State.none;
-			selection.remove();
-			selection = null;
-		}
-
-		static FastAppender!(BrowserPath*) itemsBuf;
-		itemsBuf.clear;
-		for (auto child = currentPath.firstChild; child; child = child.nextSibling)
-			itemsBuf.put(child);
-		items = itemsBuf.get();
-
-		final switch (sortMode)
-		{
-			case SortMode.name:
-				items.sort!((a, b) => a.name[] < b.name[]);
-				break;
-			case SortMode.size:
-				items.multiSort!(
-					(a, b) => a.I!getSamples() > b.I!getSamples(),
-					(a, b) => a.name[] < b.name[],
-				);
-				break;
-			case SortMode.time:
-				items.multiSort!(
-					(a, b) => a.I!getAverageDuration() > b.I!getAverageDuration(),
-					(a, b) => a.name[] < b.name[],
-				);
-				break;
-		}
-		if (reverseSort)
-			items.reverse();
-		if (dirsFirst)
-			items.sort!(
-				(a, b) => !!a.firstChild > !!b.firstChild,
-				SwapStrategy.stable,
-			);
-
-		if (!selection && items.length)
-			selection = items[0];
-
-		if (!items.length && mode == Mode.browser && currentPath !is &browserRoot)
-			mode = Mode.info;
-
-		auto totalSamples = browserRoot.data[SampleType.represented].samples;
-
-		// Render outer frame
-		sizediff_t minWidth;
-		{
-			minWidth =
-				"  100.0 KiB ".length +
-				[
-					""                    .length,
-					"[##########] "       .length,
-					"[100.0%] "           .length,
-					"[100.0% ##########] ".length,
-				][ratioDisplayMode] +
-				"/".length +
-				6;
-
-			if (w.height < 10 || w.width < minWidth)
+			deleter.update();
+			if (deleter.state == Deleter.State.success)
 			{
-				w.xOverflowWords({ w.yOverflowHidden({
-					w.put("Window too small");
-				}); });
-				return;
+				showMessage("Deleted " ~ selection.humanName ~ ".");
+				mode = Mode.browser;
+				deleter.state = Deleter.State.none;
+				selection.remove();
+				selection = null;
 			}
 
-			w.reverse({
-				w.xOverflowEllipsis({
-					// Top bar
-					w.at(0, 0, {
-						w.format!(" btdu v" ~ btduVersion ~ " @ %s")(fsPath);
-						w.newLine();
+			static FastAppender!(BrowserPath*) itemsBuf;
+			itemsBuf.clear;
+			for (auto child = currentPath.firstChild; child; child = child.nextSibling)
+				itemsBuf.put(child);
+			items = itemsBuf.get();
+
+			final switch (sortMode)
+			{
+				case SortMode.name:
+					items.sort!((a, b) => a.name[] < b.name[]);
+					break;
+				case SortMode.size:
+					items.multiSort!(
+						(a, b) => a.I!getSamples() > b.I!getSamples(),
+						(a, b) => a.name[] < b.name[],
+					);
+					break;
+				case SortMode.time:
+					items.multiSort!(
+						(a, b) => a.I!getAverageDuration() > b.I!getAverageDuration(),
+						(a, b) => a.name[] < b.name[],
+					);
+					break;
+			}
+			if (reverseSort)
+				items.reverse();
+			if (dirsFirst)
+				items.sort!(
+					(a, b) => !!a.firstChild > !!b.firstChild,
+					SwapStrategy.stable,
+				);
+
+			if (!selection && items.length)
+				selection = items[0];
+
+			if (!items.length && mode == Mode.browser && currentPath !is &browserRoot)
+				mode = Mode.info;
+
+			auto totalSamples = browserRoot.data[SampleType.represented].samples;
+
+			// Render outer frame
+			sizediff_t minWidth;
+			{
+				minWidth =
+					"  100.0 KiB ".length +
+					[
+						""                    .length,
+						"[##########] "       .length,
+						"[100.0%] "           .length,
+						"[100.0% ##########] ".length,
+					][ratioDisplayMode] +
+					"/".length +
+					6;
+
+				if (height < 10 || width < minWidth)
+				{
+					xOverflowWords({ yOverflowHidden({
+						write("Window too small");
+					}); });
+					return;
+				}
+
+				reverse({
+					xOverflowEllipsis({
+						// Top bar
+						at(0, 0, { write(" btdu v" ~ btduVersion ~ " @ ", fsPath, endl); });
 						if (imported)
-							w.at(w.width - 10, 0, { w.put(" [IMPORT] "); });
+							at(width - 10, 0, { write(" [IMPORT] "); });
 						else
 						if (paused)
-							w.at(w.width - 10, 0, { w.put(" [PAUSED] "); });
-					});
+							at(width - 10, 0, { write(" [PAUSED] "); });
 
-					// Bottom bar
-					w.at(0, w.height - 1, {
-						if (message && MonoTime.currTime < showMessageUntil)
-							w.xOverflowEllipsis({
-								w.format!" %s"(message);
-							});
-						else
-						{
-							w.format!" Samples: %d"(totalSamples);
-
-							w.format!"  Resolution: "();
-							if (totalSamples)
-								w.format!"~%s"((totalSize / totalSamples).HumanSize());
+						// Bottom bar
+						at(0, height - 1, {
+							if (message && MonoTime.currTime < showMessageUntil)
+								xOverflowEllipsis({
+									write(" ", message);
+								});
 							else
-								w.put("-");
+							{
+								write(" Samples: ", totalSamples);
 
-							if (expert)
-								w.format!"  Size metric: %s"(sizeDisplayMode.to!string.chomp("_"));
-						}
-						w.newLine();
+								write("  Resolution: ");
+								if (totalSamples)
+									write("~", (totalSize / totalSamples).HumanSize());
+								else
+									write("-");
+
+								if (expert)
+									write("  Size metric: ", sizeDisplayMode.to!string.chomp("_"));
+							}
+							write(endl);
+						});
 					});
 				});
-			});
 
-			string prefix = "";
-			final switch (mode)
-			{
-				case Mode.info:
-					prefix = "INFO: ";
-					goto case;
-				case Mode.browser:
-				case Mode.deleteConfirm:
-				case Mode.deleteProgress:
-					auto displayedPath = currentPath is &browserRoot ? "/" : currentPath.pointerWriter.text;
-					auto maxPathWidth = w.width - 8 - prefix.length;
-					if (displayedPath.length > maxPathWidth)
-						displayedPath = "..." ~ displayedPath[$ - (maxPathWidth - 3) .. $];
-
-					w.at(0, 1, {
-						w.format!"--- %s%s "(prefix, displayedPath);
-						w.newLine('-');
-					});
-					break;
-				case Mode.help:
-					break;
-			}
-		}
-
-		void drawInfo(BrowserPath* p, bool inline)
-		{
-			auto fullPath = getFullPath(p);
-
-			void showSampleType(SampleType type, string name, bool showError)
-			{
-				struct LogicalOffsetPrinter
+				string prefix = "";
+				final switch (mode)
 				{
-					Offset offset;
-					void toString(void delegate(const(char)[]) sink) const
-					{
-						offset.logical == logicalOffsetHole ? sink("<UNALLOCATED>") :
-						offset.logical == logicalOffsetSlack ? sink("<SLACK>") :
-						sink.formattedWrite!"%s"(offset.logical);
-					}
+					case Mode.info:
+						prefix = "INFO: ";
+						goto case;
+					case Mode.browser:
+					case Mode.deleteConfirm:
+					case Mode.deleteProgress:
+						auto displayedPath = currentPath is &browserRoot ? "/" : currentPath.pointerWriter.text;
+						auto maxPathWidth = width - 8 - prefix.length;
+						if (displayedPath.length > maxPathWidth)
+							displayedPath = "..." ~ displayedPath[$ - (maxPathWidth - 3) .. $];
+
+						at(0, 1, { write("--- ", prefix, displayedPath, " ", endl('-')); });
+						break;
+					case Mode.help:
+						break;
 				}
-
-				return
-					w.newLine(),
-
-					w.format!"- %s: "(name), totalSamples
-					? w.format!"~%s (%d sample%s)"(
-							HumanSize(currentPath.data[type].samples * real(totalSize) / totalSamples),
-							currentPath.data[type].samples,
-							currentPath.data[type].samples == 1 ? "" : "s",
-						), showError
-							? w.format!", ±%s"(HumanSize(estimateError(totalSamples, currentPath.data[type].samples) * totalSize))
-							: {}()
-					: w.put("-"),
-					w.newLine(),
-
-					// w.put("  - Average query duration: "), currentPath.data[type].samples
-					// 	? w.format!"%s"(stdDur(currentPath.data[type].duration / currentPath.data[type].samples))
-					// 	: w.put("-"),
-					// w.newLine(),
-
-					w.put(expert ? "  " : ""), w.put("- Logical offsets: "), currentPath.data[type].samples
-					? w.format!"%s%-(%s, %)"(
-						currentPath.data[type].samples > currentPath.data[type].offsets.length ? "..., " : "",
-						currentPath.data[type].offsets[].filter!(o => o != Offset.init).map!((ref o) => LogicalOffsetPrinter(o)),
-					)
-					: w.put("-"),
-					w.newLine(),
-
-					physical ?
-						w.put(expert ? "  " : ""), w.put("- Physical offsets: "), currentPath.data[type].samples
-						? w.format!"%s%(%s, %)"(
-							currentPath.data[type].samples > currentPath.data[type].offsets.length ? "..., " : "",
-							currentPath.data[type].offsets[].filter!(o => o != Offset.init).map!((ref o) => formatted!"%d:%d"(o.devID, o.physical)),
-						)
-						: w.put("-"),
-						w.newLine()
-					: {}()
-				;
 			}
 
-			w.xOverflowWords({
-				if (!inline)
-					w.newLine();
-				w.put("--- Details: ");
-				if (inline)
-					w.newLine('-');
-				else
-					w.newLine();
-
-				if (fullPath) w.put("- Full path: "), w.xOverflowChars({ w.put(fullPath); }), w.newLine();
-
-				if (currentPath.parent && currentPath.parent.parent && currentPath.parent.parent.name[] == "\0ERROR")
-				{
-					auto errno = currentPath.name[] in errnoLookup;
-					if (errno)
-					{
-						w.format!"- Error code: %d"(*errno); w.newLine();
-						auto description = getErrno(*errno).description;
-						if (description)
-							w.format!"- Error message: %s"(description);
-					}
-				}
-
-				w.put("- Average query duration: "), currentPath.data[SampleType.represented].samples
-						? w.format!"%s"(stdDur(currentPath.data[SampleType.represented].duration / currentPath.data[SampleType.represented].samples).DurationAsDecimalString())
-						: w.put("-"),
-					w.newLine();
-
-				if (expert)
-				{
-					showSampleType(SampleType.represented, "Represented size", true);
-					w.newLine(), w.put("- Distributed size: "), totalSamples
-						? w.format!"~%s (%1.3f sample%s)"(
-							HumanSize(currentPath.distributedSamples * real(totalSize) / totalSamples),
-							currentPath.distributedSamples,
-							currentPath.distributedSamples == 1 ? "" : "s",
-						)
-						: w.put("-"),
-						w.newLine();
-
-					showSampleType(SampleType.exclusive, "Exclusive size", true);
-					showSampleType(SampleType.shared_, "Shared size", false);
-				}
-				else
-					showSampleType(SampleType.represented, "Represented size", true);
-
-				{
-					auto explanation = delegate void delegate(Curses.Wand*) {
-						if (currentPath is &browserRoot)
-							return w => (
-								w.put("Welcome to btdu. You are in the hierarchy root; "),
-								w.put("results will be arranged according to their block group and profile, and then by path."),
-								w.newLine(), w.newLine(),
-								w.put("Use the arrow keys to navigate, press ? for help.")
-							);
-
-						string name = currentPath.name[];
-						if (name.skipOverNul())
-						{
-							switch (name)
-							{
-								case "DATA":
-									return w => (
-										w.put("This node holds samples from chunks in the DATA block group, "),
-										w.put("which mostly contains file data.")
-									);
-								case "METADATA":
-									return w => (
-										w.put("This node holds samples from chunks in the METADATA block group, "),
-										w.put("which contains btrfs internal metadata arranged in b-trees."),
-										w.newLine(), w.newLine(),
-										w.put("The contents of small files may be stored here, in line with their metadata."),
-										w.newLine(), w.newLine(),
-										w.put("The contents of METADATA chunks is opaque to btdu, so this node does not have children.")
-									);
-								case "SYSTEM":
-									return w => (
-										w.put("This node holds samples from chunks in the SYSTEM block group, "),
-										w.put("which contains some core btrfs information, such as how to map physical device space to linear logical space or vice-versa."),
-										w.newLine(), w.newLine(),
-										w.put("The contents of SYSTEM chunks is opaque to btdu, so this node does not have children.")
-									);
-								case "SINGLE":
-								case "RAID0":
-								case "RAID1":
-								case "DUP":
-								case "RAID10":
-								case "RAID5":
-								case "RAID6":
-								case "RAID1C3":
-								case "RAID1C4":
-									return w => w.format!
-										"This node holds samples from chunks in the %s profile."(name);
-								case "ERROR":
-									return w => (
-										w.put("This node represents sample points for which btdu encountered an error when attempting to query them."),
-										w.newLine(), w.newLine(),
-										w.put("Children of this node indicate the encountered error, and may have a more detailed explanation attached.")
-									);
-								case "ROOT_TREE":
-									return w => (
-										w.put("This node holds samples with inodes contained in the BTRFS_ROOT_TREE_OBJECTID object."),
-										w.newLine(), w.newLine(),
-										w.put("These samples are not resolvable to paths, and most likely indicate some kind of metadata. "),
-										w.put("(If you know, please tell me!)")
-									);
-								case "NO_INODE":
-									return w => (
-										w.put("This node represents sample points for which btrfs successfully completed our request "),
-										w.put("to look up inodes at the given logical offset, but did not actually return any inodes."),
-										w.newLine(), w.newLine(),
-										w.put("One possible cause is data which was deleted recently."),
-										w.newLine(), w.newLine(),
-										w.put("Due to a bug, under Linux versions 6.2 and 6.3, samples which would otherwise be classified as <UNREACHABLE> will appear here instead. "),
-										w.put("If your kernel is affected by this bug, try a different version to obtain more information about how this space is used.")
-									);
-								case "NO_PATH":
-									return w => (
-										w.put("This node represents sample points for which btrfs successfully completed our request "),
-										w.put("to look up filesystem paths for the given inode, but did not actually return any paths.")
-									);
-								case "UNREACHABLE":
-									return w => (
-										w.put("This node represents sample points in extents which are not used by any files."), w.newLine(),
-										w.put("Despite not being directly used, these blocks are kept because another part of the extent they belong to is actually used by files."),
-										w.newLine(), w.newLine(),
-										w.put("This can happen if a large file is written in one go, and then later one block is overwritten - "),
-										w.put("btrfs may keep the old extent which still contains the old copy of the overwritten block."),
-										w.newLine(), w.newLine(),
-										w.put("Children of this node indicate the path of files using the extent containing the unreachable samples. "),
-										w.put("Defragmentation of these files may reduce the amount of such unreachable blocks."),
-										w.newLine(), w.newLine(),
-										w.put("More precisely, this node represents samples for which BTRFS_IOC_LOGICAL_INO returned zero results, "),
-										w.put("but BTRFS_IOC_LOGICAL_INO_V2 with BTRFS_LOGICAL_INO_ARGS_IGNORE_OFFSET returned something else.")
-									);
-								case "UNUSED":
-									return w => (
-										w.put("btrfs reports that there is nothing at the random sample location that btdu picked."),
-										w.newLine(), w.newLine(),
-										w.put("This most likely represents allocated but unused space, "),
-										w.put("which could be reduced by running a balance on the DATA block group."),
-										w.newLine(), w.newLine(),
-										w.put("More precisely, this node represents samples for which BTRFS_IOC_LOGICAL_INO returned ENOENT.")
-									);
-								case "UNALLOCATED":
-									return w => (
-										w.put("This node represents sample points in physical device space which are not allocated to any block group."), w.newLine(),
-										w.put("As such, these samples do not have corresponding logical offsets."),
-										w.newLine(), w.newLine(),
-										w.put("A healthy btrfs filesystem should have at least some unallocated space, in order to allow the metadata block group to grow."), w.newLine(),
-										w.put("If you have too little unallocated space, consider running a balance on the DATA block group, to convert unused DATA space to unallocated space."), w.newLine(),
-										w.put("(You will find unused DATA space in btdu under a <UNUSED> node.)"),
-										w.newLine(), w.newLine(),
-										w.put("More precisely, this node represents samples which are not covered by BTRFS_DEV_EXTENT_KEY entries in BTRFS_DEV_TREE_OBJECTID.")
-									);
-								case "SLACK":
-									return w => (
-										w.put("This node represents sample points in physical device space which are beyond the end of the btrfs filesystem."), w.newLine(),
-										w.put("As such, these samples do not have corresponding logical offsets."),
-										w.newLine(), w.newLine(),
-										w.put("The presence of this node indicates that the space allocated for the btrfs filesystem "),
-										w.put("is smaller than the underlying block device (usually a disk partition)."),
-										w.newLine(), w.newLine(),
-										w.put("To make this space available to the filesystem, the btrfs device can be resized to fill the entire block device "),
-										w.put("with `btrfs filesystem resize`, specifying `max` for the size parameter."),
-										w.newLine(), w.newLine(),
-										w.put("More precisely, this node represents samples in physical device space which are greater than btrfs_ioctl_dev_info_args::total_bytes "),
-										w.put("but less than the size of the file or block device at btrfs_ioctl_dev_info_args::path.")
-									);
-								default:
-									if (name.skipOver("TREE_"))
-										return w => (
-											w.put("This node holds samples with inodes contained in the tree #" ~ name ~ ", "),
-											w.put("but btdu failed to resolve this tree number to an absolute path."),
-											w.newLine(), w.newLine(),
-											w.put("One possible cause is subvolumes which were deleted recently."),
-											w.newLine(), w.newLine(),
-											w.put("Another possible cause is \"ghost subvolumes\", a form of corruption which causes some orphan subvolumes to not get cleaned up.")
-										);
-									debug assert(false, "Unknown special node: " ~ name);
-							}
-						}
-
-						if (currentPath.parent && currentPath.parent.name[] == "\0ERROR")
-						{
-							switch (name)
-							{
-								case "Unresolvable root":
-									return w => (
-										w.put("btdu failed to resolve this tree number to an absolute path.")
-									);
-								case "logical ino":
-									return w => (
-										w.put("An error occurred while trying to look up which inodes use a particular logical offset."),
-										w.newLine(), w.newLine(),
-										w.put("Children of this node indicate the encountered error code, and may have a more detailed explanation attached.")
-									);
-								case "open":
-									return w => (
-										w.put("btdu failed to open the filesystem root containing an inode."),
-										w.newLine(), w.newLine(),
-										w.put("Children of this node indicate the encountered error code, and may have a more detailed explanation attached.")
-									);
-								default:
-							}
-						}
-
-						if (currentPath.parent && currentPath.parent.parent && currentPath.parent.parent.name[] == "\0ERROR")
-						{
-							switch (currentPath.parent.name[])
-							{
-								case "logical ino":
-									switch (name)
-									{
-										case "ENOENT":
-											assert(false); // Should have been rewritten into UNUSED
-										case "ENOTTY":
-											return w => (
-												w.put("An ENOTTY (\"Inappropriate ioctl for device\") error means that btdu issued an ioctl which the kernel btrfs code does not understand."),
-												w.newLine(), w.newLine(),
-												w.put("The most likely cause is that you are running an old kernel version. "),
-												w.put("If you update your kernel, btdu might be able to show more information instead of this error.")
-											);
-										default:
-									}
-									break;
-								case "ino paths":
-									switch (name)
-									{
-										case "ENOENT":
-											// Reproducible with e.g.: ( dd if=/dev/zero bs=1M count=512 ; rm a ; sleep infinity ) > a
-											// on 5.17.9
-											// https://gist.github.com/CyberShadow/10c1c1f66ba3808fdaf9497b22f5896c#file-ino-paths-enoent-sh
-											return w => (
-												w.put("This node represents samples in files for which btrfs provided an inode, "),
-												w.put("but responded with \"not found\" when attempting to look up filesystem paths for the given inode."),
-												w.newLine(), w.newLine(),
-												w.put("One likely explanation is files which are awaiting deletion, "),
-												w.put("but are still kept alive by an open file descriptor held by some process. "),
-												w.put("This space could be reclaimed by killing the respective tasks or restarting the system."),
-												w.newLine(), w.newLine(),
-												(currentPath.parent.parent.parent && currentPath.parent.parent.parent.name[] == "\0UNREACHABLE"
-													? (
-														// Reproducible on 5.17.9 with e.g.:
-														// https://gist.github.com/CyberShadow/10c1c1f66ba3808fdaf9497b22f5896c#file-unreachable-ino-paths-enoent-sh
-														// Was also seen on 5.10.115 in weird (leaky?) circumstances.
-														w.put("Because this node is under <UNREACHABLE>, the space represented by this node is actually in extents which are not used by any file (deleted or not), "),
-														w.put("but are kept because another part of the extent they belong to is actually used by a deleted-but-still-open file."),
-														w.newLine(), w.newLine(),
-														w.put("More precisely, this node represents samples for which BTRFS_IOC_LOGICAL_INO returned zero results, "),
-														w.put("then BTRFS_IOC_LOGICAL_INO_V2 with BTRFS_LOGICAL_INO_ARGS_IGNORE_OFFSET returned one or more inodes, "),
-														w.put("then attempting to resolve these inodes with BTRFS_IOC_INO_PATHS returned ENOENT.")
-													) : (
-														w.put("More precisely, this node represents samples for which BTRFS_IOC_INO_PATHS returned ENOENT.")
-													)
-												));
-										default:
-									}
-									break;
-								case "open":
-									switch (name)
-									{
-										case "ENOENT":
-											return w => (
-												w.put("btdu failed to open the filesystem root containing an inode."),
-												w.newLine(), w.newLine(),
-												w.put("The most likely reason for this is that the subvolume containing this inode has been deleted since btdu was started. "),
-												w.put("You can restart btdu to see accurate results."),
-												w.newLine(), w.newLine(),
-												w.put("You can descend into this node to see the path that btdu failed to open.")
-											);
-										default:
-									}
-									break;
-								default:
-							}
-						}
-
-						return null;
-					}();
-
-					if (explanation)
-					{
-						w.newLine();
-						w.put("--- Explanation: "), w.newLine();
-						explanation(&w), w.newLine();
-					}
-				}
-
-				bool showSeenAs;
-				if (currentPath.seenAs.empty)
-					showSeenAs = false;
-				else
-				if (fullPath is null && currentPath.seenAs.length == 1)
-					showSeenAs = false; // Not a real file
-				else
-					showSeenAs = true;
-
-				if (showSeenAs)
-				{
-					auto representedSamples = currentPath.data[SampleType.represented].samples;
-					w.newLine();
-					w.put("--- Shares data with: "); w.newLine();
-					currentPath.seenAs
-						.byKeyValue
-						.array
-						.sort!((ref a, ref b) => a.key < b.key)
-						.each!(pair => representedSamples
-							? w.format!"- %s (%d%%)"(pair.key, pair.value * 100 / representedSamples)
-							: w.format!"- %s (-%%)"(pair.key))
-					;
-				}
-			});
-		}
-
-		// Scrolling and cursor upkeep
-		void fixTop()
-		{
-			// Ensure there is no unnecessary space at the bottom
-			if (top + contentAreaHeight > contentHeight)
-				top = contentHeight - contentAreaHeight;
-			// Ensure we are never scrolled "above" the first row
-			if (top < 0)
-				top = 0;
-		}
-
-		// Used to draw full-screen text content (info and help screens).
-		void drawTextScreen(scope void delegate() fn)
-		{
-			w.withWindow(0, 2, w.width, w.height - 3, {
-				auto topY = (-top).to!int;
-				w.y = topY;
-				w.yOverflowHidden({
-					fn();
-				});
-				// TODO: draw overflow markers on top and bottom
-
-				contentHeight = w.y - topY;
-				contentAreaHeight = w.height;
-				// Ideally we would want to 1) measure the content 2) perform this upkeep 3) render the content,
-				// but as we are rendering info directly to the screen, steps 1 and 3 are one and the same.
-				fixTop();
-			});
-		}
-
-		contentAreaHeight = (w.height - 4) / 2; // TODO!
-
-		final switch (mode)
-		{
-			case Mode.browser:
-			case Mode.deleteConfirm:
-			case Mode.deleteProgress:
+			void drawInfo(BrowserPath* p, bool inline)
 			{
-				contentHeight = items.length;
-				contentAreaHeight = w.height - 3;
-				contentAreaHeight -= min(/*textLines.length TODO*/10, contentAreaHeight / 2);
-				contentAreaHeight = min(contentAreaHeight, contentHeight + 1);
-				fixTop();
+				auto fullPath = getFullPath(p);
+
+				void showSampleType(SampleType type, string name, bool showError)
 				{
-					// Ensure the selected item is visible
-					auto pos = selection && items ? items.countUntil(selection) : 0;
-					top = top.clamp(
-						pos - contentAreaHeight + 1,
-						pos,
+					struct LogicalOffsetPrinter
+					{
+						Offset offset;
+						void toString(void delegate(const(char)[]) sink) const // TODO
+						{
+							offset.logical == logicalOffsetHole ? sink("<UNALLOCATED>") :
+							offset.logical == logicalOffsetSlack ? sink("<SLACK>") :
+							sink.formattedWrite!"%s"(offset.logical);
+						}
+					}
+
+					return write(
+						endl,
+
+						"- ", name, ": ", fmtIf(totalSamples > 0,
+							() => formatted!"~%s (%d sample%s)%s"(
+								HumanSize(currentPath.data[type].samples * real(totalSize) / totalSamples),
+								currentPath.data[type].samples,
+								currentPath.data[type].samples == 1 ? "" : "s",
+								fmtIf(showError,
+									() => formatted!", ±%s"(HumanSize(estimateError(totalSamples, currentPath.data[type].samples) * totalSize)),
+									() => "",
+								),
+							),
+							() => "-",
+						), endl,
+
+						// put("  - Average query duration: "), currentPath.data[type].samples
+						// 	? format!"%s"(stdDur(currentPath.data[type].duration / currentPath.data[type].samples))
+						// 	: put("-"),
+						// newLine(),
+
+						expert ? "  " : "", "- Logical offsets: ", fmtIf(currentPath.data[type].samples > 0,
+							() => formatted!"%s%-(%s, %)"(
+								currentPath.data[type].samples > currentPath.data[type].offsets.length ? "..., " : "",
+								currentPath.data[type].offsets[].filter!(o => o != Offset.init).map!((ref o) => LogicalOffsetPrinter(o)),
+							),
+							() => "-",
+						), endl,
+
+						fmtIf(physical,
+							() => fmtSeq(
+								expert ? "  " : "", "- Physical offsets: ", fmtIf(currentPath.data[type].samples > 0,
+									() => formatted!"%s%(%s, %)"(
+										currentPath.data[type].samples > currentPath.data[type].offsets.length ? "..., " : "",
+										currentPath.data[type].offsets[].filter!(o => o != Offset.init).map!((ref o) => formatted!"%d:%d"(o.devID, o.physical)),
+									),
+									() => "-",
+								), endl,
+							),
+							() => "",
+						),
 					);
 				}
 
-				real getUnits(BrowserPath* path)
-				{
-					final switch (sortMode)
+				xOverflowWords({
+					if (!inline)
+						write(endl);
+					write("--- Details: ", inline ? endl('-') : endl);
+
+					if (fullPath) xOverflowChars({ write("- Full path: ", fullPath, endl); });
+
+					if (currentPath.parent && currentPath.parent.parent && currentPath.parent.parent.name[] == "\0ERROR")
 					{
-						case SortMode.name:
-						case SortMode.size:
-							return getSamples(path);
-						case SortMode.time:
-							return getAverageDuration(path);
+						auto errno = currentPath.name[] in errnoLookup;
+						if (errno)
+						{
+							write("- Error code: ", *errno, endl);
+							auto description = getErrno(*errno).description;
+							if (description)
+								write("- Error message: ", description);
+						}
 					}
-				}
 
-				string getUnitsStr(real units)
-				{
-					final switch (sortMode)
+					write("- Average query duration: ", fmtIf(currentPath.data[SampleType.represented].samples > 0,
+							() => stdDur(currentPath.data[SampleType.represented].duration / currentPath.data[SampleType.represented].samples).DurationAsDecimalString(),
+							() => "-",
+						), endl);
+
+					if (expert)
 					{
-						case SortMode.name:
-						case SortMode.size:
-							auto samples = units;
-							return totalSamples
-								? "~" ~ HumanSize(samples * real(totalSize) / totalSamples, true).text
-								: "?";
+						showSampleType(SampleType.represented, "Represented size", true);
 
-						case SortMode.time:
-							auto hnsecs = units;
-							if (hnsecs == -real.infinity)
-								return "?";
-							return HumanDuration(hnsecs).text;
+						write(endl,
+							"- Distributed size: ", fmtIf(totalSamples > 0,
+								() => formatted!"~%s (%1.3f sample%s)"(
+									HumanSize(currentPath.distributedSamples * real(totalSize) / totalSamples),
+									currentPath.distributedSamples,
+									currentPath.distributedSamples == 1 ? "" : "s",
+								),
+								() => "-",
+							), endl);
+
+						showSampleType(SampleType.exclusive, "Exclusive size", true);
+						showSampleType(SampleType.shared_, "Shared size", false);
 					}
-				}
+					else
+						showSampleType(SampleType.represented, "Represented size", true);
 
-				auto currentPathUnits = currentPath.I!getUnits();
-				auto mostUnits = items.fold!((a, b) => max(a, b.I!getUnits()))(0.0L);
+					{
+						auto explanation = delegate void delegate(Curses.Wand*)() /*@nogc TODO*/ {
+							if (currentPath is &browserRoot)
+								return w => w.write(
+									"Welcome to btdu. You are in the hierarchy root; ",
+									"results will be arranged according to their block group and profile, and then by path.",
+									endl, endl,
+									"Use the arrow keys to navigate, press ? for help."
+								);
 
-				foreach (i, child; items)
-				{
-					auto childY = cast(int)(i - top);
-					if (childY < 0 || childY >= contentAreaHeight)
-						continue;
-					childY += 2;
-
-					auto childUnits = child.I!getUnits();
-
-					w.attrSet(w.Attribute.reverse, child is selection, {
-						w.at(0, childY, {
-							buf.clear();
-							buf.formattedWrite!"%12s "(getUnitsStr(childUnits));
-
-							if (ratioDisplayMode)
+							string name = currentPath.name[];
+							if (name.skipOverNul())
 							{
-								buf.put('[');
-								if (ratioDisplayMode & RatioDisplayMode.percentage)
+								switch (name)
 								{
-									if (currentPathUnits)
-										buf.formattedWrite!"%5.1f%%"(100.0 * childUnits / currentPathUnits);
-									else
-										buf.put("    -%");
+									case "DATA":
+										return w => w.write(
+											"This node holds samples from chunks in the DATA block group, ",
+											"which mostly contains file data."
+										);
+									case "METADATA":
+										return w => w.write(
+											"This node holds samples from chunks in the METADATA block group, ",
+											"which contains btrfs internal metadata arranged in b-trees.",
+											endl, endl,
+											"The contents of small files may be stored here, in line with their metadata.",
+											endl, endl,
+											"The contents of METADATA chunks is opaque to btdu, so this node does not have children."
+										);
+									case "SYSTEM":
+										return w => w.write(
+											"This node holds samples from chunks in the SYSTEM block group, ",
+											"which contains some core btrfs information, such as how to map physical device space to linear logical space or vice-versa.",
+											endl, endl,
+											"The contents of SYSTEM chunks is opaque to btdu, so this node does not have children."
+										);
+									case "SINGLE":
+									case "RAID0":
+									case "RAID1":
+									case "DUP":
+									case "RAID10":
+									case "RAID5":
+									case "RAID6":
+									case "RAID1C3":
+									case "RAID1C4":
+										return w => w.write(
+											"This node holds samples from chunks in the ", name, " profile."
+										);
+									case "ERROR":
+										return w => w.write(
+											"This node represents sample points for which btdu encountered an error when attempting to query them.",
+											endl, endl,
+											"Children of this node indicate the encountered error, and may have a more detailed explanation attached."
+										);
+									case "ROOT_TREE":
+										return w => w.write(
+											"This node holds samples with inodes contained in the BTRFS_ROOT_TREE_OBJECTID object.",
+											endl, endl,
+											"These samples are not resolvable to paths, and most likely indicate some kind of metadata. ",
+											"(If you know, please tell me!)"
+										);
+									case "NO_INODE":
+										return w => w.write(
+											"This node represents sample points for which btrfs successfully completed our request ",
+											"to look up inodes at the given logical offset, but did not actually return any inodes.",
+											endl, endl,
+											"One possible cause is data which was deleted recently.",
+											endl, endl,
+											"Due to a bug, under Linux versions 6.2 and 6.3, samples which would otherwise be classified as <UNREACHABLE> will appear here instead. ",
+											"If your kernel is affected by this bug, try a different version to obtain more information about how this space is used."
+										);
+									case "NO_PATH":
+										return w => w.write(
+											"This node represents sample points for which btrfs successfully completed our request ",
+											"to look up filesystem paths for the given inode, but did not actually return any paths."
+										);
+									case "UNREACHABLE":
+										return w => w.write(
+											"This node represents sample points in extents which are not used by any files.", endl,
+											"Despite not being directly used, these blocks are kept because another part of the extent they belong to is actually used by files.",
+											endl, endl,
+											"This can happen if a large file is written in one go, and then later one block is overwritten - ",
+											"btrfs may keep the old extent which still contains the old copy of the overwritten block.",
+											endl, endl,
+											"Children of this node indicate the path of files using the extent containing the unreachable samples. ",
+											"Defragmentation of these files may reduce the amount of such unreachable blocks.",
+											endl, endl,
+											"More precisely, this node represents samples for which BTRFS_IOC_LOGICAL_INO returned zero results, ",
+											"but BTRFS_IOC_LOGICAL_INO_V2 with BTRFS_LOGICAL_INO_ARGS_IGNORE_OFFSET returned something else."
+										);
+									case "UNUSED":
+										return w => w.write(
+											"btrfs reports that there is nothing at the random sample location that btdu picked.",
+											endl, endl,
+											"This most likely represents allocated but unused space, ",
+											"which could be reduced by running a balance on the DATA block group.",
+											endl, endl,
+											"More precisely, this node represents samples for which BTRFS_IOC_LOGICAL_INO returned ENOENT."
+										);
+									case "UNALLOCATED":
+										return w => w.write(
+											"This node represents sample points in physical device space which are not allocated to any block group.", endl,
+											"As such, these samples do not have corresponding logical offsets.",
+											endl, endl,
+											"A healthy btrfs filesystem should have at least some unallocated space, in order to allow the metadata block group to grow.", endl,
+											"If you have too little unallocated space, consider running a balance on the DATA block group, to convert unused DATA space to unallocated space.", endl,
+											"(You will find unused DATA space in btdu under a <UNUSED> node.)",
+											endl, endl,
+											"More precisely, this node represents samples which are not covered by BTRFS_DEV_EXTENT_KEY entries in BTRFS_DEV_TREE_OBJECTID."
+										);
+									case "SLACK":
+										return w => w.write(
+											"This node represents sample points in physical device space which are beyond the end of the btrfs filesystem.", endl,
+											"As such, these samples do not have corresponding logical offsets.",
+											endl, endl,
+											"The presence of this node indicates that the space allocated for the btrfs filesystem ",
+											"is smaller than the underlying block device (usually a disk partition).",
+											endl, endl,
+											"To make this space available to the filesystem, the btrfs device can be resized to fill the entire block device ",
+											"with `btrfs filesystem resize`, specifying `max` for the size parameter.",
+											endl, endl,
+											"More precisely, this node represents samples in physical device space which are greater than btrfs_ioctl_dev_info_args::total_bytes ",
+											"but less than the size of the file or block device at btrfs_ioctl_dev_info_args::path."
+										);
+									default:
+										if (name.skipOver("TREE_"))
+											return w => w.write(
+												"This node holds samples with inodes contained in the tree #" ~ name ~ ", ",
+												"but btdu failed to resolve this tree number to an absolute path.",
+												endl, endl,
+												"One possible cause is subvolumes which were deleted recently.",
+												endl, endl,
+												"Another possible cause is \"ghost subvolumes\", a form of corruption which causes some orphan subvolumes to not get cleaned up."
+											);
+										debug assert(false, "Unknown special node: " ~ name);
 								}
-								if (ratioDisplayMode == RatioDisplayMode.both)
-									buf.put(' ');
-								if (ratioDisplayMode & RatioDisplayMode.graph)
-								{
-									char[10] bar;
-									if (mostUnits && childUnits != -real.infinity)
-									{
-										auto barPos = cast(size_t)(10 * childUnits / mostUnits);
-										bar[0 .. barPos] = '#';
-										bar[barPos .. $] = ' ';
-									}
-									else
-										bar[] = '-';
-									buf.put(bar[]);
-								}
-								buf.put("] ");
 							}
-							buf.put(child.firstChild is null ? ' ' : '/');
 
+							if (currentPath.parent && currentPath.parent.name[] == "\0ERROR")
 							{
-								auto displayedItem = child.humanName;
-								auto maxItemWidth = w.width - (minWidth - 5);
-								if (displayedItem.length > maxItemWidth)
+								switch (name)
 								{
-									auto leftLength = (maxItemWidth - "...".length) / 2;
-									auto rightLength = maxItemWidth - "...".length - leftLength;
-									displayedItem =
-										displayedItem[0 .. leftLength] ~ "..." ~
-										displayedItem[$ - rightLength .. $];
+									case "Unresolvable root":
+										return w => w.write(
+											"btdu failed to resolve this tree number to an absolute path."
+										);
+									case "logical ino":
+										return w => w.write(
+											"An error occurred while trying to look up which inodes use a particular logical offset.",
+											endl, endl,
+											"Children of this node indicate the encountered error code, and may have a more detailed explanation attached."
+										);
+									case "open":
+										return w => w.write(
+											"btdu failed to open the filesystem root containing an inode.",
+											endl, endl,
+											"Children of this node indicate the encountered error code, and may have a more detailed explanation attached."
+										);
+									default:
 								}
-								buf.put(displayedItem);
 							}
 
-							w.put(buf.get());
-							w.newLine();
-						});
-					});
-				}
+							if (currentPath.parent && currentPath.parent.parent && currentPath.parent.parent.name[] == "\0ERROR")
+							{
+								switch (currentPath.parent.name[])
+								{
+									case "logical ino":
+										switch (name)
+										{
+											case "ENOENT":
+												assert(false); // Should have been rewritten into UNUSED
+											case "ENOTTY":
+												return w => w.write(
+													"An ENOTTY (\"Inappropriate ioctl for device\" error means that btdu issued an ioctl which the kernel btrfs code does not understand.",
+													endl, endl,
+													"The most likely cause is that you are running an old kernel version. ",
+													"If you update your kernel, btdu might be able to show more information instead of this error."
+												);
+											default:
+										}
+										break;
+									case "ino paths":
+										switch (name)
+										{
+											case "ENOENT":
+												// Reproducible with e.g.: ( dd if=/dev/zero bs=1M count=512 ; rm a ; sleep infinity ) > a
+												// on 5.17.9
+												// https://gist.github.com/CyberShadow/10c1c1f66ba3808fdaf9497b22f5896c#file-ino-paths-enoent-sh
+												return w => w.write(
+													"This node represents samples in files for which btrfs provided an inode, ",
+													"but responded with \"not found\" when attempting to look up filesystem paths for the given inode.",
+													endl, endl,
+													"One likely explanation is files which are awaiting deletion, ",
+													"but are still kept alive by an open file descriptor held by some process. ",
+													"This space could be reclaimed by killing the respective tasks or restarting the system.",
+													endl, endl,
+													fmtIf(currentPath.parent.parent.parent && currentPath.parent.parent.parent.name[] == "\0UNREACHABLE",
+														() => fmtSeq(
+															// Reproducible on 5.17.9 with e.g.:
+															// https://gist.github.com/CyberShadow/10c1c1f66ba3808fdaf9497b22f5896c#file-unreachable-ino-paths-enoent-sh
+															// Was also seen on 5.10.115 in weird (leaky?) circumstances.
+															"Because this node is under <UNREACHABLE>, the space represented by this node is actually in extents which are not used by any file (deleted or not), ",
+															"but are kept because another part of the extent they belong to is actually used by a deleted-but-still-open file.",
+															endl, endl,
+															"More precisely, this node represents samples for which BTRFS_IOC_LOGICAL_INO returned zero results, ",
+															"then BTRFS_IOC_LOGICAL_INO_V2 with BTRFS_LOGICAL_INO_ARGS_IGNORE_OFFSET returned one or more inodes, ",
+															"then attempting to resolve these inodes with BTRFS_IOC_INO_PATHS returned ENOENT."
+														),
+														() => fmtSeq(
+															"More precisely, this node represents samples for which BTRFS_IOC_INO_PATHS returned ENOENT."
+														),
+													));
+											default:
+										}
+										break;
+									case "open":
+										switch (name)
+										{
+											case "ENOENT":
+												return w => w.write(
+													"btdu failed to open the filesystem root containing an inode.",
+													endl, endl,
+													"The most likely reason for this is that the subvolume containing this inode has been deleted since btdu was started. ",
+													"You can restart btdu to see accurate results.",
+													endl, endl,
+													"You can descend into this node to see the path that btdu failed to open."
+												);
+											default:
+										}
+										break;
+									default:
+								}
+							}
 
-				auto infoY = contentAreaHeight + 2;
-				w.withWindow(0, infoY.to!int, w.width, (w.height - infoY - 1).to!int, {
-					w.yOverflowHidden({
-						drawInfo(currentPath, true);
-					});
-					if (w.y > w.height)
-						w.at(0, w.height - 1, { w.put(" --- more - press i to view --- "), w.newLine(); });
+							return null;
+						}();
+
+						if (explanation)
+						{
+							write(endl, "--- Explanation: ", endl);
+							explanation(&wand); write(endl);
+						}
+					}
+
+					bool showSeenAs;
+					if (currentPath.seenAs.empty)
+						showSeenAs = false;
+					else
+					if (fullPath is null && currentPath.seenAs.length == 1)
+						showSeenAs = false; // Not a real file
+					else
+						showSeenAs = true;
+
+					if (showSeenAs)
+					{
+						auto representedSamples = currentPath.data[SampleType.represented].samples;
+						write(endl, "--- Shares data with: ", endl);
+						currentPath.seenAs
+							.byKeyValue
+							.array
+							.sort!((ref a, ref b) => a.key < b.key)
+							.each!(pair => representedSamples
+								? write(formatted!"- %s (%d%%)"(pair.key, pair.value * 100 / representedSamples))
+								: write(formatted!"- %s (-%%)"(pair.key))
+							)
+						;
+					}
 				});
-				break;
 			}
 
-			case Mode.info:
-				drawTextScreen({
-					drawInfo(currentPath, false);
-				});
-				break;
+			// Scrolling and cursor upkeep
+			void fixTop()
+			{
+				// Ensure there is no unnecessary space at the bottom
+				if (top + contentAreaHeight > contentHeight)
+					top = contentHeight - contentAreaHeight;
+				// Ensure we are never scrolled "above" the first row
+				if (top < 0)
+					top = 0;
+			}
 
-			case Mode.help:
-				drawTextScreen({
-					foreach (line; help)
-					{
-						w.put(line);
-						w.newLine();
-					}
-				});
-				break;
-		}
+			// Used to draw full-screen text content (info and help screens).
+			void drawTextScreen(scope void delegate() fn)
+			{
+				withWindow(0, 2, width, height - 3, {
+					auto topY = (-top).to!int;
+					y = topY;
+					yOverflowHidden({
+						fn();
+					});
+					// TODO: draw overflow markers on top and bottom
 
-		// Pop-up
-		(){
-			dstring[] lines;
+					contentHeight = y - topY;
+					contentAreaHeight = height;
+					// Ideally we would want to 1) measure the content 2) perform this upkeep 3) render the content,
+					// but as we are rendering info directly to the screen, steps 1 and 3 are one and the same.
+					fixTop();
+				});
+			}
+
+			contentAreaHeight = (height - 4) / 2; // TODO!
 
 			final switch (mode)
 			{
 				case Mode.browser:
-				case Mode.info:
-				case Mode.help:
-					return;
-
 				case Mode.deleteConfirm:
-					lines = [
-						"Are you sure you want to delete:"d,
-						null,
-						getFullPath(selection).to!dstring,
-						null,
-					] ~ (expert && totalSamples ? [
-						"This will free ~%s (±%s)."d.format(
-							HumanSize(selection.data[SampleType.exclusive].samples * real(totalSize) / totalSamples),
-							HumanSize(estimateError(totalSamples, selection.data[SampleType.exclusive].samples) * totalSize),
-						),
-						null,
-					] : null) ~ [
-						"Press Shift+Y to confirm,"d,
-						"any other key to cancel.",
-					];
-					break;
-
 				case Mode.deleteProgress:
-					final switch (deleter.state)
+				{
+					contentHeight = items.length;
+					contentAreaHeight = height - 3;
+					contentAreaHeight -= min(/*textLines.length TODO*/10, contentAreaHeight / 2);
+					contentAreaHeight = min(contentAreaHeight, contentHeight + 1);
+					fixTop();
 					{
-						case Deleter.State.none:
-						case Deleter.State.success:
-							assert(false);
-						case Deleter.State.subvolumeConfirm:
-							lines = [
-								"Are you sure you want to delete the subvolume:"d,
-								null,
-								deleter.current.to!dstring,
-								null,
-								"Press Shift+Y to confirm,"d,
-								"any other key to cancel.",
-							];
-							break;
-
-						case Deleter.State.progress:
-						case Deleter.State.subvolumeProgress:
-							synchronized(deleter.thread) lines = [
-								deleter.stopping
-								? "Stopping deletion:"d
-								: "Deleting" ~ (deleter.state == Deleter.State.subvolumeProgress ? " the subvolume"d : "") ~ ":"d,
-								null,
-								deleter.current.to!dstring,
-								null,
-								"Press Esc or q to cancel.",
-							];
-							break;
-
-						case Deleter.State.error:
-							lines = [
-								"Error deleting:"d,
-								null,
-								deleter.current.to!dstring,
-								null,
-								deleter.error.to!dstring,
-								null,
-								"Displayed usage may be inaccurate;"d,
-								"please restart btdu."d,
-							];
-							break;
+						// Ensure the selected item is visible
+						auto pos = selection && items ? items.countUntil(selection) : 0;
+						top = top.clamp(
+							pos - contentAreaHeight + 1,
+							pos,
+						);
 					}
+
+					real getUnits(BrowserPath* path)
+					{
+						final switch (sortMode)
+						{
+							case SortMode.name:
+							case SortMode.size:
+								return getSamples(path);
+							case SortMode.time:
+								return getAverageDuration(path);
+						}
+					}
+
+					string getUnitsStr(real units)
+					{
+						final switch (sortMode)
+						{
+							case SortMode.name:
+							case SortMode.size:
+								auto samples = units;
+								return totalSamples
+									? "~" ~ HumanSize(samples * real(totalSize) / totalSamples, true).text
+									: "?";
+
+							case SortMode.time:
+								auto hnsecs = units;
+								if (hnsecs == -real.infinity)
+									return "?";
+								return HumanDuration(hnsecs).text;
+						}
+					}
+
+					auto currentPathUnits = currentPath.I!getUnits();
+					auto mostUnits = items.fold!((a, b) => max(a, b.I!getUnits()))(0.0L);
+
+					foreach (i, child; items)
+					{
+						auto childY = cast(int)(i - top);
+						if (childY < 0 || childY >= contentAreaHeight)
+							continue;
+						childY += 2;
+
+						auto childUnits = child.I!getUnits();
+
+						attrSet(Attribute.reverse, child is selection, {
+							at(0, childY, {
+								buf.clear();
+								buf.formattedWrite!"%12s "(getUnitsStr(childUnits));
+
+								if (ratioDisplayMode)
+								{
+									buf.put('[');
+									if (ratioDisplayMode & RatioDisplayMode.percentage)
+									{
+										if (currentPathUnits)
+											buf.formattedWrite!"%5.1f%%"(100.0 * childUnits / currentPathUnits);
+										else
+											buf.put("    -%");
+									}
+									if (ratioDisplayMode == RatioDisplayMode.both)
+										buf.put(' ');
+									if (ratioDisplayMode & RatioDisplayMode.graph)
+									{
+										char[10] bar;
+										if (mostUnits && childUnits != -real.infinity)
+										{
+											auto barPos = cast(size_t)(10 * childUnits / mostUnits);
+											bar[0 .. barPos] = '#';
+											bar[barPos .. $] = ' ';
+										}
+										else
+											bar[] = '-';
+										buf.put(bar[]);
+									}
+									buf.put("] ");
+								}
+								buf.put(child.firstChild is null ? ' ' : '/');
+
+								{
+									auto displayedItem = child.humanName;
+									auto maxItemWidth = width - (minWidth - 5);
+									if (displayedItem.length > maxItemWidth)
+									{
+										auto leftLength = (maxItemWidth - "...".length) / 2;
+										auto rightLength = maxItemWidth - "...".length - leftLength;
+										displayedItem =
+											displayedItem[0 .. leftLength] ~ "..." ~
+											displayedItem[$ - rightLength .. $];
+									}
+									buf.put(displayedItem);
+								}
+
+								write(buf.get(), endl);
+							});
+						});
+					}
+
+					auto infoY = contentAreaHeight + 2;
+					withWindow(0, infoY.to!int, width, (height - infoY - 1).to!int, {
+						yOverflowHidden({
+							drawInfo(currentPath, true);
+						});
+						if (y > height)
+							at(0, height - 1, { write(" --- more - press i to view --- ", endl); });
+					});
+					break;
+				}
+
+				case Mode.info:
+					drawTextScreen({
+						drawInfo(currentPath, false);
+					});
+					break;
+
+				case Mode.help:
+					drawTextScreen({
+						foreach (line; help)
+							write(line, endl);
+					});
 					break;
 			}
 
-			auto maxW = w.width - 6;
-			for (size_t i = 0; i < lines.length; i++)
-			{
-				auto line = lines[i];
-				if (line.length > maxW)
-				{
-					auto p = line[0 .. maxW].lastIndexOf('/');
-					if (p < 0)
-						p = line[0 .. maxW].lastIndexOf(' ');
-					if (p < 0)
-						p = maxW;
-					lines = lines[0 .. i] ~ line[0 .. p] ~ line[p .. $] ~ lines[i + 1 .. $];
-				}
-			}
+			// Pop-up
+			(){
+				dstring[] lines;
 
-			auto winW = (lines.map!(line => line.length).reduce!max + 6).to!int;
-			auto winH = (lines.length + 4).to!int;
-			auto winX = (w.width - winW) / 2;
-			auto winY = (w.height - winH) / 2;
-			w.withWindow(winX, winY, winW, winH, {
-				w.box();
-				foreach (i, line; lines)
+				final switch (mode)
 				{
-					auto s = line.to!string;
-					w.at(3, (2 + i).to!int, { w.put(s); });
+					case Mode.browser:
+					case Mode.info:
+					case Mode.help:
+						return;
+
+					case Mode.deleteConfirm:
+						lines = [
+							"Are you sure you want to delete:"d,
+							null,
+							getFullPath(selection).to!dstring,
+							null,
+						] ~ (expert && totalSamples ? [
+							"This will free ~%s (±%s)."d.format(
+								HumanSize(selection.data[SampleType.exclusive].samples * real(totalSize) / totalSamples),
+								HumanSize(estimateError(totalSamples, selection.data[SampleType.exclusive].samples) * totalSize),
+							),
+							null,
+						] : null) ~ [
+							"Press Shift+Y to confirm,"d,
+							"any other key to cancel.",
+						];
+						break;
+
+					case Mode.deleteProgress:
+						final switch (deleter.state)
+						{
+							case Deleter.State.none:
+							case Deleter.State.success:
+								assert(false);
+							case Deleter.State.subvolumeConfirm:
+								lines = [
+									"Are you sure you want to delete the subvolume:"d,
+									null,
+									deleter.current.to!dstring,
+									null,
+									"Press Shift+Y to confirm,"d,
+									"any other key to cancel.",
+								];
+								break;
+
+							case Deleter.State.progress:
+							case Deleter.State.subvolumeProgress:
+								synchronized(deleter.thread) lines = [
+									deleter.stopping
+									? "Stopping deletion:"d
+									: "Deleting" ~ (deleter.state == Deleter.State.subvolumeProgress ? " the subvolume"d : "") ~ ":"d,
+									null,
+									deleter.current.to!dstring,
+									null,
+									"Press Esc or q to cancel.",
+								];
+								break;
+
+							case Deleter.State.error:
+								lines = [
+									"Error deleting:"d,
+									null,
+									deleter.current.to!dstring,
+									null,
+									deleter.error.to!dstring,
+									null,
+									"Displayed usage may be inaccurate;"d,
+									"please restart btdu."d,
+								];
+								break;
+						}
+						break;
 				}
-			});
-		}();
+
+				auto maxW = width - 6;
+				for (size_t i = 0; i < lines.length; i++)
+				{
+					auto line = lines[i];
+					if (line.length > maxW)
+					{
+						auto p = line[0 .. maxW].lastIndexOf('/');
+						if (p < 0)
+							p = line[0 .. maxW].lastIndexOf(' ');
+						if (p < 0)
+							p = maxW;
+						lines = lines[0 .. i] ~ line[0 .. p] ~ line[p .. $] ~ lines[i + 1 .. $];
+					}
+				}
+
+				auto winW = (lines.map!(line => line.length).reduce!max + 6).to!int;
+				auto winH = (lines.length + 4).to!int;
+				auto winX = (width - winW) / 2;
+				auto winY = (height - winH) / 2;
+				withWindow(winX, winY, winW, winH, {
+					box();
+					foreach (i, line; lines)
+					{
+						auto s = line.to!string;
+						at(3, (2 + i).to!int, { write(s); });
+					}
+				});
+			}();
+		}
 	}
 
 	void moveCursor(sizediff_t delta)

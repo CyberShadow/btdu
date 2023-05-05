@@ -29,6 +29,8 @@ import core.sys.posix.locale;
 import core.sys.posix.stdio : FILE;
 
 import ae.utils.appender : FastAppender;
+import ae.utils.text.fctr : str;
+import ae.utils.fctr.primitives : fctr;
 import ae.utils.typecons : require;
 
 import deimos.ncurses;
@@ -270,6 +272,27 @@ struct Curses
 			x++;
 		}
 
+		// --- Text output (low-level)
+
+		alias Sink = typeof(&put);
+
+		void put(const(char)[] str)
+		{
+			toCChars(str, &put, attr, color);
+		}
+
+		@property void delegate(const(char)[] str) sink() return { return &put; }
+
+		void newLine(dchar filler = ' ')
+		{
+			// Fill with current background color / attributes
+			auto fillerCChar = filler.toCChar(attr, color);
+			while (x < width)
+				put(fillerCChar);
+			x = 0; // CR
+			y++;   // LF
+		}
+
 	public:
 
 		// --- Lifetime
@@ -304,8 +327,6 @@ struct Curses
 		// only use ncurses' window cursor coordinates for ncurses
 		// read/write operations.
 		xy_t x, y;
-
-		void moveTo(xy_t x, xy_t y) { this.x = x; this.y = y; }
 
 		void withWindow(xy_t x0, xy_t y0, xy_t w, xy_t h, scope void delegate() fn)
 		{
@@ -359,30 +380,18 @@ struct Curses
 		void attrOff(Attribute attribute, scope void delegate() fn) { attrSet(attribute, false, fn); }
 		void reverse(scope void delegate() fn) { attrOn(Attribute.reverse, fn); }
 
-		// --- Text output
+		// --- Text output (high-level)
 
-		void put(const(char)[] str)
-		{
-			toCChars(str, &put, attr, color);
-		}
-
-		@property void delegate(const(char)[] str) sink() return { return &put; }
-
-		void format(string fmt, Args...)(Args args)
+		/// Write some stringifiable objects.
+		void write(Args...)(auto ref Args args)
 		{
 			import std.format : formattedWrite;
-			formattedWrite!fmt(sink, args);
+			foreach (ref arg; args)
+				formattedWrite!"%s"(sink, arg);
 		}
 
-		void newLine(dchar filler = ' ')
-		{
-			// Fill with current background color / attributes
-			auto fillerCChar = filler.toCChar(attr, color);
-			while (x < width)
-				put(fillerCChar);
-			x = 0; // CR
-			y++;   // LF
-		}
+		/// Special stringifiable object. `write` this to end the current line.
+		@property auto endl(dchar filler = ' ') { return fctr!((self, filler, sink) { self.newLine(filler); })(&this, filler).str; }
 	}
 
 	Wand getWand() { return Wand(this); }
@@ -560,14 +569,3 @@ void toCChars(const(char)[] str, scope void delegate(cchar_t) sink, uint attr, N
 		sink(toCChar(wchars.ptr, attr, color));
 	}
 }
-
-// /// Convert UTF-8 string `str` to a `cchar_t` array with the given attribute.
-// /// The return value is valid until the next call.
-// cchar_t[] toCChars(const(char)[] str, uint attr, NCURSES_PAIRS_T color = 0)
-// {
-// 	import std.utf : byDchar;
-// 	static FastAppender!cchar_t ccharBuf;
-// 	ccharBuf.clear(); // Reuse buffer
-// 	toCChars(str, &ccharBuf.put!cchar_t, attr, color);
-// 	return ccharBuf.get();
-// }
