@@ -29,8 +29,8 @@ import core.sys.posix.locale;
 import core.sys.posix.stdio : FILE;
 
 import ae.utils.appender : FastAppender;
-import ae.utils.text.fctr : str;
-import ae.utils.fctr.primitives : fctr;
+import ae.utils.text.functor : stringifiable;
+import ae.utils.functor.primitives : functor;
 import ae.utils.typecons : require;
 
 import deimos.ncurses;
@@ -391,7 +391,7 @@ struct Curses
 		}
 
 		/// Special stringifiable object. `write` this to end the current line.
-		@property auto endl(dchar filler = ' ') { return fctr!((self, filler, sink) { self.newLine(filler); })(&this, filler).str; }
+		@property auto endl(dchar filler = ' ') { return functor!((self, filler, sink) { self.newLine(filler); })(&this, filler).stringifiable; }
 	}
 
 	Wand getWand() { return Wand(this); }

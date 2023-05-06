@@ -37,7 +37,7 @@ import std.traits;
 import ae.utils.appender;
 import ae.utils.meta;
 import ae.utils.text;
-import ae.utils.text.fctr;
+import ae.utils.text.functor;
 import ae.utils.time : stdDur, stdTime;
 
 import btrfs;
@@ -328,7 +328,7 @@ struct Browser
 
 				void showSampleType(SampleType type, string name, bool showError)
 				{
-					alias logicalOffsetStr = str!(
+					alias logicalOffsetStr = stringifiable!(
 						(offset, sink)
 						{
 							switch (offset.logical)

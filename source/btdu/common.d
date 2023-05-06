@@ -19,7 +19,7 @@
 /// Common definitions
 module btdu.common;
 
-import ae.utils.text.fctr : str;
+import ae.utils.text.functor : stringifiable;
 
 import std.format : format, formattedWrite;
 import std.random : Random;
@@ -206,7 +206,7 @@ ref Errno getErrno(int errno)
 
 // Conversion
 
-alias humanSize = str!(
+alias humanSize = stringifiable!(
 	(size, aligned, sink)
 	{
 		static immutable prefixChars = " KMGTPEZY";
@@ -270,7 +270,7 @@ unittest
 	assert(parseSize("1.5kib") == 1024 + 512);
 }
 
-alias humanDuration = str!(
+alias humanDuration = stringifiable!(
 	(hnsecs, sink)
 	{
 		if (hnsecs == 0)
