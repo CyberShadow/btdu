@@ -19,6 +19,8 @@
 /// Common definitions
 module btdu.common;
 
+import ae.utils.text.fctr : str;
+
 import std.format : format, formattedWrite;
 import std.random : Random;
 import std.traits;
@@ -204,16 +206,11 @@ ref Errno getErrno(int errno)
 
 // Conversion
 
-struct HumanSize
-{
-	real size;
-	bool aligned = false;
-
-	void toString(void delegate(const(char)[]) sink) const
+alias humanSize = str!(
+	(size, aligned, sink)
 	{
 		static immutable prefixChars = " KMGTPEZY";
 		size_t power = 0;
-		real size = this.size;
 		while (size > 1000 && power + 1 < prefixChars.length)
 		{
 			size /= 1024;
@@ -225,10 +222,16 @@ struct HumanSize
 			size < 100 ? 2 :
 			1;
 		if (aligned)
-			sink.formattedWrite!"%.*f %s%sB"(digits, size, prefixChars[power], prefixChars[power] == ' ' ? ' ' : 'i');
+			sink.formattedWrite!"%.*f %s%sB"(digits, size,                                  prefixChars[power             ], prefixChars[power] == ' ' ? ' ' : 'i');
 		else
-			sink.formattedWrite!"%.*f %s%sB"(digits, size, prefixChars[power] == ' ' ? "" : prefixChars[power .. power + 1], prefixChars[power] == ' ' ? "" : "i");
-	}
+			sink.formattedWrite!"%.*f %s%sB"(digits, size, prefixChars[power] == ' ' ? "" : prefixChars[power .. power + 1], prefixChars[power] == ' ' ? ""  : "i");
+	}, real, bool);
+auto humanSize(real size) { return humanSize(size, false); }
+
+unittest
+{
+	import std.conv : text;
+	assert(humanSize(8192).text == "8.000 KiB");
 }
 
 real parseSize(string s)
@@ -267,11 +270,8 @@ unittest
 	assert(parseSize("1.5kib") == 1024 + 512);
 }
 
-struct HumanDuration
-{
-	real hnsecs;
-
-	void toString(void delegate(const(char)[]) sink) const
+alias humanDuration = str!(
+	(hnsecs, sink)
 	{
 		if (hnsecs == 0)
 			return sink("0");
@@ -287,7 +287,12 @@ struct HumanDuration
 		}
 		auto digits = d < 1 ? 3 : d < 10 ? 2 : 1;
 		sink.formattedWrite!"%4.*f%s"(digits, d, units[unitIndex]);
-	}
+	}, real);
+
+unittest
+{
+	import std.conv : text;
+	assert(humanDuration(5.5 * 10 * 1000 * 1000).text == "5.50s");
 }
 
 /// Helper type for formatting pointers without passing their contents by-value.

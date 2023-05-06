@@ -289,7 +289,7 @@ struct Browser
 
 								write("  Resolution: ");
 								if (totalSamples)
-									write("~", (totalSize / totalSamples).HumanSize());
+									write("~", (totalSize / totalSamples).humanSize());
 								else
 									write("-");
 
@@ -328,27 +328,28 @@ struct Browser
 
 				void showSampleType(SampleType type, string name, bool showError)
 				{
-					struct LogicalOffsetPrinter
-					{
-						Offset offset;
-						void toString(void delegate(const(char)[]) sink) const // TODO
+					alias logicalOffsetStr = str!(
+						(offset, sink)
 						{
-							offset.logical == logicalOffsetHole ? sink("<UNALLOCATED>") :
-							offset.logical == logicalOffsetSlack ? sink("<SLACK>") :
-							sink.formattedWrite!"%s"(offset.logical);
-						}
-					}
+							switch (offset.logical)
+							{
+								case logicalOffsetHole : sink("<UNALLOCATED>"); return;
+								case logicalOffsetSlack: sink("<SLACK>"); return;
+								default: sink.formattedWrite!"%s"(offset.logical);
+							}
+						}, Offset);
+					alias physicalOffsetStr = offset => formatted!"%d:%d"(offset.devID, offset.physical);
 
 					return write(
 						endl,
 
 						"- ", name, ": ", fmtIf(totalSamples > 0,
 							() => formatted!"~%s (%d sample%s)%s"(
-								HumanSize(currentPath.data[type].samples * real(totalSize) / totalSamples),
+								humanSize(currentPath.data[type].samples * real(totalSize) / totalSamples),
 								currentPath.data[type].samples,
 								currentPath.data[type].samples == 1 ? "" : "s",
 								fmtIf(showError,
-									() => formatted!", ±%s"(HumanSize(estimateError(totalSamples, currentPath.data[type].samples) * totalSize)),
+									() => formatted!", ±%s"(humanSize(estimateError(totalSamples, currentPath.data[type].samples) * totalSize)),
 									() => "",
 								),
 							),
@@ -363,7 +364,7 @@ struct Browser
 						expert ? "  " : "", "- Logical offsets: ", fmtIf(currentPath.data[type].samples > 0,
 							() => formatted!"%s%-(%s, %)"(
 								currentPath.data[type].samples > currentPath.data[type].offsets.length ? "..., " : "",
-								currentPath.data[type].offsets[].filter!(o => o != Offset.init).map!((ref o) => LogicalOffsetPrinter(o)),
+								currentPath.data[type].offsets[].filter!(o => o != Offset.init).map!logicalOffsetStr,
 							),
 							() => "-",
 						), endl,
@@ -373,7 +374,7 @@ struct Browser
 								expert ? "  " : "", "- Physical offsets: ", fmtIf(currentPath.data[type].samples > 0,
 									() => formatted!"%s%(%s, %)"(
 										currentPath.data[type].samples > currentPath.data[type].offsets.length ? "..., " : "",
-										currentPath.data[type].offsets[].filter!(o => o != Offset.init).map!((ref o) => formatted!"%d:%d"(o.devID, o.physical)),
+										currentPath.data[type].offsets[].filter!(o => o != Offset.init).map!physicalOffsetStr,
 									),
 									() => "-",
 								), endl,
@@ -403,7 +404,7 @@ struct Browser
 					}
 
 					write("- Average query duration: ", fmtIf(currentPath.data[SampleType.represented].samples > 0,
-							() => stdDur(currentPath.data[SampleType.represented].duration / currentPath.data[SampleType.represented].samples).DurationAsDecimalString(),
+							() => stdDur(currentPath.data[SampleType.represented].duration / currentPath.data[SampleType.represented].samples).durationAsDecimalString,
 							() => "-",
 						), endl);
 
@@ -414,7 +415,7 @@ struct Browser
 						write(endl,
 							"- Distributed size: ", fmtIf(totalSamples > 0,
 								() => formatted!"~%s (%1.3f sample%s)"(
-									HumanSize(currentPath.distributedSamples * real(totalSize) / totalSamples),
+									humanSize(currentPath.distributedSamples * real(totalSize) / totalSamples),
 									currentPath.distributedSamples,
 									currentPath.distributedSamples == 1 ? "" : "s",
 								),
@@ -769,14 +770,14 @@ struct Browser
 							case SortMode.size:
 								auto samples = units;
 								return totalSamples
-									? "~" ~ HumanSize(samples * real(totalSize) / totalSamples, true).text
+									? "~" ~ humanSize(samples * real(totalSize) / totalSamples, true).text
 									: "?";
 
 							case SortMode.time:
 								auto hnsecs = units;
 								if (hnsecs == -real.infinity)
 									return "?";
-								return HumanDuration(hnsecs).text;
+								return humanDuration(hnsecs).text;
 						}
 					}
 
@@ -889,8 +890,8 @@ struct Browser
 							null,
 						] ~ (expert && totalSamples ? [
 							"This will free ~%s (±%s)."d.format(
-								HumanSize(selection.data[SampleType.exclusive].samples * real(totalSize) / totalSamples),
-								HumanSize(estimateError(totalSamples, selection.data[SampleType.exclusive].samples) * totalSize),
+								humanSize(selection.data[SampleType.exclusive].samples * real(totalSize) / totalSamples),
+								humanSize(estimateError(totalSamples, selection.data[SampleType.exclusive].samples) * totalSize),
 							),
 							null,
 						] : null) ~ [
@@ -1326,18 +1327,13 @@ double estimateError(
 	return z * error;
 }
 
-struct DurationAsDecimalString
+auto durationAsDecimalString(Duration d) @nogc
 {
-	Duration d;
-
-	void toString(void delegate(const(char)[]) sink) const
-	{
-		assert(d >= Duration.zero);
-		auto ticks = d.stdTime;
-		enum secondsPerTick = 1.seconds / 1.stdDur;
-		static assert(secondsPerTick == 10L ^^ 7);
-		sink.formattedWrite!"%d.%07d seconds"(ticks / secondsPerTick, ticks % secondsPerTick);
-	}
+	assert(d >= Duration.zero);
+	auto ticks = d.stdTime;
+	enum secondsPerTick = 1.seconds / 1.stdDur;
+	static assert(secondsPerTick == 10L ^^ 7);
+	return formatted!"%d.%07d seconds"(ticks / secondsPerTick, ticks % secondsPerTick);
 }
 
 static immutable string[] help = q"EOF
