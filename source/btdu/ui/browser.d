@@ -285,16 +285,16 @@ struct Browser
 								});
 							else
 							{
-								write(" Samples: ", totalSamples);
+								write(" Samples: ", bold(totalSamples));
 
 								write("  Resolution: ");
 								if (totalSamples)
-									write("~", (totalSize / totalSamples).humanSize());
+									write("~", bold((totalSize / totalSamples).humanSize()));
 								else
-									write("-");
+									write(bold("-"));
 
 								if (expert)
-									write("  Size metric: ", sizeDisplayMode.to!string.chomp("_"));
+									write("  Size metric: ", bold(sizeDisplayMode.to!string.chomp("_")));
 							}
 							write(endl);
 						});

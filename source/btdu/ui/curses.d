@@ -19,17 +19,18 @@
 /// ncurses wrapper
 module btdu.ui.curses;
 
+import core.lifetime : forward;
+import core.stdc.stddef : wchar_t;
+import core.sys.posix.locale;
+import core.sys.posix.stdio : FILE;
+
 import std.algorithm.comparison : min;
 import std.conv;
 import std.exception;
 import std.typecons;
 
-import core.stdc.stddef : wchar_t;
-import core.sys.posix.locale;
-import core.sys.posix.stdio : FILE;
-
 import ae.utils.appender : FastAppender;
-import ae.utils.text.functor : stringifiable;
+import ae.utils.text.functor : stringifiable, fmtSeq;
 import ae.utils.functor.primitives : functor;
 import ae.utils.typecons : require;
 
@@ -369,6 +370,7 @@ struct Curses
 		enum Attribute : attr_t
 		{
 			reverse = A_REVERSE,
+			bold = A_BOLD,
 		}
 
 		void attrSet(Attribute attribute, bool set, scope void delegate() fn)
@@ -391,7 +393,20 @@ struct Curses
 		}
 
 		/// Special stringifiable object. `write` this to end the current line.
-		@property auto endl(dchar filler = ' ') { return functor!((self, filler, sink) { self.newLine(filler); })(&this, filler).stringifiable; }
+		auto endl(dchar filler = ' ') { return functor!((self, filler, sink) { self.newLine(filler); })(&this, filler).stringifiable; }
+
+		/// Special stringifiable objects which temporarily change attributes.
+		auto withAttr(Args...)(Attribute attribute, bool set, auto ref Args args)
+		{
+			auto content = fmtSeq(args);
+			return functor!((self, ref content, ref sink) {
+				attrSet(attribute, set, {
+					content.toString(sink);
+				});
+			})(&this, content).stringifiable;
+		}
+		auto bold    (Args...)(auto ref Args args) { return withAttr(Attribute.bold    , true, forward!args); }
+		auto reversed(Args...)(auto ref Args args) { return withAttr(Attribute.reversed, true, forward!args); }
 	}
 
 	Wand getWand() { return Wand(this); }
