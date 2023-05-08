@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020, 2021, 2022  Vladimir Panteleev <btdu@cy.md>
+ * Copyright (C) 2020, 2021, 2022, 2023  Vladimir Panteleev <btdu@cy.md>
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public
@@ -21,7 +21,6 @@ module btdu.subproc;
 
 import core.sys.posix.signal;
 import core.sys.posix.unistd;
-import core.time;
 
 import std.algorithm.iteration;
 import std.algorithm.mutation;
@@ -82,43 +81,39 @@ struct Subprocess
 	private size_t bufStart, bufEnd;
 
 	/// Called when select() identifies that the process wrote something.
-	void handleInput(Duration maxDuration)
+	/// Reads one datum; returns `true` if there is more to read.
+	bool handleInput()
 	{
-		auto deadline = MonoTime.currTime() + maxDuration;
-		// Ensure the loop exits eventually, even when there is always more data to process:
-		do
+		auto data = buf[bufStart .. bufEnd];
+		auto bytesNeeded = parse(data, this);
+		bufStart = bufEnd - data.length;
+		if (bufStart == bufEnd)
+			bufStart = bufEnd = 0;
+		if (buf.length < bufEnd + bytesNeeded)
 		{
-			auto data = buf[bufStart .. bufEnd];
-			auto bytesNeeded = parse(data, this);
-			bufStart = bufEnd - data.length;
-			if (bufStart == bufEnd)
-				bufStart = bufEnd = 0;
+			// Moving remaining data to the start of the buffer
+			// may allow us to avoid an allocation.
+			if (bufStart > 0)
+			{
+				copy(buf[bufStart .. bufEnd], buf[0 .. bufEnd - bufStart]);
+				bufEnd -= bufStart;
+				bufStart -= bufStart;
+			}
 			if (buf.length < bufEnd + bytesNeeded)
 			{
-				// Moving remaining data to the start of the buffer
-				// may allow us to avoid an allocation.
-				if (bufStart > 0)
-				{
-					copy(buf[bufStart .. bufEnd], buf[0 .. bufEnd - bufStart]);
-					bufEnd -= bufStart;
-					bufStart -= bufStart;
-				}
-				if (buf.length < bufEnd + bytesNeeded)
-				{
-					buf.length = bufEnd + bytesNeeded;
-					buf.length = buf.capacity;
-				}
+				buf.length = bufEnd + bytesNeeded;
+				buf.length = buf.capacity;
 			}
-			auto received = read(pipe.readEnd.fileno, buf.ptr + bufEnd, buf.length - bufEnd);
-			enforce(received != 0, "Unexpected subprocess termination");
-			if (received == Socket.ERROR)
-			{
-				errnoEnforce(wouldHaveBlocked, "Subprocess read error");
-				return;
-			}
-			bufEnd += received;
 		}
-		while (MonoTime.currTime() < deadline);
+		auto received = read(pipe.readEnd.fileno, buf.ptr + bufEnd, buf.length - bufEnd);
+		enforce(received != 0, "Unexpected subprocess termination");
+		if (received == Socket.ERROR)
+		{
+			errnoEnforce(wouldHaveBlocked, "Subprocess read error");
+			return false; // Done
+		}
+		bufEnd += received;
+		return true; // Not done
 	}
 
 	void handleMessage(StartMessage m)

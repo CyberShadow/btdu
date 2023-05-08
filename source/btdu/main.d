@@ -180,8 +180,6 @@ Please report defects and enhancement requests to the GitHub issue tracker:
 	auto nextRefresh = startTime;
 
 	enum totalMaxDuration = 1.seconds / 60; // 60 FPS
-	// How much time we may spend processing one subprocess's output:
-	auto subprocMaxDuration = totalMaxDuration / (1 + subprocesses.length);
 
 	auto readSet = new SocketSet;
 	auto exceptSet = new SocketSet;
@@ -227,9 +225,21 @@ Please report defects and enhancement requests to the GitHub issue tracker:
 			nextRefresh = now + refreshInterval;
 		}
 		if (!paused)
-			foreach (ref subproc; subprocesses)
+		{
+			auto deadline = now + totalMaxDuration;
+			size_t numReadable;
+			foreach (i, ref subproc; subprocesses)
 				if (readSet.isSet(subproc.socket))
-					subproc.handleInput(subprocMaxDuration);
+					numReadable++;
+			foreach (i, ref subproc; subprocesses)
+				if (readSet.isSet(subproc.socket))
+				{
+					auto subprocDeadline = now + (deadline - now) / numReadable;
+					while (now < subprocDeadline && subproc.handleInput())
+						now = MonoTime.currTime();
+					numReadable--;
+				}
+		}
 		if (!headless && now > nextRefresh)
 		{
 			browser.update();
