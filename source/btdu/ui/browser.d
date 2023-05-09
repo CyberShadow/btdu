@@ -760,7 +760,7 @@ struct Browser
 						}
 					}
 
-					if (sizeDisplayMode != SizeMetric.distributed)
+					if (sizeDisplayMode != SizeMetric.distributed && p.data[sizeMetricSampleType(sizeDisplayMode)].samples > 0)
 					{
 						write(endl, "Latest offsets (", bold(sizeDisplayMode.to!string.chomp("_")), " samples):", endl, endl);
 						auto data = p.data[sizeMetricSampleType(sizeDisplayMode)];
