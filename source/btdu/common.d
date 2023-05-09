@@ -209,6 +209,8 @@ ref Errno getErrno(int errno)
 alias humanSize = stringifiable!(
 	(size, aligned, sink)
 	{
+		if (size == 0 && !aligned)
+			return sink("0");
 		static immutable prefixChars = " KMGTPEZY";
 		size_t power = 0;
 		while (size > 1000 && power + 1 < prefixChars.length)
@@ -222,7 +224,7 @@ alias humanSize = stringifiable!(
 			size < 100 ? 2 :
 			1;
 		if (aligned)
-			sink.formattedWrite!"%.*f %s%sB"(digits, size,                                  prefixChars[power             ], prefixChars[power] == ' ' ? ' ' : 'i');
+			sink.formattedWrite!"%5.*f %s%sB"(digits, size,                                  prefixChars[power             ], prefixChars[power] == ' ' ? ' ' : 'i');
 		else
 			sink.formattedWrite!"%.*f %s%sB"(digits, size, prefixChars[power] == ' ' ? "" : prefixChars[power .. power + 1], prefixChars[power] == ' ' ? ""  : "i");
 	}, real, bool);

@@ -24,9 +24,10 @@ import core.stdc.stddef : wchar_t;
 import core.sys.posix.locale;
 import core.sys.posix.stdio : FILE;
 
-import std.algorithm.comparison : min;
+import std.algorithm.comparison : min, max;
 import std.conv;
 import std.exception;
+import std.meta;
 import std.typecons;
 
 import ae.utils.appender : FastAppender;
@@ -122,6 +123,9 @@ struct Curses
 			/// Wrap words.
 			words,
 
+			/// Wrap paths (like words, but break on /); hyphenate.
+			path,
+
 			/// Do not wrap, but draw ellipses if truncation occurred.
 			ellipsis,
 		}
@@ -169,21 +173,38 @@ struct Curses
 
 		// --- ncurses primitives
 
-		WINDOW* window;
+		xy_t x0, y0, x1, y1; // Absolute coordinates of current window top-left and bottom-right
+		xy_t maskX0, maskY0, maskX1, maskY1; // Rectangle of where we may actually draw now; subset of current window
+		xy_t maxX; // Highest seen absolute X; used by `measure`
+
+		void withNCWindow(scope void delegate(WINDOW*) fn)
+		{
+			auto win = derwin(stdscr, height, width, y0, x0);
+			scope(exit) delwin(win);
+			fn(win);
+		}
+
+		/// Returns `true` if `x` and `y` are within the bounds of the current window.
+		bool inBounds(xy_t x, xy_t y) { return x >= 0 && x < width && y >= 0 && y < height; }
+
+		/// Returns `true` if `x` and `y` are within the drawable rectangle.
+		bool inMask(xy_t x, xy_t y) { x += x0; y += y0; return x >= maskX0 && x < maskX1 && y >= maskY0 && y < maskY1; }
 
 		/// Low-level write primitive
 		void poke(xy_t x, xy_t y, cchar_t c)
 		{
-			assert(x >= 0 && x < width && y >= 0 && y < height);
-			mvwadd_wchnstr(window, y.to!int, x.to!int, &c, 1).ncenforce("mvwadd_wchnstr");
+			assert(inMask(x, y));
+			x += x0; y += y0;
+			mvwadd_wchnstr(stdscr, y.to!int, x.to!int, &c, 1).ncenforce("mvwadd_wchnstr");
 		}
 
 		/// Low-level read primitive
 		cchar_t peek(xy_t x, xy_t y)
 		{
-			assert(x >= 0 && x < width && y >= 0 && y < height);
+			assert(inMask(x, y));
 			cchar_t wch;
-			mvwin_wch(window, y.to!int, x.to!int, &wch).ncenforce("mvwin_wch");
+			x += x0; y += y0;
+			mvwin_wch(stdscr, y.to!int, x.to!int, &wch).ncenforce("mvwin_wch");
 			return wch;
 		}
 
@@ -204,31 +225,50 @@ struct Curses
 			newLine();
 
 			auto space = " "d.ptr.toCChar(attr, color);
-			// Try finding a blank somewhere on this line, before the cursor.
-			foreach_reverse (i; 0 .. min(origX, width))
-				if (peek(i, origY) == space)
+			if (lastSpaceY == origY)
+			{
+				assert(lastSpaceX < origX);
+				// There is a space at X coordinate `lastSpaceX`.
+				// Move everything after it to a new line.
+				foreach (j; lastSpaceX + 1 .. origX)
 				{
-					// Found a space at X coordinate `i`.
-					// Move everything after it to a new line.
-					foreach (j; i + 1 .. origX)
+					// auto ok = prePut();
+					// put(ok ? peek(j, origY) : space);
+					if (inMask(j, origY))
 					{
 						put(peek(j, origY));
 						poke(j, origY, space);
 					}
-					// The cursor is now after the last character, and we are ready to write more.
-					return;
+					else
+					{
+						// The word that needs to be wrapped is off-screen, so we lost those characters,
+						// and therefore can't copy them to the potentially-now-visible row.
+						// But that's OK, because btdu draws overflow markers on the top line of
+						// scrollable views anyway.
+						put("•");
+					}
 				}
+				// The cursor is now after the last character, and we are ready to write more.
+				return;
+			}
 
-			// We did not find a blank, so just put a hyphen.
-			if (origX >= 2)
+			// We did not find a blank, so just put a hyphen if we can.
+			if (origX >= 2 && inMask(origX - 1, origY))
 			{
 				put(peek(origX - 1, origY));
 				poke(origX - 1, origY, "‐"d.ptr.toCChar(attr, color));
 			}
 		}
 
-		/// Put a raw `cchar_t`, obeying overflow and advancing the cursor.
-		void put(cchar_t c)
+		xy_t lastSpaceX = xy_t.min, lastSpaceY = xy_t.min;
+
+		/// We are about to write a single character.
+		/// Perform any upkeep on the current state to ensure
+		/// that the next write will go to the resulting (x, y).
+		/// Return true if the write at the resulting (x, y) will be valid;
+		/// otherwise, the caller should just advance the cursor and give up.
+		bool prePut()
+		out (result; result == inBounds(x, y))
 		{
 			assert(x >= 0, "X underflow");
 			if (x >= width)
@@ -236,14 +276,14 @@ struct Curses
 				{
 					case XOverflow.never:
 						assert(x < width, "X overflow");
-						x++; // advance cursor and give up
-						return;
+						return false;
 					case XOverflow.chars:
 						newLine();
-						return put(c); // retry
+						return prePut(); // retry
 					case XOverflow.words:
+					case XOverflow.path:
 						wordWrap();
-						return put(c); // retry
+						return prePut(); // retry
 					case XOverflow.ellipsis:
 						if (x == width) // only print the ellipsis this once
 						{
@@ -252,8 +292,7 @@ struct Curses
 								put("…");
 							});
 						}
-						x++; // advance cursor and give up
-						return;
+						return false;
 				}
 
 			if (y < 0 || y >= height)
@@ -261,16 +300,32 @@ struct Curses
 				{
 					case YOverflow.never:
 						assert(y >= 0 && y < height, "Y overflow");
-						x++; // advance cursor and give up
-						return;
+						return false;
 
 					case YOverflow.hidden:
-						x++; // advance cursor and give up
-						return;
+						return false;
 				}
 
-			poke(x, y, c);
+			return true;
+		}
+
+		/// Put a raw `cchar_t`, obeying overflow and advancing the cursor.
+		void put(cchar_t c)
+		{
+			bool ok = prePut();
+
+			auto breakChar = xOverflow == XOverflow.path ? '/' : ' ';
+			if (c.chars[0] == breakChar && c.chars[1] == 0)
+			{
+				lastSpaceX = x;
+				lastSpaceY = y;
+			}
+
+			if (inMask(x, y))
+				poke(x, y, c);
 			x++;
+			if (!(c.chars[0] == ' ' && c.chars[1] == 0))
+				maxX = max(maxX, x0 + x);
 		}
 
 		// --- Text output (low-level)
@@ -303,23 +358,21 @@ struct Curses
 
 		this(ref Curses curses)
 		{
-			window = stdscr;
-
 			erase();
-			x = y = 0;
+			x0 = y0 = maskX0 = maskY0 = x = y = 0;
+			x1 = maskX1 = getmaxx(stdscr).to!xy_t;
+			y1 = maskY1 = getmaxy(stdscr).to!xy_t;
 		}
 
 		~this()
 		{
-			assert(window == stdscr);
 			refresh();
-			window = null;
 		}
 
 		// --- Geometry
 
-		@property xy_t width () { return getmaxx(window).to!xy_t; }
-		@property xy_t height() { return getmaxy(window).to!xy_t; }
+		@property xy_t width() { return x1 - x0; }
+		@property xy_t height() { return y1 - y0; }
 
 		/// Cursor coordinates used by `put` et al.
 		// ncurses does not allow the cursor to go beyond the window
@@ -329,27 +382,41 @@ struct Curses
 		// read/write operations.
 		xy_t x, y;
 
-		void withWindow(xy_t x0, xy_t y0, xy_t w, xy_t h, scope void delegate() fn)
+		void withWindow(xy_t x0, xy_t y0, xy_t width, xy_t height, scope void delegate() fn)
 		{
-			auto oldWindow = this.window;
-			auto newWindow = derwin(this.window, h, w, y0, x0);
-			auto oldX = this.x;
-			auto oldY = this.y;
+			alias vars = AliasSeq!(
+				this.x, this.y,
+				this.x0, this.y0,
+				this.x1, this.y1,
+				this.maskX0, maskY0,
+				this.maskX1, maskY1,
+			);
+			auto oldVars = vars;
 			scope(exit)
 			{
-				this.window = oldWindow;
-				delwin(newWindow);
-				this.x = oldX;
-				this.y = oldY;
+				maxX = min(x1, maxX);
+				vars = oldVars;
 			}
-			this.window = newWindow;
-			this.x = 0;
-			this.y = 0;
-			wclear(newWindow);
+			auto newX0 = this.x0 + x0;
+			auto newY0 = this.y0 + y0;
+			auto newX1 = newX0 + width;
+			auto newY1 = newY0 + height;
+			auto newMaskX0 = max(this.maskX0, newX0);
+			auto newMaskY0 = max(this.maskY0, newY0);
+			auto newMaskX1 = min(this.maskX1, newX0 + width);
+			auto newMaskY1 = min(this.maskY1, newY0 + height);
+			vars = AliasSeq!(
+				0, 0,
+				newX0, newY0,
+				newX1, newY1,
+				newMaskX0, newMaskY0,
+				newMaskX1, newMaskY1,
+			);
+			this.lastSpaceX = this.lastSpaceY = xy_t.min;
 			fn();
 		}
 
-		void box() { .box(this.window, 0, 0); }
+		void eraseWindow() { withNCWindow(w => .werase(w).ncenforce()); }
 
 		// --- State
 
@@ -364,6 +431,7 @@ struct Curses
 
 		void xOverflowChars   (scope void delegate() fn) { withState(xOverflow, XOverflow.chars   , fn); }
 		void xOverflowWords   (scope void delegate() fn) { withState(xOverflow, XOverflow.words   , fn); }
+		void xOverflowPath    (scope void delegate() fn) { withState(xOverflow, XOverflow.path    , fn); }
 		void xOverflowEllipsis(scope void delegate() fn) { withState(xOverflow, XOverflow.ellipsis, fn); }
 		void yOverflowHidden  (scope void delegate() fn) { withState(yOverflow, YOverflow.hidden  , fn); }
 
@@ -405,8 +473,94 @@ struct Curses
 				});
 			})(&this, content).stringifiable;
 		}
-		auto bold    (Args...)(auto ref Args args) { return withAttr(Attribute.bold    , true, forward!args); }
-		auto reversed(Args...)(auto ref Args args) { return withAttr(Attribute.reversed, true, forward!args); }
+		auto bold    (Args...)(auto ref Args args) { return withAttr(Attribute.bold   , true, forward!args); }
+		auto reversed(Args...)(auto ref Args args) { return withAttr(Attribute.reverse, true, forward!args); }
+
+		/// Get the width (in coordinates) of the given stringifiables.
+		size_t getTextWidth(Args...)(auto ref Args args)
+		{
+			size_t count;
+			void charSink(cchar_t) { count++; }
+			void strSink(const(char)[] str) { toCChars(str, &charSink, 0, 0); }
+
+			import std.format : formattedWrite;
+			foreach (ref arg; args)
+				formattedWrite!"%s"(&strSink, arg);
+			return count;
+		}
+
+		/// Measure how much space writes done by `fn` will take,
+		/// assuming current window size and wrapping mode.
+		xy_t[2] measure(scope void delegate() fn)
+		{
+			xy_t[2] result;
+			at(0, height, {
+				maxX = 0;
+				yOverflowHidden({
+					fn();
+				});
+				assert(y >= height);
+				if (x != 0) y++;
+				auto localMaxX = maxX - x0;
+				auto localMaxY = y - height;
+				result = [localMaxX, localMaxY];
+			});
+			return result;
+		}
+
+		enum Alignment : byte { left = -1, center = 0, right = 1 }
+
+		/// Tables!
+		void writeTable(
+			int columns, int rows,
+			scope void delegate(int, int) writeCell,
+			scope Alignment delegate(int, int) getAlignment,
+		)
+		{
+			auto columnX = this.x;
+			auto rowY(int row) { return y + row + (row >= 1 ? 1 : 0); }
+			foreach (column; 0 .. columns)
+			{
+				if (column > 0)
+				{
+					foreach (row; 0 .. rows)
+						withWindow(columnX, rowY(row), 3, 1, { write(" │ "); });
+					withWindow(columnX, y + 1, 3, 1, { write("─┼─"); });
+					columnX += 3;
+				}
+				int maxWidth = 0;
+				foreach (row; 0 .. rows)
+					withWindow(columnX, rowY(row), xy_t.max / 2, 1, {
+						auto cellSize = measure({ writeCell(column, row); });
+						assert(cellSize[1] <= 1, "Multi-line table cells not supported");
+						maxWidth = max(maxWidth, cellSize[0]);
+					});
+				foreach (row; 0 .. rows)
+					withWindow(columnX, rowY(row), maxWidth, 1, {
+						final switch (getAlignment(column, row))
+						{
+							case Alignment.left:
+								writeCell(column, row);
+								break;
+							case Alignment.center:
+								auto cellSize = measure({ writeCell(column, row); });
+								x += (width - cellSize[0]) / 2;
+								writeCell(column, row);
+								break;
+							case Alignment.right:
+								auto cellSize = measure({ writeCell(column, row); });
+								x += width - cellSize[0];
+								writeCell(column, row);
+								assert(x == width);
+								break;
+						}
+					});
+				withWindow(columnX, y + 1, maxWidth, 1, { write(endl('─')); });
+				columnX += maxWidth;
+			}
+			y += rows + 1;
+		}
+			
 	}
 
 	Wand getWand() { return Wand(this); }

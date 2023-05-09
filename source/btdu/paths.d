@@ -420,12 +420,11 @@ struct BrowserPath
 		data[type].samples += samples;
 		data[type].duration += duration;
 		foreach (offset; offsets)
-			if (offset != data[type].offsets[$-1])
-				// Add new offsets at the end, pushing existing ones towards 0
-				foreach (i; 0 .. data[type].offsets.length)
-					data[type].offsets[i] = i + 1 == Data.offsets.length
-						? offset
-						: data[type].offsets[i + 1];
+			// Add new offsets at the end, pushing existing ones towards 0
+			foreach (i; 0 .. data[type].offsets.length)
+				data[type].offsets[i] = i + 1 == Data.offsets.length
+					? offset
+					: data[type].offsets[i + 1];
 		if (parent)
 			parent.addSamples(type, samples, offsets, duration);
 	}
