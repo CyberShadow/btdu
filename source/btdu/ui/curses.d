@@ -324,8 +324,7 @@ struct Curses
 			if (inMask(x, y))
 				poke(x, y, c);
 			x++;
-			if (!(c.chars[0] == ' ' && c.chars[1] == 0))
-				maxX = max(maxX, x0 + x);
+			maxX = max(maxX, x0 + x);
 		}
 
 		// --- Text output (low-level)
@@ -343,7 +342,7 @@ struct Curses
 		{
 			// Fill with current background color / attributes
 			auto fillerCChar = filler.toCChar(attr, color);
-			while (x < width)
+			while (inMask(x, y))
 				put(fillerCChar);
 			x = 0; // CR
 			y++;   // LF
