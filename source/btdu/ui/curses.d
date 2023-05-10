@@ -30,7 +30,6 @@ import std.exception;
 import std.meta;
 import std.typecons;
 
-import ae.utils.appender : FastAppender;
 import ae.utils.text.functor : stringifiable, fmtSeq;
 import ae.utils.functor.primitives : functor;
 import ae.utils.typecons : require;
