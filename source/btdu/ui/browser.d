@@ -924,12 +924,12 @@ struct Browser
 
 				alias minWidth = (ratioDisplayMode) =>
 					"  100.0 KiB ".length +
-					[
+					only(
 						""                    .length,
 						"[##########] "       .length,
 						"[100.0%] "           .length,
 						"[100.0% ##########] ".length,
-					][ratioDisplayMode] +
+					)[ratioDisplayMode] +
 					"/".length +
 					6;
 
