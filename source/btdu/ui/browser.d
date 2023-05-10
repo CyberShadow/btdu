@@ -922,7 +922,7 @@ struct Browser
 				auto currentPathUnits = currentPath.I!getUnits();
 				auto mostUnits = items.fold!((a, b) => max(a, b.I!getUnits()))(0.0L);
 
-				auto minWidth =
+				alias minWidth = (ratioDisplayMode) =>
 					"  100.0 KiB ".length +
 					[
 						""                    .length,
@@ -949,19 +949,23 @@ struct Browser
 						xOverflowEllipsis({
 							write(formatted!"%12s "(getUnitsStr(childUnits)));
 
-							if (ratioDisplayMode)
+							auto effectiveRatioDisplayMode = ratioDisplayMode;
+							while (effectiveRatioDisplayMode && width < minWidth(effectiveRatioDisplayMode))
+								effectiveRatioDisplayMode = RatioDisplayMode.none;
+
+							if (effectiveRatioDisplayMode)
 							{
 								write('[');
-								if (ratioDisplayMode & RatioDisplayMode.percentage)
+								if (effectiveRatioDisplayMode & RatioDisplayMode.percentage)
 								{
 									if (currentPathUnits)
 										write(formatted!"%5.1f%%"(100.0 * childUnits / currentPathUnits));
 									else
 										write("    -%");
 								}
-								if (ratioDisplayMode == RatioDisplayMode.both)
+								if (effectiveRatioDisplayMode == RatioDisplayMode.both)
 									write(' ');
-								if (ratioDisplayMode & RatioDisplayMode.graph)
+								if (effectiveRatioDisplayMode & RatioDisplayMode.graph)
 								{
 									char[10] bar;
 									if (mostUnits && childUnits != -real.infinity)
@@ -980,7 +984,7 @@ struct Browser
 
 							{
 								auto displayedItem = child.humanName.to!dstring;
-								auto maxItemWidth = width - (minWidth - 5);
+								auto maxItemWidth = width - (minWidth(effectiveRatioDisplayMode) - 5);
 								if (maxItemWidth >= 3 && displayedItem.length > maxItemWidth)
 								{
 									auto ellipsis = maxItemWidth >= 9 ? "..."d : "…"d;
