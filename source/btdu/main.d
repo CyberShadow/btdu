@@ -66,6 +66,7 @@ void program(
 	Switch!("Measure physical space (instead of logical).", 'p') physical = false,
 	Switch!("Expert mode: collect and show additional metrics.\nUses more memory.", 'x') expert = false,
 	Switch!hiddenOption man = false,
+	Option!(string, "Set UI refresh interval.\nSpecify 0 to refresh as fast as possible.", "DURATION", 'i', "interval") refreshIntervalStr = null,
 	Switch!("Run without launching the result browser UI.") headless = false,
 	Option!(ulong, "Stop after collecting N samples.", "N", 'n') maxSamples = 0,
 	Option!(string, "Stop after running for this duration.", "DURATION") maxTime = null,
@@ -176,7 +177,9 @@ Please report defects and enhancement requests to the GitHub issue tracker:
 	}
 
 	auto startTime = MonoTime.currTime();
-	enum refreshInterval = 500.msecs;
+	auto refreshInterval = 500.msecs;
+	if (refreshIntervalStr)
+		refreshInterval = parseDuration(refreshIntervalStr);
 	auto nextRefresh = startTime;
 
 	enum totalMaxDuration = 1.seconds / 60; // 60 FPS
