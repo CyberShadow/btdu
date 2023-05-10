@@ -205,15 +205,27 @@ mixin template SimplePath()
 			parent.toString(sink);
 			sink("/");
 		}
-		sink(humanName);
+		humanName.toString(sink);
 	}
 
-	string humanName() const
+	auto humanName() const
 	{
-		string humanName = name[];
-		if (humanName.skipOverNul())
-			humanName = "<" ~ humanName ~ ">";
-		return humanName;
+		struct HumanName
+		{
+			string name;
+			void toString(scope void delegate(const(char)[]) sink) const
+			{
+				if (name.startsWith("\0"))
+				{
+					sink("<");
+					sink(name[1 .. $]);
+					sink(">");
+				}
+				else
+					sink(name);
+			}
+		}
+		return HumanName(name[]);
 	}
 }
 

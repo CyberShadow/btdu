@@ -35,8 +35,8 @@ import std.string;
 import std.traits;
 
 import ae.utils.appender;
-import ae.utils.functor.primitives : valueFunctor;
-import ae.utils.meta;
+import ae.utils.functor.primitives : functor, valueFunctor;
+import ae.utils.meta : I, enumLength;
 import ae.utils.text;
 import ae.utils.text.functor;
 import ae.utils.time : stdDur, stdTime;
@@ -240,7 +240,7 @@ struct Browser
 			deleter.update();
 			if (deleter.state == Deleter.State.success)
 			{
-				showMessage("Deleted " ~ selection.humanName ~ ".");
+				showMessage(format!"Deleted %s."(selection.humanName));
 				mode = Mode.browser;
 				deleter.state = Deleter.State.none;
 				selection.remove();
@@ -1013,7 +1013,7 @@ struct Browser
 					auto bottomOverflowText = fmtSeq(" more - press ", overflowKeyText, " to view ");
 
 				drawPanel(
-					fmtSeq(titlePrefix, bold(p is &browserRoot ? "/" : p.humanName)),
+					fmtSeq(titlePrefix, bold(fmtIf(p is &browserRoot, () => "/", functor!(p => p.humanName)(p)))),
 					null,
 					bottomOverflowText,
 					scrollContext,
@@ -1408,14 +1408,14 @@ struct Browser
 						if (expert)
 						{
 							sizeDisplayMode = cast(SizeMetric)((sizeDisplayMode + 1) % enumLength!SizeMetric);
-							showMessage("Showing %s size".format(sizeDisplayMode.to!string.chomp("_")));
+							showMessage(format!"Showing %s size"(sizeDisplayMode.to!string.chomp("_")));
 						}
 						else
 							showMessage("Not in expert mode - re-run with --expert");
 						break;
 					case 't':
 						dirsFirst = !dirsFirst;
-						showMessage(format("%s directories before files",
+						showMessage(format!"%s directories before files"(
 								dirsFirst ? "Sorting" : "Not sorting"));
 						break;
 					case 'g':
@@ -1431,7 +1431,7 @@ struct Browser
 						}
 						if (!getFullPath(selection))
 						{
-							showMessage("Cannot delete special node " ~ selection.humanName ~ ".");
+							showMessage(format!"Cannot delete special node %s."(selection.humanName));
 							break;
 						}
 						mode = Mode.deleteConfirm;
