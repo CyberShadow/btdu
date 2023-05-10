@@ -676,20 +676,19 @@ struct Browser
 						enum type = SampleType.represented;
 						enum showError = true;
 
-						write("Represented size: ", fmtIf(totalSamples > 0,
-							() => fmtSeq(
-								"~", bold(humanSize(p.data[type].samples * real(totalSize) / totalSamples)),
-								fmtIf(showError,
-									() => formatted!" ±%s"(humanSize(estimateError(totalSamples, p.data[type].samples) * totalSize)),
-									() => "",
-								),
-								formatted!" (%d sample%s)"(
-									p.data[type].samples,
-									p.data[type].samples == 1 ? "" : "s",
-								),
-							),
-							() => "-",
-						), endl);
+						write("Represented size: ");
+						if (totalSamples > 0)
+						{
+							write("~", bold(humanSize(p.data[type].samples * real(totalSize) / totalSamples)));
+							if (showError) write(" ±", humanSize(estimateError(totalSamples, p.data[type].samples) * totalSize));
+							write(formatted!" (%d sample%s)"(
+								p.data[type].samples,
+								p.data[type].samples == 1 ? "" : "s",
+							));
+						}
+						else
+							write("-");
+						write(endl);
 					}
 					write(endl);
 
