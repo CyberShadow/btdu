@@ -466,11 +466,11 @@ struct Curses
 		auto withAttr(Args...)(Attribute attribute, bool set, auto ref Args args)
 		{
 			auto content = fmtSeq(args);
-			return functor!((self, ref content, ref sink) {
-				attrSet(attribute, set, {
+			return functor!((self, attribute, set, ref content, ref sink) {
+				self.attrSet(attribute, set, {
 					content.toString(sink);
 				});
-			})(&this, content).stringifiable;
+			})(&this, attribute, set, content).stringifiable;
 		}
 		auto bold    (Args...)(auto ref Args args) { return withAttr(Attribute.bold   , true, forward!args); }
 		auto reversed(Args...)(auto ref Args args) { return withAttr(Attribute.reverse, true, forward!args); }
