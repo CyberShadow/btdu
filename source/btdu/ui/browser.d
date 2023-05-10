@@ -901,22 +901,22 @@ struct Browser
 					}
 				}
 
-				string getUnitsStr(real units)
+				void writeUnits(real units)
 				{
 					final switch (sortMode)
 					{
 						case SortMode.name:
 						case SortMode.size:
 							auto samples = units;
-							return totalSamples
-								? "~" ~ humanSize(samples * real(totalSize) / totalSamples, true).text
-								: "?";
+							if (!totalSamples)
+								return write("?");
+							return write("~", humanSize(samples * real(totalSize) / totalSamples, true));
 
 						case SortMode.time:
 							auto hnsecs = units;
 							if (hnsecs == -real.infinity)
-								return "?";
-							return humanDuration(hnsecs).text;
+								return write("?");
+							return write(humanDuration(hnsecs));
 					}
 				}
 
@@ -948,7 +948,8 @@ struct Browser
 
 					attrSet(Attribute.reverse, child is selection, {
 						xOverflowEllipsis({
-							write(formatted!"%12s "(getUnitsStr(childUnits)));
+							auto textWidth = measure({ writeUnits(childUnits); })[0];
+							write(formatted!"%*s"(max(0, 12 - textWidth), "")); writeUnits(childUnits); write(" ");
 
 							auto effectiveRatioDisplayMode = ratioDisplayMode;
 							while (effectiveRatioDisplayMode && width < minWidth(effectiveRatioDisplayMode))
