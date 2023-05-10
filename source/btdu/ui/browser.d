@@ -696,10 +696,11 @@ struct Browser
 					auto fullPath = getFullPath(p);
 					if (fullPath) xOverflowChars({ write("Full path: ", fullPath, endl); });
 
-					write("Average query duration: ", fmtIf(p.data[SampleType.represented].samples > 0,
-						() => stdDur(p.data[SampleType.represented].duration / p.data[SampleType.represented].samples).durationAsDecimalString,
-						() => "-",
-					), endl);
+					write("Average query duration: ");
+					if (p.data[SampleType.represented].samples > 0)
+						write(stdDur(p.data[SampleType.represented].duration / p.data[SampleType.represented].samples).durationAsDecimalString, endl);
+					else
+						write("-", endl);
 
 					{
 						bool showSeenAs;
