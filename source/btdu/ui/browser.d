@@ -43,6 +43,7 @@ import ae.utils.time : stdDur, stdTime;
 
 import btrfs;
 
+import btdu.alloc : StaticAppender;
 import btdu.ui.curses;
 import btdu.ui.deletion;
 import btdu.common;
@@ -166,7 +167,7 @@ struct Browser
 		showMessageUntil = MonoTime.currTime() + (100.msecs * s.length);
 	}
 
-	private static FastAppender!char buf; // Reusable buffer
+	private static StaticAppender!char buf, buf2; // Reusable buffers
 
 	// Returns full path as string, or null.
 	private static char[] getFullPath(BrowserPath* path)
@@ -1039,10 +1040,10 @@ struct Browser
 							itemScrollContext.cursor = selection && items ? items.countUntil(selection) : 0;
 							itemScrollContext.normalize();
 
-							auto displayedPath = currentPath is &browserRoot ? "/" : currentPath.pointerWriter.text;
+							auto displayedPath = currentPath is &browserRoot ? "/" : buf.stringify(currentPath.pointerWriter);
 							auto maxPathWidth = width - 8 /*- prefix.length*/;
-							if (displayedPath.length > maxPathWidth)
-								displayedPath = "…" ~ displayedPath[$ - (maxPathWidth - 1) .. $];
+							if (displayedPath.length > maxPathWidth) // TODO: this slice is wrong
+								displayedPath = buf2.stringify!"…%s"(displayedPath[$ - (maxPathWidth - 1) .. $]);
 							drawPanel(bold(displayedPath), null, null, itemScrollContext, 0, 1, &drawItems);
 
 							assert(itemScrollContext.contentHeight == items.length);
@@ -1617,4 +1618,11 @@ auto durationAsDecimalString(Duration d) @nogc
 	enum secondsPerTick = 1.seconds / 1.stdDur;
 	static assert(secondsPerTick == 10L ^^ 7);
 	return formatted!"%d.%07d seconds"(ticks / secondsPerTick, ticks % secondsPerTick);
+}
+
+char[] stringify(string fmt = "%s", Args...)(ref StaticAppender!char buf, auto ref Args args)
+{
+	buf.clear();
+	buf.formattedWrite!fmt(args);
+	return buf.get();
 }

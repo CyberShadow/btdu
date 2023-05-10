@@ -45,6 +45,7 @@ import btrfs.c.ioctl : btrfs_ioctl_dev_info_args;
 import btrfs.c.kerncompat;
 import btrfs.c.kernel_shared.ctree;
 
+import btdu.alloc : StaticAppender;
 import btdu.common : errorString;
 import btdu.proto;
 
@@ -240,7 +241,7 @@ void subprocessMain(string fsPath, bool physical)
 
 										try
 										{
-											static FastAppender!char pathBuf;
+											static StaticAppender!char pathBuf;
 											pathBuf.clear();
 											pathBuf.put(fsPath);
 

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020, 2021  Vladimir Panteleev <btdu@cy.md>
+ * Copyright (C) 2020, 2021, 2023  Vladimir Panteleev <btdu@cy.md>
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public
@@ -28,6 +28,7 @@ import std.experimental.allocator.building_blocks.region;
 import std.experimental.allocator.mallocator;
 import std.experimental.allocator.mmap_allocator;
 import std.experimental.allocator;
+import std.traits;
 
 /// Allocator to use for objects with infinite lifetime, which will never be freed.
 alias GrowAllocator = AllocatorList!((n) => Region!MmapAllocator(max(n, 1024 * 4096)), NullAllocator);
@@ -78,4 +79,12 @@ struct CheckedAllocator(ParentAllocator, alias onFail = onOutOfMemoryError)
 
 	static if (hasMember!(ParentAllocator, "empty"))
 	pure nothrow @safe @nogc Ternary empty() const { return parent.empty; }
+}
+
+/// Reusable appender.
+template StaticAppender(T)
+if (!hasIndirections!T)
+{
+	import ae.utils.appender : FastAppender;
+	alias StaticAppender = FastAppender!(T, Mallocator);
 }

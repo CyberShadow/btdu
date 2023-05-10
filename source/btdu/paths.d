@@ -233,7 +233,7 @@ mixin template PathCommon()
 	static typeof(this)* commonPrefix(typeof(this)*[] paths)
 	{
 		// First, calculate the lengths
-		static FastAppender!size_t lengths;
+		static StaticAppender!size_t lengths;
 		lengths.clear();
 		foreach (ref path; paths)
 			lengths.put(path.chainLength);

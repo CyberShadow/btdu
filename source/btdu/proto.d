@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020, 2021, 2022  Vladimir Panteleev <btdu@cy.md>
+ * Copyright (C) 2020, 2021, 2022, 2023  Vladimir Panteleev <btdu@cy.md>
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public
@@ -29,6 +29,8 @@ import ae.utils.array;
 
 import btrfs.c.ioctl : btrfs_ioctl_dev_info_args;
 import btrfs.c.kerncompat : u64, __u64;
+
+import btdu.alloc : StaticAppender;
 
 struct Error
 {
@@ -131,7 +133,7 @@ struct Header
 	size_t type;
 }
 
-FastAppender!ubyte sendBuf;
+StaticAppender!ubyte sendBuf;
 
 private void serialize(T)(ref T value)
 {
