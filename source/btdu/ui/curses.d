@@ -478,14 +478,20 @@ struct Curses
 		/// Get the width (in coordinates) of the given stringifiables.
 		size_t getTextWidth(Args...)(auto ref Args args)
 		{
-			size_t count;
-			void charSink(cchar_t) { count++; }
-			void strSink(const(char)[] str) { toCChars(str, &charSink, 0, 0); }
-
+			struct Sink
+			{
+				size_t count;
+				void charSink(cchar_t) { count++; }
+				void put(const(char)[] str)
+				{
+					toCChars(str, &charSink, 0, 0);
+				}
+			}
+			Sink sink;
 			import std.format : formattedWrite;
 			foreach (ref arg; args)
-				formattedWrite!"%s"(&strSink, arg);
-			return count;
+				formattedWrite!"%s"(&sink, arg);
+			return sink.count;
 		}
 
 		/// Measure how much space writes done by `fn` will take,
