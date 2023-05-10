@@ -194,7 +194,7 @@ struct Browser
 			return true;
 		}
 		if (recurse(path))
-			return buf.get();
+			return buf.peek();
 		else
 			return null;
 	}
@@ -251,7 +251,7 @@ struct Browser
 			itemsBuf.clear;
 			for (auto child = currentPath.firstChild; child; child = child.nextSibling)
 				itemsBuf.put(child);
-			items = itemsBuf.get();
+			items = itemsBuf.peek();
 
 			final switch (sortMode)
 			{
@@ -1625,5 +1625,5 @@ char[] stringify(string fmt = "%s", Args...)(ref StaticAppender!char buf, auto r
 {
 	buf.clear();
 	buf.formattedWrite!fmt(args);
-	return buf.get();
+	return buf.peek();
 }

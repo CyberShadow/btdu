@@ -251,11 +251,11 @@ mixin template PathCommon()
 			lengths.put(path.chainLength);
 
 		// Rewind all paths to the minimal path's length
-		auto minLength = lengths.get().reduce!min;
+		auto minLength = lengths.peek().reduce!min;
 		foreach (i, ref path; paths)
-			while (lengths.get()[i] > minLength)
+			while (lengths.peek()[i] > minLength)
 			{
-				lengths.get()[i]--;
+				lengths.peek()[i]--;
 				path = path.parent;
 			}
 

@@ -261,10 +261,10 @@ void subprocessMain(string fsPath, bool physical)
 											putRoot(rootID);
 											pathBuf.put('\0');
 
-											int rootFD = open(pathBuf.get().ptr, O_RDONLY);
+											int rootFD = open(pathBuf.peek().ptr, O_RDONLY);
 											if (rootFD < 0)
 											{
-												send(ResultInodeErrorMessage(btdu.proto.Error("open", errno, pathBuf.get()[0 .. $-1])));
+												send(ResultInodeErrorMessage(btdu.proto.Error("open", errno, pathBuf.peek()[0 .. $-1])));
 												return;
 											}
 											scope(exit) close(rootFD);

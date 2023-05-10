@@ -235,26 +235,26 @@ struct Subprocess
 		if (!result.haveInode)
 			result.browserPath = result.browserPath.appendName("\0NO_INODE");
 		auto representativeBrowserPath = result.browserPath;
-		if (allPaths.get().length)
+		if (allPaths.peek().length)
 		{
-			auto representativePath = selectRepresentativePath(allPaths.get());
+			auto representativePath = selectRepresentativePath(allPaths.peek());
 			representativeBrowserPath = result.browserPath.appendPath(&representativePath);
 		}
 		representativeBrowserPath.addSample(SampleType.represented, result.offset, m.duration);
 
-		if (allPaths.get().length)
+		if (allPaths.peek().length)
 		{
-			foreach (ref path; allPaths.get())
+			foreach (ref path; allPaths.peek())
 				(*representativeBrowserPath.seenAs.getOrAdd(path, 0UL))++;
 
 			if (expert)
 			{
-				auto distributedSamples = 1.0 / allPaths.get().length;
-				auto distributedDuration = double(m.duration) / allPaths.get().length;
+				auto distributedSamples = 1.0 / allPaths.peek().length;
+				auto distributedDuration = double(m.duration) / allPaths.peek().length;
 
 				static FastAppender!(BrowserPath*) browserPaths;
 				browserPaths.clear();
-				foreach (ref path; allPaths.get())
+				foreach (ref path; allPaths.peek())
 				{
 					auto browserPath = result.browserPath.appendPath(&path);
 					browserPaths.put(browserPath);
@@ -263,7 +263,7 @@ struct Subprocess
 					browserPath.addDistributedSample(distributedSamples, distributedDuration);
 				}
 
-				auto exclusiveBrowserPath = BrowserPath.commonPrefix(browserPaths.get());
+				auto exclusiveBrowserPath = BrowserPath.commonPrefix(browserPaths.peek());
 				exclusiveBrowserPath.addSample(SampleType.exclusive, result.offset, m.duration);
 			}
 		}
