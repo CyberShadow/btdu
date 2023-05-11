@@ -363,7 +363,14 @@ struct Browser
 							case "DATA":
 								return write(
 									"This node holds samples from chunks in the ", bold("DATA block group"), ", ",
-									"which mostly contains file data."
+									"which mostly contains file data.",
+									fmtIf(p == currentPath,
+										"".valueFunctor,
+										fmtSeq(
+											endl, endl,
+											"Press ", button("→"), " to descend into it and view its contents."
+										).valueFunctor,
+									),
 								);
 							case "METADATA":
 								return write(
@@ -391,7 +398,14 @@ struct Browser
 							case "RAID1C3":
 							case "RAID1C4":
 								return write(
-									"This node holds samples from chunks in the ", bold(name, " profile"), "."
+									"This node holds samples from chunks in the ", bold(name, " profile"), ".",
+									fmtIf(p == currentPath,
+										"".valueFunctor,
+										fmtSeq(
+											endl, endl,
+											"Press ", button("→"), " to descend into it and view its contents."
+										).valueFunctor,
+									),
 								);
 							case "ERROR":
 								return write(
