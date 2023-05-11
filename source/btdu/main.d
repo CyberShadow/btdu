@@ -71,6 +71,7 @@ void program(
 	Option!(ulong, "Stop after collecting N samples.", "N", 'n') maxSamples = 0,
 	Option!(string, "Stop after running for this duration.", "DURATION") maxTime = null,
 	Option!(string, `Stop after achieving this resolution (e.g. "1MB" or "1%").`, "SIZE") minResolution = null,
+	Switch!hiddenOption exitOnLimit = false,
 	Option!(string, "On exit, export the collected results to the given file.", "PATH", 'o', "export") exportPath = null,
 	Switch!("On exit, export represented size estimates in 'du' format to standard output.") du = false,
 	Switch!("Instead of analyzing a btrfs filesystem, read previously collected results saved with --export from PATH.", 'f', "import") doImport = false,
@@ -258,7 +259,7 @@ Please report defects and enhancement requests to the GitHub issue tracker:
 				&& totalSize
 				&& (totalSize / browserRoot.data[SampleType.represented].samples) <= parsedMinResolution))
 		{
-			if (headless)
+			if (headless || exitOnLimit)
 				break;
 			else
 			{
