@@ -741,7 +741,7 @@ struct Browser
 								(int column, int row)
 								{
 									if (row == 0)
-										return write(only("Path", "%", "Size", "Samples")[column]);
+										return write(only("Path", "%", "Shared", "Samples")[column]);
 									auto pair = seenAs[row - 1];
 									final switch (column)
 									{
