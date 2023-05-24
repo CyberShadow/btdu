@@ -427,7 +427,8 @@ struct Browser
 									endl, endl,
 									"One possible cause is data which was deleted recently.",
 									endl, endl,
-									"Due to a bug, under Linux versions 6.2 and 6.3, samples which would otherwise be classified as <UNREACHABLE> will appear here instead. ",
+									"Due to a bug, under Linux versions 6.2.0 to 6.2.15 and 6.3.0 to 6.3.2, ",
+									"samples which would otherwise be classified as <UNREACHABLE> will appear here instead. ",
 									"If your kernel is affected by this bug, try a different version to obtain more information about how this space is used."
 								);
 							case "NO_PATH":
