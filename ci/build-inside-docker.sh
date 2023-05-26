@@ -8,19 +8,27 @@ PATH=/tmp/ldc2-host/bin:$PATH
 host_arch=$(uname -m)
 target_arch=$BTDU_ARCH
 
+target_api=gnu
+case "$target_arch" in
+	arm)
+		target_api=gnueabihf
+		;;
+	*)
+esac
+
 if [[ "$target_arch" == "$host_arch" ]]
 then
 	gnu_prefix=
 else
-	gnu_prefix="$target_arch"-linux-gnu-
+	gnu_prefix="$target_arch"-linux-"$target_api"-
 fi
 
 cat >> /tmp/ldc2-host/etc/ldc2.conf <<EOF
-"$target_arch-.*-linux-gnu":
+"$target_arch-.*-linux-$target_api":
 {
 switches = [
 	"-defaultlib=phobos2-ldc,druntime-ldc",
-	"-gcc=$target_arch-linux-gnu-gcc",
+	"-gcc=$target_arch-linux-$target_api-gcc",
 ];
 lib-dirs = [
 	"/tmp/ldc-build-runtime.tmp/lib",
@@ -49,7 +57,7 @@ fi
 args=(
 	ldc2
 	-v
-	-mtriple "$target_arch"-linux-gnu
+	-mtriple "$target_arch"-linux-"$target_api"
 	-i
 	-i=-deimos  # https://issues.dlang.org/show_bug.cgi?id=23597
 	-of"$fn"

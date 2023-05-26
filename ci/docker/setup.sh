@@ -4,9 +4,14 @@ set -eEuo pipefail
 target_arch=$BTDU_ARCH
 
 # Translate LDC target architecture to Debian architecture
+target_api=gnu
 case "$target_arch" in
 	x86_64)
 		target_debian_arch=amd64
+		;;
+	arm)
+		target_debian_arch=armhf
+		target_api=gnueabihf
 		;;
 	aarch64)
 		target_debian_arch=arm64
@@ -38,11 +43,11 @@ then
 	)
 else
 	packages+=(
-		gcc-"${target_arch/_/-}"-linux-gnu
+		gcc-"${target_arch/_/-}"-linux-"$target_api"
 	)
 fi
 packages+=(
-	binutils-"${target_arch/_/-}"-linux-gnu
+	binutils-"${target_arch/_/-}"-linux-"$target_api"
 	libncurses-dev:"$target_debian_arch"
 	libz-dev:"$target_debian_arch"
 	libtinfo-dev:"$target_debian_arch"
