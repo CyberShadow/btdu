@@ -1,7 +1,7 @@
 #!/bin/bash
 set -eEuo pipefail
 
-ldc_version=1.30.0
+ldc_version=1.32.2
 
 mkdir /build/src/ldc
 cd /build/src/ldc

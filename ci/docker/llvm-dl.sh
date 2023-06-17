@@ -1,7 +1,7 @@
 #!/bin/bash
 set -eEuo pipefail
 
-llvm_version=14.0.3
+llvm_version=15.0.7
 
 mkdir /build/src/llvm
 cd /build/src/llvm
