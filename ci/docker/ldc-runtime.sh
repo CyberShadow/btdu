@@ -16,6 +16,17 @@ cflags=(
 	# -flto=full
 	# --target=$target_arch-linux-musl -fuse-ld=/tmp/btdu-build-x86_64/bin/ld.musl-clang -v -nodefaultlibs -lc
 )
+if [[ -n "$BTDU_SUB_ARCH" ]] ; then
+	cflags+=(-march="$BTDU_SUB_ARCH")
+	# dflags+=(-march="$BTDU_SUB_ARCH")
+	target_arch=$BTDU_SUB_ARCH
+fi
+dflags=(
+	-mtriple="$target_arch"-unknown-linux-musl
+	-flto=full
+	-O
+	--release
+)
 
 args=(
 	env
@@ -31,10 +42,7 @@ args=(
 	/build/host/bin/ldc-build-runtime
 	--ldcSrcDir=/build/src/ldc/ldc
 	--buildDir=/build/target/druntime
-	--dFlags="-mtriple=$target_arch-unknown-linux-musl"
-	--dFlags="-flto=full"
-	--dFlags="-O"
-	--dFlags="--release"
+	"${dflags[@]/#/--dFlags=}"
 	--ninja
 	BUILD_SHARED_LIBS=OFF
 ) ; "${args[@]}"

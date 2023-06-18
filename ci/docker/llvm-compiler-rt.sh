@@ -64,7 +64,10 @@ mkdir compiler-rt.build
 	# ) ; "${args[@]}"
 
 	# cflags="--rtlib=compiler-rt"
-	cflags=""
+	cflags=()
+	if [[ -n "$BTDU_SUB_ARCH" ]] ; then
+		cflags+=(-march="$BTDU_SUB_ARCH")
+	fi
 	args=(
 		cmake
 		-G Ninja
@@ -81,9 +84,9 @@ mkdir compiler-rt.build
 		-DCMAKE_ASM_COMPILER_TARGET="$target_arch"-unknown-linux-musl
 		-DCMAKE_C_COMPILER=/build/host/bin/clang
 		-DCMAKE_C_COMPILER_TARGET="$target_arch"-unknown-linux-musl
-		-DCMAKE_ASM_FLAGS="$cflags"
-		-DCMAKE_C_FLAGS="$cflags"
-		-DCMAKE_CXX_FLAGS="$cflags -nostdinc++ -isystem /build/target/include/c++/v1"
+		-DCMAKE_ASM_FLAGS="${cflags[*]}"
+		-DCMAKE_C_FLAGS="${cflags[*]}"
+		-DCMAKE_CXX_FLAGS="${cflags[*]} -nostdinc++ -isystem /build/target/include/c++/v1"
 		-DCMAKE_EXE_LINKER_FLAGS="-fuse-ld=lld"
 		-DCMAKE_NM=/build/host/bin/llvm-nm
 		-DCMAKE_RANLIB=/build/host/bin/llvm-ranlib

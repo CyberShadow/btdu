@@ -65,6 +65,7 @@ COPY --from=musl /build/target /build/target
 
 COPY llvm-compiler-rt.sh /build/llvm-compiler-rt.sh
 ARG BTDU_ARCH
+ARG BTDU_SUB_ARCH
 RUN /build/llvm-compiler-rt.sh
 
 
@@ -133,6 +134,7 @@ COPY --from=musl /build/target /build/target
 
 COPY ldc-runtime.sh /build/ldc-runtime.sh
 ARG BTDU_ARCH
+ARG BTDU_SUB_ARCH
 RUN /build/ldc-runtime.sh
 
 

@@ -1,8 +1,225 @@
 diff --git a/runtime/druntime/src/core/sys/posix/sys/stat.d b/runtime/druntime/src/core/sys/posix/sys/stat.d
-index 4bcba2a611..0686a4983a 100644
+index 4bcba2a611..4ab7a7e473 100644
 --- a/runtime/druntime/src/core/sys/posix/sys/stat.d
 +++ b/runtime/druntime/src/core/sys/posix/sys/stat.d
-@@ -1656,7 +1656,16 @@ else version (CRuntime_Bionic)
+@@ -559,67 +559,32 @@ version (linux)
+     }
+     else version (ARM)
+     {
+-        private
+-        {
+-            alias __dev_t = ulong;
+-            alias __ino_t = c_ulong;
+-            alias __ino64_t = ulong;
+-            alias __mode_t = uint;
+-            alias __nlink_t = size_t;
+-            alias __uid_t = uint;
+-            alias __gid_t = uint;
+-            alias __off_t = c_long;
+-            alias __off64_t = long;
+-            alias __blksize_t = c_long;
+-            alias __blkcnt_t = c_long;
+-            alias __blkcnt64_t = long;
+-            alias __timespec = timespec;
+-            alias __time_t = time_t;
+-        }
+-        struct stat_t
++        version (CRuntime_Musl)
+         {
+-            __dev_t st_dev;
+-            ushort __pad1;
+-
+-            static if (!__USE_FILE_OFFSET64)
+-            {
+-                __ino_t st_ino;
+-            }
+-            else
+-            {
+-                __ino_t __st_ino;
+-            }
+-            __mode_t st_mode;
+-            __nlink_t st_nlink;
+-            __uid_t st_uid;
+-            __gid_t st_gid;
+-            __dev_t st_rdev;
+-            ushort __pad2;
+-
+-            static if (!__USE_FILE_OFFSET64)
+-            {
+-                __off_t st_size;
+-            }
+-            else
+-            {
+-                __off64_t st_size;
+-            }
+-            __blksize_t st_blksize;
+-
+-            static if (!__USE_FILE_OFFSET64)
+-            {
+-                __blkcnt_t st_blocks;
+-            }
+-            else
+-            {
+-                __blkcnt64_t st_blocks;
+-            }
+-
+-            static if ( _DEFAULT_SOURCE || _XOPEN_SOURCE >= 700)
+-            {
+-                __timespec st_atim;
+-                __timespec st_mtim;
+-                __timespec st_ctim;
++            struct stat_t
++            {
++                dev_t st_dev;
++                int __st_dev_padding;
++                c_long __st_ino_truncated;
++                mode_t st_mode;
++                nlink_t st_nlink;
++                uid_t st_uid;
++                gid_t st_gid;
++                dev_t st_rdev;
++                int __st_rdev_padding;
++                off_t st_size;
++                blksize_t st_blksize;
++                blkcnt_t st_blocks;
++                struct __timespec32
++                {
++                    c_long tv_sec;
++                    c_long tv_nsec;
++                }
++                __timespec32 __st_atim32, __st_mtim32, __st_ctim32;
++                ino_t st_ino;
++                timespec st_atim;
++                timespec st_mtim;
++                timespec st_ctim;
+                 extern(D) @safe @property inout pure nothrow
+                 {
+                     ref inout(time_t) st_atime() return { return st_atim.tv_sec; }
+@@ -627,30 +592,103 @@ version (linux)
+                     ref inout(time_t) st_ctime() return { return st_ctim.tv_sec; }
+                 }
+             }
+-            else
+-            {
+-                __time_t st_atime;
+-                c_ulong st_atimensec;
+-                __time_t st_mtime;
+-                c_ulong st_mtimensec;
+-                __time_t st_ctime;
+-                c_ulong st_ctimensec;
+-            }
++            static assert(stat_t.sizeof == 152);
++        }
++        else version (CRuntime_Glibc)
++        {
++            private
++            {
++                alias __dev_t = ulong;
++                alias __ino_t = c_ulong;
++                alias __ino64_t = ulong;
++                alias __mode_t = uint;
++                alias __nlink_t = size_t;
++                alias __uid_t = uint;
++                alias __gid_t = uint;
++                alias __off_t = c_long;
++                alias __off64_t = long;
++                alias __blksize_t = c_long;
++                alias __blkcnt_t = c_long;
++                alias __blkcnt64_t = long;
++                alias __timespec = timespec;
++                alias __time_t = time_t;
++            }
++            struct stat_t
++            {
++                __dev_t st_dev;
++                ushort __pad1;
+ 
+-            static if (!__USE_FILE_OFFSET64)
+-            {
+-                c_ulong __unused4;
+-                c_ulong __unused5;
++                static if (!__USE_FILE_OFFSET64)
++                {
++                    __ino_t st_ino;
++                }
++                else
++                {
++                    __ino_t __st_ino;
++                }
++                __mode_t st_mode;
++                __nlink_t st_nlink;
++                __uid_t st_uid;
++                __gid_t st_gid;
++                __dev_t st_rdev;
++                ushort __pad2;
++
++                static if (!__USE_FILE_OFFSET64)
++                {
++                    __off_t st_size;
++                }
++                else
++                {
++                    __off64_t st_size;
++                }
++                __blksize_t st_blksize;
++
++                static if (!__USE_FILE_OFFSET64)
++                {
++                    __blkcnt_t st_blocks;
++                }
++                else
++                {
++                    __blkcnt64_t st_blocks;
++                }
++
++                static if ( _DEFAULT_SOURCE || _XOPEN_SOURCE >= 700)
++                {
++                    __timespec st_atim;
++                    __timespec st_mtim;
++                    __timespec st_ctim;
++                    extern(D) @safe @property inout pure nothrow
++                    {
++                        ref inout(time_t) st_atime() return { return st_atim.tv_sec; }
++                        ref inout(time_t) st_mtime() return { return st_mtim.tv_sec; }
++                        ref inout(time_t) st_ctime() return { return st_ctim.tv_sec; }
++                    }
++                }
++                else
++                {
++                    __time_t st_atime;
++                    c_ulong st_atimensec;
++                    __time_t st_mtime;
++                    c_ulong st_mtimensec;
++                    __time_t st_ctime;
++                    c_ulong st_ctimensec;
++                }
++
++                static if (!__USE_FILE_OFFSET64)
++                {
++                    c_ulong __unused4;
++                    c_ulong __unused5;
++                }
++                else
++                {
++                    __ino64_t st_ino;
++                }
+             }
++            static if (__USE_FILE_OFFSET64)
++                static assert(stat_t.sizeof == 104);
+             else
+-            {
+-                __ino64_t st_ino;
+-            }
++                static assert(stat_t.sizeof == 88);
+         }
+-        static if (__USE_FILE_OFFSET64)
+-            static assert(stat_t.sizeof == 104);
+-        else
+-            static assert(stat_t.sizeof == 88);
+     }
+     else version (AArch64)
+     {
+@@ -1656,7 +1694,16 @@ else version (CRuntime_Bionic)
  }
  else version (CRuntime_Musl)
  {
@@ -20,3 +237,42 @@ index 4bcba2a611..0686a4983a 100644
      enum {
          S_IRUSR    = 0x100, // octal 0400
          S_IWUSR    = 0x080, // octal 0200
+diff --git a/runtime/druntime/src/ldc/arm_unwind.c b/runtime/druntime/src/ldc/arm_unwind.c
+index f83b5d3103..848a84b1c4 100644
+--- a/runtime/druntime/src/ldc/arm_unwind.c
++++ b/runtime/druntime/src/ldc/arm_unwind.c
+@@ -18,29 +18,29 @@
+ // clang's unwind.h doesn't have this
+ typedef struct _Unwind_Context _Unwind_Context;
+ 
+-_Unwind_Ptr _d_eh_GetIP(_Unwind_Context *context)
++uintptr_t _d_eh_GetIP(_Unwind_Context *context)
+ {
+     return _Unwind_GetIP(context);
+ }
+ 
+ #ifdef __GLIBC__
+-_Unwind_Ptr _d_eh_GetIPInfo(_Unwind_Context *context, int *ptr)
++uintptr_t _d_eh_GetIPInfo(_Unwind_Context *context, int *ptr)
+ {
+     return _Unwind_GetIPInfo(context, ptr);
+ }
+ #endif
+ 
+-void _d_eh_SetIP(_Unwind_Context *context, _Unwind_Ptr new_value)
++void _d_eh_SetIP(_Unwind_Context *context, uintptr_t new_value)
+ {
+     _Unwind_SetIP(context, new_value);
+ }
+ 
+-_Unwind_Word _d_eh_GetGR(_Unwind_Context *context, int index)
++uintptr_t _d_eh_GetGR(_Unwind_Context *context, int index)
+ {
+     return _Unwind_GetGR(context, index);
+ }
+ 
+-void _d_eh_SetGR(_Unwind_Context *context, int index, _Unwind_Word new_value)
++void _d_eh_SetGR(_Unwind_Context *context, int index, uintptr_t new_value)
+ {
+     _Unwind_SetGR(context, index, new_value);
+ }
