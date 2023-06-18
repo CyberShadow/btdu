@@ -22,6 +22,9 @@ do
 		i686|x86_64)
 			llvm_arch=X86
 			;;
+		armv7)
+			llvm_arch=ARM
+			;;
 		aarch64)
 			llvm_arch=AArch64
 			;;
