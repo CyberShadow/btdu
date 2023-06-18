@@ -65,8 +65,11 @@ mkdir compiler-rt.build
 
 	# cflags="--rtlib=compiler-rt"
 	cflags=()
-	if [[ -n "$BTDU_SUB_ARCH" ]] ; then
-		cflags+=(-march="$BTDU_SUB_ARCH")
+	if [[ "$target_arch" == armv6 ]] ; then
+		# compiler-rt's CMakeLists don't recognize armv6;
+		# use "arm" and set the ARM version with -march
+		target_arch=arm
+		cflags+=(-march=armv6)
 	fi
 	args=(
 		cmake

@@ -16,11 +16,6 @@ cflags=(
 	# -flto=full
 	# --target=$target_arch-linux-musl -fuse-ld=/tmp/btdu-build-x86_64/bin/ld.musl-clang -v -nodefaultlibs -lc
 )
-if [[ -n "$BTDU_SUB_ARCH" ]] ; then
-	cflags+=(-march="$BTDU_SUB_ARCH")
-	# dflags+=(-march="$BTDU_SUB_ARCH")
-	target_arch=$BTDU_SUB_ARCH
-fi
 dflags=(
 	-mtriple="$target_arch"-unknown-linux-musl
 	-flto=full
