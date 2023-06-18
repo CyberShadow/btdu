@@ -71,8 +71,6 @@ mkdir libcxx.build
 		-DLIBUNWIND_ENABLE_SHARED=OFF
 		
 		-DLLVM_ENABLE_RUNTIMES='libcxx;libcxxabi;libunwind'
-
-		-DLIBUNWIND_INSTALL_HEADERS=ON
 	) ; "${args[@]}"
 	ninja install
 )

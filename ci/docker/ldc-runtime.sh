@@ -13,6 +13,7 @@ cflags=(
 	--rtlib=compiler-rt
 	-resource-dir=/build/target
 	--sysroot=/build/target
+	-I/build/host/lib/clang/15.0.7/include
 	# -flto=full
 	# --target=$target_arch-linux-musl -fuse-ld=/tmp/btdu-build-x86_64/bin/ld.musl-clang -v -nodefaultlibs -lc
 )
