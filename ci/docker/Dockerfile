@@ -106,9 +106,9 @@ RUN apt-get install -y curl
 COPY ldc-dl.sh /build/ldc-dl.sh
 RUN /build/ldc-dl.sh
 
-# RUN apt-get install -y patch
-# COPY ldc-druntime.patch /build/src/ldc-druntime.patch
-# RUN cd /build/src/ldc/ldc/runtime/druntime && patch -p1 < /build/src/ldc-druntime.patch
+RUN apt-get install -y patch
+COPY ldc-druntime.patch /build/src/ldc-druntime.patch
+RUN cd /build/src/ldc/ldc && patch -p1 < /build/src/ldc-druntime.patch
 
 RUN apt-get install -y cmake g++ ninja-build
 
