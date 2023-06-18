@@ -12,7 +12,7 @@ jobs:
         submodules: true
     - name: Build
       run: |
-        ci/build-docker.sh ${{ matrix.arch }}
+        DOCKER_BUILDKIT=1 ci/build-docker.sh ${{ matrix.arch }}
     - name: Upload binary
       uses: actions/upload-artifact@v2
       with:
