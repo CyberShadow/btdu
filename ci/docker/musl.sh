@@ -4,7 +4,7 @@ set -eEuo pipefail
 musl_version=1.2.3
 
 arch=$BTDU_ARCH
-triple="$arch"-pc-linux-musl
+triple="$arch"-unknown-linux-musl
 
 cc=(/build/host/bin/clang)
 cflags=(

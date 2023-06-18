@@ -1,19 +1,7 @@
 #!/bin/bash
 set -eEuo pipefail
 
-
 cd /build/src/llvm
-
-target_arch=$BTDU_ARCH
-
-case "$target_arch" in
-	i686|x86_64)
-		target_llvm_arch=X86
-		;;
-	aarch64)
-		target_llvm_arch=AArch64
-		;;
-esac
 
 mkdir libcxx.build
 (
@@ -36,7 +24,7 @@ mkdir libcxx.build
 
 	# 	# -DCMAKE_C_COMPILER=/build/host/bin/clang
 	# 	# -DCMAKE_CXX_COMPILER=/build/host/bin/clang++
-	# 	-DLLVM_DEFAULT_TARGET_TRIPLE="$target_arch"-pc-linux-musl
+	# 	-DLLVM_DEFAULT_TARGET_TRIPLE="$target_arch"-unknown-linux-musl
 	# 	-DLLVM_TARGET_ARCH="$target_llvm_arch"
 	# 	-DLLVM_TARGETS_TO_BUILD="$target_llvm_arch"
 	# ) ; "${args[@]}"
@@ -64,9 +52,9 @@ mkdir libcxx.build
 
 		# -DCMAKE_C_COMPILER=/build/host/bin/clang
 		# -DCMAKE_CXX_COMPILER=/build/host/bin/clang++
-		-DLLVM_DEFAULT_TARGET_TRIPLE="$target_arch"-pc-linux-musl
+		-DLLVM_DEFAULT_TARGET_TRIPLE="$BTDU_ARCH"-unknown-linux-musl
 		# -DLLVM_TARGET_ARCH="$target_llvm_arch"
-		-DLLVM_TARGETS_TO_BUILD="$target_llvm_arch"
+		-DLLVM_TARGETS_TO_BUILD="$BTDU_LLVM_ARCH"
 
 		-DLIBCXX_ENABLE_STATIC_ABI_LIBRARY=ON
 		-DLIBCXX_STATICALLY_LINK_ABI_IN_STATIC_LIBRARY=ON

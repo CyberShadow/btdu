@@ -3,18 +3,6 @@ set -eEuo pipefail
 
 cd /build/src/llvm
 
-target_arch=$BTDU_ARCH
-
-case "$target_arch" in
-	i686|x86_64)
-		target_llvm_arch=X86
-		;;
-	aarch64)
-		target_llvm_arch=AArch64
-		;;
-esac
-
-
 mkdir llvm.build
 (
 	cd llvm.build
@@ -26,9 +14,9 @@ mkdir llvm.build
 		-DCMAKE_INSTALL_PREFIX=/build/host
 		-DLLVM_BINUTILS_INCDIR=/usr/include  # for ld.gold plugin
 
-		-DLLVM_DEFAULT_TARGET_TRIPLE="$target_arch"-pc-linux-musl
-		-DLLVM_TARGET_ARCH="$target_llvm_arch"
-		-DLLVM_TARGETS_TO_BUILD="$target_llvm_arch"
+		-DLLVM_DEFAULT_TARGET_TRIPLE="$BTDU_ARCH"-unknown-linux-musl
+		-DLLVM_TARGET_ARCH="$BTDU_LLVM_ARCH"
+		-DLLVM_TARGETS_TO_BUILD="$BTDU_LLVM_ARCH"
 
 		-DCOMPILER_RT_INCLUDE_TESTS=OFF
 		-DLLVM_INCLUDE_TESTS=OFF
@@ -36,4 +24,4 @@ mkdir llvm.build
 	) ; "${args[@]}"
 	ninja install
 )
-# rm -rf llvm.build
+rm -rf llvm.build

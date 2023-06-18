@@ -31,7 +31,7 @@ args=(
 	/build/host/bin/ldc-build-runtime
 	--ldcSrcDir=/build/src/ldc/ldc
 	--buildDir=/build/target/druntime
-	--dFlags="-mtriple=$target_arch-pc-linux-musl"
+	--dFlags="-mtriple=$target_arch-unknown-linux-musl"
 	--dFlags="-flto=full"
 	--dFlags="-O"
 	--dFlags="--release"

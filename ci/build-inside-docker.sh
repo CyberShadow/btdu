@@ -93,7 +93,7 @@ EOF
 
 # if $static
 # then
-# 	fn=btdu-static-"$target_arch"
+	fn=btdu-static-"$target_arch"
 # else
 # 	fn=btdu-glibc-"$target_arch"
 # fi
@@ -213,7 +213,9 @@ EOF
 
 
 
-
+# find / -mount -name crt1.o
+# find / -mount -name crti.o
+# find /build/target -ls
 
 # shellcheck disable=SC2054
 args=(
@@ -227,13 +229,24 @@ args=(
 	-i
 	-i=-deimos  # https://issues.dlang.org/show_bug.cgi?id=23597
 	-of"$fn"
-	-L-Lrelease
-	-L-l:libtermcap.a
-	-L-l:libncursesw.a
-	-L-l:libtinfo.a
-	-L-l:libz.a
-	-flto=full
-	-O
+
+	# -L-L/build/target/lib
+	# # -L-l:libtermcap.a
+	# -L-l:libncursesw.a
+	# # -L-l:libtinfo.a
+	# # -L-l:libz.a
+
+	--Xcc=-v
+	-L=--verbose
+	--Xcc=--rtlib=compiler-rt
+	--Xcc=--sysroot=/build/target
+	--Xcc=-resource-dir=/build/target
+	--gcc=/build/host/bin/clang
+	--linker=/build/host/bin/ld.lld
+	-L-lncursesw
+	-L-ltinfow
+
+	# -O
 	--release
 	source/btdu/main
 )
@@ -245,8 +258,8 @@ args=(
 while read -r path
 do
 	args+=(-I"$path")
-done < <(dub describe | jq -r '.targets[] | select(.rootPackage=="btdu") | .buildSettings.importPaths[]')
+done < <(/build/src/dmd2/linux/bin64/dub describe | jq -r '.targets[] | select(.rootPackage=="btdu") | .buildSettings.importPaths[]')
 
 "${args[@]}"
 
-llvm-strip "$fn"
+# llvm-strip "$fn"

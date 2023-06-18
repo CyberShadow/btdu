@@ -58,7 +58,7 @@ mkdir compiler-rt.build
 
 	# 	# -DCMAKE_C_COMPILER=/build/host/bin/clang
 	# 	# -DCMAKE_CXX_COMPILER=/build/host/bin/clang++
-	# 	-DLLVM_DEFAULT_TARGET_TRIPLE="$target_arch"-pc-linux-musl
+	# 	-DLLVM_DEFAULT_TARGET_TRIPLE="$target_arch"-unknown-linux-musl
 	# 	# -DLLVM_TARGET_ARCH="$target_llvm_arch"
 	# 	-DLLVM_TARGETS_TO_BUILD="$target_llvm_arch"
 	# ) ; "${args[@]}"
@@ -78,9 +78,9 @@ mkdir compiler-rt.build
 		-DCMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY		
 
 		-DCMAKE_AR=/build/host/bin/llvm-ar
-		-DCMAKE_ASM_COMPILER_TARGET="$target_arch"-pc-linux-musl
+		-DCMAKE_ASM_COMPILER_TARGET="$target_arch"-unknown-linux-musl
 		-DCMAKE_C_COMPILER=/build/host/bin/clang
-		-DCMAKE_C_COMPILER_TARGET="$target_arch"-pc-linux-musl
+		-DCMAKE_C_COMPILER_TARGET="$target_arch"-unknown-linux-musl
 		-DCMAKE_ASM_FLAGS="$cflags"
 		-DCMAKE_C_FLAGS="$cflags"
 		-DCMAKE_CXX_FLAGS="$cflags -nostdinc++ -isystem /build/target/include/c++/v1"
@@ -96,7 +96,7 @@ mkdir compiler-rt.build
 		-DCOMPILER_RT_DEFAULT_TARGET_ONLY=ON
 		-DLLVM_CONFIG_PATH=/build/host/bin/llvm-config		
 		-DCMAKE_SYSROOT=/build/target
-		# -DLLVM_HOST_TRIPLE="$target_arch"-pc-linux-musl
+		# -DLLVM_HOST_TRIPLE="$target_arch"-unknown-linux-musl
 	) ; "${args[@]}"
 	ninja
 	ninja install

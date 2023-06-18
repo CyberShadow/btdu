@@ -64,16 +64,16 @@ target_dir=/build/target
 ncurses_version=6.4
 
 arch=$BTDU_ARCH
-triple="$arch"-pc-linux-musl
+triple="$arch"-unknown-linux-musl
 
 cflags=(
 	-Os
 	-ffunction-sections
 	-fdata-sections
-	# -flto=full
+	-flto=full
 	-fuse-ld=/build/host/bin/ld.lld
 	--rtlib=compiler-rt
-	-static
+	# -static
 	--sysroot=/build/target
 	-resource-dir=/build/target
 	# --target="$triple"
@@ -96,13 +96,15 @@ ldflags=(
 # exit 1
 
 curl -LO https://ftp.gnu.org/pub/gnu/ncurses/ncurses-${ncurses_version}.tar.gz
-tar zxvf ncurses-${ncurses_version}.tar.gz
+tar zxf ncurses-${ncurses_version}.tar.gz
 cd ncurses-${ncurses_version}
 
 _cflags=("${_CFLAGS[@]}" -flto)
 args=(
 	env
 	CC=/build/host/bin/clang
+	# CPP=/build/host/bin/clang-cpp
+	# CPPFLAGS=-I/build/target/include
 	CFLAGS="${cflags[*]}"
 	LDFLAGS="${ldflags[*]}"
 	./configure
