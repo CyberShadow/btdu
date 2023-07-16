@@ -276,7 +276,9 @@ struct Curses
 		bool prePut()
 		out (result; result == inBounds(x, y))
 		{
-			assert(x >= 0, "X underflow");
+			if (x < 0)
+				return false;
+
 			if (x >= width)
 				final switch (xOverflow)
 				{
