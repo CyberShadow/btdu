@@ -595,31 +595,27 @@ struct Curses
 
 		void middleTruncate(scope void delegate() fn)
 		{
-			assert(x == 0); // This will span the entire width
-			xy_t[2] size;
-			withWindow(0, 0, xy_t.max / 2, xy_t.max / 2, {
-				size = measure(fn);
-			});
-			assert(size[1] <= 1);
-			if (size[0] > width)
-			{
-				auto ellipsis = /*width >= 9 ? "..."d : */"…"d;
-				auto ellipsisWidth = ellipsis.length.to!xy_t;
-				auto leftWidth = (width - ellipsisWidth) / 2;
-				auto rightWidth = width - ellipsisWidth - leftWidth;
-				xOverflowHidden({
-					withWindow(0, y, leftWidth, 1, fn);
-					at(leftWidth, y, {
+			// This should be used in a fresh window, and will span the entire width
+			assert(x == 0 && maxX == 0);
+			xOverflowHidden({
+				fn();
+				assert(maxX >= x);
+				auto totalWidth = maxX;
+				if (totalWidth > width)
+				{
+					auto ellipsis = /*width >= 9 ? "..."d : */"…"d;
+					auto ellipsisWidth = ellipsis.length.to!xy_t;
+					auto leftWidth = (width - ellipsisWidth) / 2;
+					auto rightWidth = width - ellipsisWidth - leftWidth;
+					at(leftWidth, 0, {
 						write(ellipsis);
 					});
-					withWindow(leftWidth + ellipsisWidth, y, rightWidth, 1, {
-						x -= size[0] - rightWidth;
+					withWindow(leftWidth + ellipsisWidth, 0, rightWidth, 1, {
+						x -= totalWidth - rightWidth;
 						fn();
 					});
-				});
-			}
-			else
-				fn();
+				}
+			});
 		}
 	}
 
