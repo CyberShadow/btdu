@@ -180,9 +180,6 @@ struct Curses
 		/// Subset of current window (relative to x0/y0).
 		xy_t maskX0, maskY0, maskX1, maskY1;
 
-		/// Highest seen absolute X; used by `measure`.
-		xy_t maxX;
-
 		void withNCWindow(scope void delegate(WINDOW*) fn)
 		{
 			auto win = derwin(stdscr, height, width, y0, x0);
@@ -393,6 +390,9 @@ struct Curses
 		/// `x` will be reset to this value when going to a new line.
 		// TODO: this is probably redundant with simply opening a window at a negative x.
 		xy_t xMargin;
+
+		/// High water mark for highest seen absolute X; used by `measure`.
+		xy_t maxX;
 
 		void withWindow(xy_t x0, xy_t y0, xy_t width, xy_t height, scope void delegate() fn)
 		{
