@@ -348,7 +348,7 @@ struct Curses
 			// Fill with current background color / attributes
 			auto fillerCChar = filler.toCChar(attr, color);
 			auto oldMaxX = maxX;
-			while (inMask(x, y))
+			while (x + x0 < maskX0 || inMask(x, y))
 				put(fillerCChar);
 			maxX = oldMaxX;
 			x = xMargin; // CR
