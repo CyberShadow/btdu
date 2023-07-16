@@ -64,33 +64,45 @@ struct Browser
 
 	struct ScrollContext
 	{
-		sizediff_t offset; // Scroll offset (row number, in the content, corresponding to the topmost displayed line)
-		sizediff_t contentSize; // Number of total rows in the content
-		sizediff_t contentAreaSize; // Number of rows where scrolling content is displayed
-		sizediff_t cursor = -1; // The item view has a cursor; include it in upkeep calculations, to ensure it remains visible.
+		struct Axis
+		{
+			sizediff_t offset; // Scroll offset (row number, in the content, corresponding to the topmost displayed line)
+			sizediff_t contentSize; // Number of total rows in the content
+			sizediff_t contentAreaSize; // Number of rows where scrolling content is displayed
+			sizediff_t cursor = -1; // The item view has a cursor; include it in upkeep calculations, to ensure it remains visible.
 
-		/// Scrolling and cursor upkeep. Returns true if any changes were made.
+			/// Scrolling and cursor upkeep. Returns true if any changes were made.
+			bool normalize()
+			{
+				auto oldOffset = offset;
+				// Ensure there is no unnecessary space at the bottom
+				if (offset + contentAreaSize > contentSize)
+					offset = contentSize - contentAreaSize;
+				// Ensure we are never scrolled "above" the first row
+				if (offset < 0)
+					offset = 0;
+				// Ensure the selected item is visible
+				if (cursor >= 0)
+				{
+					auto minOffset = cursor - contentAreaSize + 1;
+					if (contentSize > offset + contentAreaSize) // Bottom overflow marker visible
+						minOffset++;
+					auto maxOffset = cursor;
+					if (offset > 0) // Offset overflow marker visible
+						maxOffset--;
+					offset = offset.clamp(minOffset, maxOffset);
+				}
+				return oldOffset != offset;
+			}
+		}
+		Axis x, y;
+
 		bool normalize()
 		{
-			auto oldOffset = offset;
-			// Ensure there is no unnecessary space at the bottom
-			if (offset + contentAreaSize > contentSize)
-				offset = contentSize - contentAreaSize;
-			// Ensure we are never scrolled "above" the first row
-			if (offset < 0)
-				offset = 0;
-			// Ensure the selected item is visible
-			if (cursor >= 0)
-			{
-				auto minOffset = cursor - contentAreaSize + 1;
-				if (contentSize > offset + contentAreaSize) // Bottom overflow marker visible
-					minOffset++;
-				auto maxOffset = cursor;
-				if (offset > 0) // Offset overflow marker visible
-					maxOffset--;
-				offset = offset.clamp(minOffset, maxOffset);
-			}
-			return oldOffset != offset;
+			bool result; // avoid short-circuit evaluation
+			result |= x.normalize();
+			result |= y.normalize();
+			return result;
 		}
 	}
 	ScrollContext itemScrollContext, textScrollContext;
@@ -878,7 +890,7 @@ struct Browser
 				withWindow(leftMargin, 1, width - leftMargin - rightMargin, height - 1, {
 				retry:
 					eraseWindow();
-					auto topY = (-c.offset).to!int;
+					auto topY = (-c.y.offset).to!int;
 					topOverflow = topY < 0;
 					y = topY;
 					yOverflowHidden({
@@ -887,8 +899,8 @@ struct Browser
 							write(endl);
 					});
 
-					c.contentSize = y - topY;
-					c.contentAreaSize = height;
+					c.y.contentSize = y - topY;
+					c.y.contentAreaSize = height;
 					bottomOverflow = y > height;
 					// Ideally we would want to 1) measure the content 2) perform this upkeep 3) render the content,
 					// but as we are rendering info directly to the screen, steps 1 and 3 are one and the same.
@@ -951,8 +963,8 @@ struct Browser
 
 				foreach (i, child; items)
 				{
-					auto childY = cast(int)(i - itemScrollContext.offset);
-					if (childY < 0 || childY >= itemScrollContext.contentAreaSize)
+					auto childY = cast(int)(i - itemScrollContext.y.offset);
+					if (childY < 0 || childY >= itemScrollContext.y.contentAreaSize)
 					{
 						// Skip rendering off-screen items
 						y++;
@@ -1051,10 +1063,10 @@ struct Browser
 						auto infoWidth = min(60, (width - 1) / 2);
 						auto itemsWidth = width - infoWidth - 1;
 						withWindow(0, 0, itemsWidth, height, {
-							itemScrollContext.contentSize = items.length;
-							itemScrollContext.contentAreaSize = height - 1;
-							itemScrollContext.cursor = selection && items ? items.countUntil(selection) : 0;
-							itemScrollContext.normalize();
+							itemScrollContext.y.contentSize = items.length;
+							itemScrollContext.y.contentAreaSize = height - 1;
+							itemScrollContext.y.cursor = selection && items ? items.countUntil(selection) : 0;
+							itemScrollContext.y.normalize();
 
 							auto displayedPath = currentPath is &browserRoot ? "/" : buf.stringify(currentPath.pointerWriter);
 							auto maxPathWidth = width - 8 /*- prefix.length*/;
@@ -1062,7 +1074,7 @@ struct Browser
 								displayedPath = buf2.stringify!"…%s"(displayedPath[$ - (maxPathWidth - 1) .. $]);
 							drawPanel(bold(displayedPath), null, null, itemScrollContext, 0, 1, &drawItems);
 
-							assert(itemScrollContext.contentSize == items.length);
+							assert(itemScrollContext.y.contentSize == items.length);
 						});
 
 						// "Viewing:"
@@ -1392,16 +1404,16 @@ struct Browser
 						moveCursor(+1);
 						break;
 					case Curses.Key.pageUp:
-						moveCursor(-itemScrollContext.contentAreaSize);
+						moveCursor(-itemScrollContext.y.contentAreaSize);
 						break;
 					case Curses.Key.pageDown:
-						moveCursor(+itemScrollContext.contentAreaSize);
+						moveCursor(+itemScrollContext.y.contentAreaSize);
 						break;
 					case Curses.Key.home:
-						moveCursor(-itemScrollContext.contentSize);
+						moveCursor(-itemScrollContext.y.contentSize);
 						break;
 					case Curses.Key.end:
-						moveCursor(+itemScrollContext.contentSize);
+						moveCursor(+itemScrollContext.y.contentSize);
 						break;
 					case 'i':
 						mode = Mode.info;
@@ -1570,23 +1582,23 @@ struct Browser
 				{
 					case Curses.Key.up:
 					case 'k':
-						textScrollContext.offset += -1;
+						textScrollContext.y.offset += -1;
 						break;
 					case Curses.Key.down:
 					case 'j':
-						textScrollContext.offset += +1;
+						textScrollContext.y.offset += +1;
 						break;
 					case Curses.Key.pageUp:
-						textScrollContext.offset += -textScrollContext.contentAreaSize;
+						textScrollContext.y.offset += -textScrollContext.y.contentAreaSize;
 						break;
 					case Curses.Key.pageDown:
-						textScrollContext.offset += +textScrollContext.contentAreaSize;
+						textScrollContext.y.offset += +textScrollContext.y.contentAreaSize;
 						break;
 					case Curses.Key.home:
-						textScrollContext.offset -= textScrollContext.contentSize;
+						textScrollContext.y.offset -= textScrollContext.y.contentSize;
 						break;
 					case Curses.Key.end:
-						textScrollContext.offset += textScrollContext.contentSize;
+						textScrollContext.y.offset += textScrollContext.y.contentSize;
 						break;
 					default:
 						// TODO: show message
