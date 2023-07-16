@@ -398,7 +398,7 @@ struct Curses
 		// TODO: this is probably redundant with simply opening a window at a negative x.
 		xy_t xMargin;
 
-		/// High water mark for highest seen absolute X; used by `measure`.
+		/// High water mark for highest seen X; used by `measure`.
 		/// Like `x`, relative to `x0`.
 		xy_t maxX;
 
@@ -408,7 +408,7 @@ struct Curses
 				this.x, this.y,
 				this.x0, this.y0,
 				this.x1, this.y1,
-				this.xMargin,
+				this.xMargin, this.maxX,
 				this.maskX0, maskY0,
 				this.maskX1, maskY1,
 			);
@@ -424,17 +424,13 @@ struct Curses
 				0, 0,
 				newX0, newY0,
 				newX1, newY1,
-				0,
+				0, 0,
 				newMaskX0, newMaskY0,
 				newMaskX1, newMaskY1,
 			);
 			auto oldVars = vars;
 			scope(exit)
-			{
-				maxX += x0;
 				vars = oldVars;
-			}
-			maxX -= x0;
 			vars = newVars;
 			this.lastSpaceX = this.lastSpaceY = xy_t.min;
 			fn();
@@ -593,6 +589,7 @@ struct Curses
 				withWindow(columnX, y + 1, maxWidth, 1, { write(endl('─')); });
 				columnX += maxWidth;
 			}
+			maxX = max(maxX, columnX);
 			y += rows + 1;
 		}
 			

@@ -762,11 +762,14 @@ struct Browser
 											if (fullScreen)
 												return write(pair.key);
 											else
+											{
+												maxX = max(maxX, maxPathWidth);
 												return withWindow(0, 0, maxPathWidth, 1, {
 													xOverflowEllipsis({
 														write(pair.key);
 													});
 												});
+											}
 										case 1:
 											if (!representedSamples)
 												return write("- ");
