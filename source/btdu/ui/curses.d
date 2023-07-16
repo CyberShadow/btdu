@@ -172,9 +172,16 @@ struct Curses
 
 		// --- ncurses primitives
 
-		xy_t x0, y0, x1, y1; // Absolute coordinates of current window top-left and bottom-right
-		xy_t maskX0, maskY0, maskX1, maskY1; // Rectangle of where we may actually draw now; subset of current window
-		xy_t maxX; // Highest seen absolute X; used by `measure`
+		/// Absolute coordinates of current window top-left and bottom-right.
+		/// These control the logical geometry, e.g. at which word wrapping happens.
+		xy_t x0, y0, x1, y1;
+
+		/// Rectangle of where we may actually draw now.
+		/// Subset of current window (relative to x0/y0).
+		xy_t maskX0, maskY0, maskX1, maskY1;
+
+		/// Highest seen absolute X; used by `measure`.
+		xy_t maxX;
 
 		void withNCWindow(scope void delegate(WINDOW*) fn)
 		{
@@ -373,6 +380,7 @@ struct Curses
 		@property xy_t height() { return y1 - y0; }
 
 		/// Cursor coordinates used by `put` et al.
+		/// Relative to `x0` / `y0`.
 		// ncurses does not allow the cursor to go beyond the window
 		// geometry, but we need that to detect and handle overflow.
 		// This is why we maintain our own cursor coordinates, and
@@ -498,6 +506,8 @@ struct Curses
 		xy_t[2] measure(scope void delegate() fn)
 		{
 			xy_t[2] result;
+			// Start at `height` so that the text is guaranteed to be off-screen
+			// and thus invisible for the sake of this measurement.
 			at(0, height, {
 				maxX = 0;
 				yOverflowHidden({
