@@ -329,7 +329,7 @@ struct Curses
 			if (inMask(x, y))
 				poke(x, y, c);
 			x++;
-			maxX = max(maxX, x0 + x);
+			maxX = max(maxX, x);
 		}
 
 		// --- Text output (low-level)
@@ -394,6 +394,7 @@ struct Curses
 		xy_t xMargin;
 
 		/// High water mark for highest seen absolute X; used by `measure`.
+		/// Like `x`, relative to `x0`.
 		xy_t maxX;
 
 		void withWindow(xy_t x0, xy_t y0, xy_t width, xy_t height, scope void delegate() fn)
@@ -406,12 +407,6 @@ struct Curses
 				this.maskX0, maskY0,
 				this.maskX1, maskY1,
 			);
-			auto oldVars = vars;
-			scope(exit)
-			{
-				maxX = min(x1, maxX);
-				vars = oldVars;
-			}
 			auto newX0 = this.x0 + x0;
 			auto newY0 = this.y0 + y0;
 			auto newX1 = newX0 + width;
@@ -420,7 +415,7 @@ struct Curses
 			auto newMaskY0 = max(this.maskY0, newY0);
 			auto newMaskX1 = min(this.maskX1, newX0 + width);
 			auto newMaskY1 = min(this.maskY1, newY0 + height);
-			vars = AliasSeq!(
+			alias newVars = AliasSeq!(
 				0, 0,
 				newX0, newY0,
 				newX1, newY1,
@@ -428,6 +423,14 @@ struct Curses
 				newMaskX0, newMaskY0,
 				newMaskX1, newMaskY1,
 			);
+			auto oldVars = vars;
+			scope(exit)
+			{
+				maxX += x0;
+				vars = oldVars;
+			}
+			maxX -= x0;
+			vars = newVars;
 			this.lastSpaceX = this.lastSpaceY = xy_t.min;
 			fn();
 		}
@@ -518,14 +521,16 @@ struct Curses
 			xy_t[2] result;
 			// Start at `height` so that the text is guaranteed to be off-screen
 			// and thus invisible for the sake of this measurement.
-			at(0, height, {
-				maxX = 0;
+			auto oldMaxX = maxX;
+			scope(success) maxX = oldMaxX;
+			at(xMargin, height, {
+				maxX = xMargin;
 				yOverflowHidden({
 					fn();
 				});
 				assert(y >= height);
-				if (x != 0) y++;
-				auto localMaxX = maxX - x0;
+				if (x != xMargin) y++;
+				auto localMaxX = maxX - xMargin;
 				auto localMaxY = y - height;
 				result = [localMaxX, localMaxY];
 			});
