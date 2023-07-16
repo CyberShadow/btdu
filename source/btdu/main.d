@@ -46,7 +46,7 @@ import ae.utils.funopt;
 import ae.utils.json;
 import ae.utils.main;
 import ae.utils.time.parsedur;
-import ae.utils.typecons;
+import ae.utils.typecons : require;
 
 import btdu.ui.browser;
 import btdu.common;
@@ -103,7 +103,7 @@ Please report defects and enhancement requests to the GitHub issue tracker:
 		return;
 	}
 
-	Data importData; // Keep memory-mapped file alive, as directory names may reference it
+	static Data importData; // Keep memory-mapped file alive, as directory names may reference it
 	if (doImport)
 	{
 		if (procs || seed || subprocess || expert || physical || maxSamples || maxTime || minResolution || exportPath)
@@ -111,7 +111,7 @@ Please report defects and enhancement requests to the GitHub issue tracker:
 
 		stderr.writeln("Loading results from file...");
 		importData = mapFile(path, MmMode.read);
-		auto json = cast(string)importData.contents;
+		auto json = cast(string)importData.unsafeContents; // Pinned by importData, which has static lifetime
 
 		debug importing = true;
 		auto s = json.jsonParse!SerializedState();

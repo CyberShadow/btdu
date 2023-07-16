@@ -138,14 +138,14 @@ StaticAppender!ubyte sendBuf;
 private void serialize(T)(ref T value)
 {
 	static if (!hasIndirections!T)
-		sendBuf.put(value.bytes);
+		sendBuf.put(value.asBytes);
 	else
 	static if (is(T U : U[]))
 	{
 		size_t length = value.length;
 		serialize(length);
 		static if (!hasIndirections!U)
-			sendBuf.put(value.bytes);
+			sendBuf.put(value.asBytes);
 		else
 			foreach (ref e; value)
 				serialize(value);
@@ -179,7 +179,7 @@ if (staticIndexOf!(T, AllMessages) >= 0)
 	sendBuf.clear();
 	serialize(message);
 	header.length = Header.sizeof + sendBuf.length;
-	sendRaw(header.bytes);
+	sendRaw(header.asBytes);
 	sendRaw(sendBuf.peek());
 }
 
