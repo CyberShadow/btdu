@@ -592,7 +592,35 @@ struct Curses
 			maxX = max(maxX, columnX);
 			y += rows + 1;
 		}
-			
+
+		void middleTruncate(scope void delegate() fn)
+		{
+			assert(x == 0); // This will span the entire width
+			xy_t[2] size;
+			withWindow(0, 0, xy_t.max / 2, xy_t.max / 2, {
+				size = measure(fn);
+			});
+			assert(size[1] <= 1);
+			if (size[0] > width)
+			{
+				auto ellipsis = /*width >= 9 ? "..."d : */"…"d;
+				auto ellipsisWidth = ellipsis.length.to!xy_t;
+				auto leftWidth = (width - ellipsisWidth) / 2;
+				auto rightWidth = width - ellipsisWidth - leftWidth;
+				xOverflowHidden({
+					withWindow(0, y, leftWidth, 1, fn);
+					at(leftWidth, y, {
+						write(ellipsis);
+					});
+					withWindow(leftWidth + ellipsisWidth, y, rightWidth, 1, {
+						x -= size[0] - rightWidth;
+						fn();
+					});
+				});
+			}
+			else
+				fn();
+		}
 	}
 
 	Wand getWand() { return Wand(this); }
