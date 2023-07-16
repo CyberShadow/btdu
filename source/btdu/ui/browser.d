@@ -765,7 +765,7 @@ struct Browser
 											{
 												maxX = max(maxX, maxPathWidth);
 												return withWindow(0, 0, maxPathWidth, 1, {
-													xOverflowEllipsis({
+													middleTruncate({
 														write(pair.key);
 													});
 												});
@@ -1029,20 +1029,14 @@ struct Browser
 							write(child.firstChild is null ? ' ' : '/');
 
 							{
-								auto displayedItem = child.humanName.to!dstring;
 								auto maxItemWidth = width - (minWidth(effectiveRatioDisplayMode) - 5);
-								if (maxItemWidth >= 3 && displayedItem.length > maxItemWidth)
-								{
-									auto ellipsis = maxItemWidth >= 9 ? "..."d : "…"d;
-									auto leftLength = (maxItemWidth - ellipsis.length) / 2;
-									auto rightLength = maxItemWidth - ellipsis.length - leftLength;
-									displayedItem =
-										displayedItem[0 .. leftLength] ~ ellipsis ~
-										displayedItem[$ - rightLength .. $];
-								}
-								write(displayedItem);
+								withWindow(x, y, maxItemWidth.to!xy_t, 1, {
+									middleTruncate({
+										write(child.humanName, endl);
+									});
+								});
+								x += maxItemWidth;
 							}
-
 							write(endl);
 						});
 					});
