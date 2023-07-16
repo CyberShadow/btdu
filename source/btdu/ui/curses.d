@@ -116,6 +116,9 @@ struct Curses
 			/// If it does happen, raise an assertion and truncate.
 			never,
 
+			/// Silently truncate.
+			hidden,
+
 			/// Wrap characters (dumb wrapping).
 			chars,
 
@@ -281,6 +284,8 @@ struct Curses
 				{
 					case XOverflow.never:
 						assert(x < width, "X overflow");
+						return false;
+					case XOverflow.hidden:
 						return false;
 					case XOverflow.chars:
 						newLine();
@@ -448,6 +453,7 @@ struct Curses
 			});
 		}
 
+		void xOverflowHidden  (scope void delegate() fn) { withState(xOverflow, XOverflow.hidden  , fn); }
 		void xOverflowChars   (scope void delegate() fn) { withState(xOverflow, XOverflow.chars   , fn); }
 		void xOverflowWords   (scope void delegate() fn) { withState(xOverflow, XOverflow.words   , fn); }
 		void xOverflowPath    (scope void delegate() fn) { withState(xOverflow, XOverflow.path    , fn); }
