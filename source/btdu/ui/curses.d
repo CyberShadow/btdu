@@ -350,7 +350,7 @@ struct Curses
 			auto fillerCChar = filler.toCChar(attr, color);
 			while (inMask(x, y))
 				put(fillerCChar);
-			x = 0; // CR
+			x = xMargin; // CR
 			y++;   // LF
 		}
 
@@ -364,7 +364,7 @@ struct Curses
 		this(ref Curses curses)
 		{
 			erase();
-			x0 = y0 = maskX0 = maskY0 = x = y = 0;
+			x0 = y0 = maskX0 = maskY0 = x = y = xMargin = 0;
 			x1 = maskX1 = getmaxx(stdscr).to!xy_t;
 			y1 = maskY1 = getmaxy(stdscr).to!xy_t;
 		}
@@ -388,12 +388,17 @@ struct Curses
 		// read/write operations.
 		xy_t x, y;
 
+		/// `x` will be reset to this value when going to a new line.
+		// TODO: this is probably redundant with simply opening a window at a negative x.
+		xy_t xMargin;
+
 		void withWindow(xy_t x0, xy_t y0, xy_t width, xy_t height, scope void delegate() fn)
 		{
 			alias vars = AliasSeq!(
 				this.x, this.y,
 				this.x0, this.y0,
 				this.x1, this.y1,
+				this.xMargin,
 				this.maskX0, maskY0,
 				this.maskX1, maskY1,
 			);
@@ -415,6 +420,7 @@ struct Curses
 				0, 0,
 				newX0, newY0,
 				newX1, newY1,
+				0,
 				newMaskX0, newMaskY0,
 				newMaskX1, newMaskY1,
 			);
