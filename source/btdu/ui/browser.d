@@ -355,7 +355,7 @@ struct Browser
 
 			alias button = (text) => reversed("[", bold(text), "]");
 
-			void drawInfo(BrowserPath* p)
+			void drawInfo(BrowserPath* p, bool fullScreen)
 			{
 				void writeExplanation()
 				{
@@ -610,7 +610,7 @@ struct Browser
 				xOverflowWords({
 					auto topY = y;
 					writeExplanation();
-					if (x != 0 || y != topY)
+					if (x != xMargin || y != topY)
 						write(endl, endl);
 
 					if (p.parent && p.parent.parent && p.parent.parent.name[] == "\0ERROR")
@@ -759,11 +759,14 @@ struct Browser
 									final switch (column)
 									{
 										case 0:
-											return withWindow(0, 0, maxPathWidth, 1, {
-												xOverflowEllipsis({
-													write(pair.key);
+											if (fullScreen)
+												return write(pair.key);
+											else
+												return withWindow(0, 0, maxPathWidth, 1, {
+													xOverflowEllipsis({
+														write(pair.key);
+													});
 												});
-											});
 										case 1:
 											if (!representedSamples)
 												return write("- ");
@@ -1043,8 +1046,10 @@ struct Browser
 				}
 			}
 
-			alias drawInfoPanel = (titlePrefix, overflowKeyText, leftMargin, rightMargin, auto ref ScrollContext scrollContext, BrowserPath* p)
+			alias drawInfoPanel = (titlePrefix, overflowKeyText, bool fullScreen, auto ref ScrollContext scrollContext, BrowserPath* p)
 			{
+				auto leftMargin = fullScreen ? 0 : 1;
+				auto rightMargin = 0;
 				static if (is(typeof(overflowKeyText) == typeof(null)))
 					enum bottomOverflowText = null;
 				else
@@ -1057,7 +1062,7 @@ struct Browser
 					scrollContext,
 					leftMargin, rightMargin,
 					{
-						drawInfo(p);
+						drawInfo(p, fullScreen);
 					},
 				);
 			};
@@ -1091,7 +1096,7 @@ struct Browser
 						// "Viewing:"
 						auto currentInfoHeight = selection ? height / 2 : height;
 						withWindow(itemsWidth + 1, 0, infoWidth, currentInfoHeight, {
-							drawInfoPanel("Viewing: ", button("i"), 1, 0, ScrollContext.init, currentPath);
+							drawInfoPanel("Viewing: ", button("i"), false, ScrollContext.init, currentPath);
 						});
 
 						// "Selected:"
@@ -1102,7 +1107,7 @@ struct Browser
 									fmtSeq(button("→"), " ", button("i")).valueFunctor,
 									       button("→")                   .valueFunctor,
 								);
-								drawInfoPanel("Selected: ", moreButton, 1, 0, ScrollContext.init, selection);
+								drawInfoPanel("Selected: ", moreButton, false, ScrollContext.init, selection);
 							});
 
 						// Vertical separator
@@ -1118,7 +1123,7 @@ struct Browser
 						break;
 
 					case Mode.info:
-						drawInfoPanel("Details: ", null, 0, 0, textScrollContext, currentPath);
+						drawInfoPanel("Details: ", null, true, textScrollContext, currentPath);
 						break;
 
 					case Mode.help:
