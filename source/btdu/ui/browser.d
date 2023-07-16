@@ -890,18 +890,29 @@ struct Browser
 				withWindow(leftMargin, 1, width - leftMargin - rightMargin, height - 1, {
 				retry:
 					eraseWindow();
-					auto topY = (-c.y.offset).to!int;
+
+					auto leftX = (-c.x.offset).to!xy_t;
+					// leftOverflow = leftX < 0;
+					x = maxX = xMargin = leftX;
+
+					auto topY = (-c.y.offset).to!xy_t;
 					topOverflow = topY < 0;
 					y = topY;
+
 					yOverflowHidden({
 						drawContents();
-						if (x != 0)
+						if (x != xMargin)
 							write(endl);
 					});
+
+					c.x.contentSize = maxX - leftX;
+					c.x.contentAreaSize = width;
+					// rightOverflow = x > width;
 
 					c.y.contentSize = y - topY;
 					c.y.contentAreaSize = height;
 					bottomOverflow = y > height;
+
 					// Ideally we would want to 1) measure the content 2) perform this upkeep 3) render the content,
 					// but as we are rendering info directly to the screen, steps 1 and 3 are one and the same.
 					if (c.normalize())
@@ -1130,7 +1141,7 @@ struct Browser
 									void printKey(Buttons...)(string text, auto ref Buttons buttons)
 									{
 										write(text, " ");
-										auto buttonsX = title.length - getTextWidth(buttons) - 1;
+										auto buttonsX = xMargin + title.length.to!xy_t - getTextWidth(buttons).to!xy_t - 1;
 										while (x < buttonsX)
 											write("·");
 										write(" ", buttons, endl);
@@ -1472,8 +1483,6 @@ struct Browser
 			case Mode.info:
 				switch (ch)
 				{
-					case Curses.Key.left:
-					case 'h':
 					case '<':
 						mode = Mode.browser;
 						if (currentPath.parent)
@@ -1482,12 +1491,18 @@ struct Browser
 							currentPath = currentPath.parent;
 						}
 						break;
+					case Curses.Key.left:
+					case 'h':
+						if (textScrollContext.x.offset)
+							goto textScroll;
+						else
+							goto case '<';
 					case 'q':
 					case 27: // ESC
 						if (items.length)
 							goto case 'i';
 						else
-							goto case Curses.Key.left;
+							goto case '<';
 					case 'i':
 						mode = Mode.browser;
 						break;
@@ -1587,6 +1602,14 @@ struct Browser
 					case Curses.Key.down:
 					case 'j':
 						textScrollContext.y.offset += +1;
+						break;
+					case Curses.Key.left:
+					case 'h':
+						textScrollContext.x.offset += -1;
+						break;
+					case Curses.Key.right:
+					case 'l':
+						textScrollContext.x.offset += +1;
 						break;
 					case Curses.Key.pageUp:
 						textScrollContext.y.offset += -textScrollContext.y.contentAreaSize;
