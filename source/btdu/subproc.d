@@ -242,6 +242,7 @@ struct Subprocess
 		}
 		representativeBrowserPath.addSample(SampleType.represented, result.offset, m.duration);
 
+		bool allMarked = true;
 		if (allPaths.peek().length)
 		{
 			foreach (ref path; allPaths.peek())
@@ -266,15 +267,25 @@ struct Subprocess
 				auto exclusiveBrowserPath = BrowserPath.commonPrefix(browserPaths.peek());
 				exclusiveBrowserPath.addSample(SampleType.exclusive, result.offset, m.duration);
 
-				bool allMarked = true;
 				foreach (ref path; browserPaths.get())
 					if (!path.getEffectiveMark())
 					{
 						allMarked = false;
 						break;
 					}
-				if (allMarked)
-					markExclusiveSamples++;
+			}
+			else
+			{
+				if (false) // `allMarked` result will not be used in non-expert mode anyway...
+				foreach (ref path; allPaths.peek())
+				{
+					auto browserPath = result.browserPath.appendPath!true(&path);
+					if (browserPath && !browserPath.getEffectiveMark())
+					{
+						allMarked = false;
+						break;
+					}
+				}
 			}
 		}
 		else
@@ -284,12 +295,16 @@ struct Subprocess
 				representativeBrowserPath.addSample(SampleType.shared_, result.offset, m.duration);
 				representativeBrowserPath.addSample(SampleType.exclusive, result.offset, m.duration);
 				representativeBrowserPath.addDistributedSample(1, m.duration);
-				if (representativeBrowserPath.getEffectiveMark())
-					markExclusiveSamples++;
 			}
+			allMarked = representativeBrowserPath.getEffectiveMark();
 		}
-		if (expert)
-			markTotalSamples++;
+
+		markTotalSamples++;
+		if (allMarked)
+		{
+			if (expert)
+				marked.addSample(SampleType.exclusive, result.offset, m.duration);
+		}
 
 		result = Result.init;
 		allPaths.clear();

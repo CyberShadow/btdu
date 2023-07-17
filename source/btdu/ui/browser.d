@@ -340,8 +340,8 @@ struct Browser
 									write(" ? in");
 								else
 									write(formatted!" ~%s (±%s) in"(
-										humanSize(markExclusiveSamples * real(totalSize) / markTotalSamples),
-										humanSize(estimateError(markTotalSamples, markExclusiveSamples) * totalSize),
+										humanSize(marked.data[SampleType.exclusive].samples * real(totalSize) / markTotalSamples),
+										humanSize(estimateError(markTotalSamples, marked.data[SampleType.exclusive].samples) * totalSize),
 									));
 							}
 							write(" ", numMarked);

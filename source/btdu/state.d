@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020, 2021, 2022  Vladimir Panteleev <btdu@cy.md>
+ * Copyright (C) 2020, 2021, 2022, 2023  Vladimir Panteleev <btdu@cy.md>
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public
@@ -18,6 +18,10 @@
 
 /// Global state definitions
 module btdu.state;
+
+import std.traits : EnumMembers;
+
+import ae.utils.meta : enumLength;
 
 import btrfs.c.ioctl : btrfs_ioctl_dev_info_args;
 import btrfs.c.kerncompat : u64;
@@ -42,8 +46,43 @@ BrowserPath browserRoot;
 
 shared static this() { browserRoot.setMark(false); }
 
-ulong markTotalSamples, markExclusiveSamples;
-void invalidateMark() { markTotalSamples = markExclusiveSamples = 0; }
+BrowserPath marked;  /// A fake `BrowserPath` used to represent all marked nodes.
+ulong markTotalSamples; /// Number of seen samples since the mark was invalidated.
+
+/// Called when something is marked or unmarked.
+void invalidateMark()
+{
+	markTotalSamples = 0;
+	if (expert)
+		marked.data[SampleType.exclusive] = BrowserPath.Data.init;
+}
+
+/// Update stats in `marked` for a redisplay.
+void updateMark()
+{
+	marked.data[] = (BrowserPath.Data[enumLength!SampleType]).init;
+	marked.distributedSamples = marked.distributedDuration = 0;
+
+	browserRoot.enumerateMarks(
+		(ref const BrowserPath path, bool isMarked)
+		{
+			if (&path is &browserRoot)
+				return;
+			if (isMarked)
+			{
+				static foreach (sampleType; EnumMembers!SampleType)
+					marked.addSamples(sampleType, path.data[sampleType].samples, path.data[sampleType].offsets[], path.data[sampleType].duration);
+				marked.addDistributedSample(path.distributedSamples, path.distributedDuration);
+			}
+			else
+			{
+				static foreach (sampleType; EnumMembers!SampleType)
+					marked.removeSamples(sampleType, path.data[sampleType].samples, path.data[sampleType].offsets[], path.data[sampleType].duration);
+				marked.removeDistributedSample(path.distributedSamples, path.distributedDuration);
+			}
+		}
+	);
+}
 
 Subprocess[] subprocesses;
 bool paused;
