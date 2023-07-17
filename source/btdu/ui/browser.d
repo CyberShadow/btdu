@@ -1351,6 +1351,7 @@ struct Browser
 								assert(false);
 
 							case Popup.deleteConfirm:
+								assert(deleter.state == Deleter.State.ready);
 								title = "Confirm deletion";
 								write("Are you sure you want to delete:", endl, endl);
 								xOverflowPath({ write(bold(getFullPath(selection)), endl, endl); });
@@ -1369,6 +1370,7 @@ struct Browser
 								final switch (deleter.state)
 								{
 									case Deleter.State.none:
+									case Deleter.State.ready:
 									case Deleter.State.success:
 										assert(false);
 									case Deleter.State.subvolumeConfirm:
@@ -1531,11 +1533,12 @@ struct Browser
 				{
 					case 'Y':
 						popup = Popup.deleteProgress;
-						deleter.start(getFullPath(selection).idup);
+						deleter.start();
 						break;
 
 					default:
 						popup = Popup.none;
+						deleter.cancel();
 						showMessage("Delete operation cancelled.");
 						break;
 				}
@@ -1545,6 +1548,7 @@ struct Browser
 				final switch (deleter.state)
 				{
 					case Deleter.State.none:
+					case Deleter.State.ready:
 					case Deleter.State.success:
 						assert(false);
 
@@ -1673,6 +1677,7 @@ struct Browser
 							showMessage(format!"Cannot delete special node %s."(selection.humanName));
 							break;
 						}
+						deleter.prepare(getFullPath(selection).idup);
 						popup = Popup.deleteConfirm;
 						break;
 					case ' ':
@@ -1746,6 +1751,7 @@ struct Browser
 							showMessage(format!"Cannot delete special node %s."(selection.humanName));
 							break;
 						}
+						deleter.prepare(getFullPath(selection).idup);
 						popup = Popup.deleteConfirm;
 						break;
 					case ' ':

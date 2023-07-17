@@ -37,6 +37,7 @@ struct Deleter
 	enum State
 	{
 		none,
+		ready, // confirmation
 		progress,
 		success,
 		error,
@@ -55,10 +56,22 @@ struct Deleter
 		return this.state == Deleter.State.progress;
 	}
 
-	void start(string path)
+	void prepare(string path)
 	{
 		assert(this.state == State.none);
 		this.current = path;
+		this.state = State.ready;
+	}
+
+	void cancel()
+	{
+		assert(this.state == State.ready);
+		this.state = State.none;
+	}
+
+	void start()
+	{
+		assert(this.state == State.ready);
 		this.stopping = false;
 		this.subvolumeResume.initialize(false, false);
 		this.thread = new Thread(&threadFunc);
