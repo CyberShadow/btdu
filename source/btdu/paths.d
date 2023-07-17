@@ -427,6 +427,14 @@ struct BrowserPath
 	mixin SimplePath;
 	mixin PathCommon;
 
+	mixin PathCmp;
+
+	/// PathCmp implementation
+	private int compareContents(const ref typeof(this) b) const
+	{
+		return cmp(name[], b.name[]);
+	}
+
 	struct Data
 	{
 		ulong samples; /// For non-leaves, sum of leaves
