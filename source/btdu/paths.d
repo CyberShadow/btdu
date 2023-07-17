@@ -27,6 +27,7 @@ import std.bitmanip;
 import std.experimental.allocator : makeArray, make;
 import std.string;
 import std.traits : Unqual, EnumMembers;
+import std.typecons : Nullable, nullable;
 
 import containers.hashmap;
 import containers.internal.hash : generateHash;
@@ -498,7 +499,7 @@ struct BrowserPath
 			@JSONOptional JSONFragment distributedDuration = JSONFragment("0");
 		}
 		SampleData data;
-		@JSONOptional Mark mark;
+		@JSONOptional Nullable!bool mark;
 
 		BrowserPath*[] children;
 	}
@@ -515,7 +516,10 @@ struct BrowserPath
 			s.data.distributedSamples.json = this.distributedSamples.format!"%17e";
 		if (this.distributedDuration !is 0.)
 			s.data.distributedDuration.json = this.distributedDuration.format!"%17e";
-		s.mark = this.mark;
+		s.mark =
+			this.mark == Mark.parent ? Nullable!bool.init :
+			this.mark == Mark.marked ? true.nullable :
+			false.nullable;
 		return s;
 	}
 
@@ -533,7 +537,10 @@ struct BrowserPath
 			p.data[sampleType] = s.data.tupleof[sampleType];
 		p.distributedSamples = s.data.distributedSamples.json.strip.to!double;
 		p.distributedDuration = s.data.distributedDuration.json.strip.to!double;
-		p.mark = s.mark;
+		p.mark =
+			s.mark.isNull() ? Mark.parent :
+			s.mark.get() ? Mark.marked :
+			Mark.unmarked;
 		return p;
 	}
 
