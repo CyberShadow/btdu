@@ -112,10 +112,16 @@ struct Browser
 		browser,
 		info,
 		help,
+	}
+	Mode mode;
+
+	enum Popup
+	{
+		none,
 		deleteConfirm,
 		deleteProgress,
 	}
-	Mode mode;
+	Popup popup;
 
 	enum SortMode
 	{
@@ -165,7 +171,7 @@ struct Browser
 
 	@property bool needRefresh()
 	{
-		if (mode == Mode.deleteProgress)
+		if (popup == Popup.deleteProgress)
 			return deleter.needRefresh;
 		return false;
 	}
@@ -253,7 +259,7 @@ struct Browser
 			if (deleter.state == Deleter.State.success)
 			{
 				showMessage(format!"Deleted %s."(selection.humanName));
-				mode = Mode.browser;
+				popup = Popup.none;
 				deleter.state = Deleter.State.none;
 				selection.remove();
 				selection = null;
@@ -1094,8 +1100,6 @@ struct Browser
 				final switch (mode)
 				{
 					case Mode.browser:
-					case Mode.deleteConfirm:
-					case Mode.deleteProgress:
 
 						// Items
 						auto infoWidth = min(60, (width - 1) / 2);
@@ -1208,29 +1212,19 @@ struct Browser
 
 			// Render pop-up
 			(){
-				final switch (mode)
-				{
-					case Mode.browser:
-					case Mode.info:
-					case Mode.help:
-						return;
-
-					case Mode.deleteConfirm:
-					case Mode.deleteProgress:
-				}
+				if (!popup)
+					return;
 
 				string title;
 				void drawPopup()
 				{
 					xOverflowWords({
-						final switch (mode)
+						final switch (popup)
 						{
-							case Mode.browser:
-							case Mode.info:
-							case Mode.help:
+							case Popup.none:
 								assert(false);
 
-							case Mode.deleteConfirm:
+							case Popup.deleteConfirm:
 								title = "Confirm deletion";
 								write("Are you sure you want to delete:", endl, endl);
 								xOverflowPath({ write(bold(getFullPath(selection)), endl, endl); });
@@ -1245,7 +1239,7 @@ struct Browser
 								);
 								break;
 
-							case Mode.deleteProgress:
+							case Popup.deleteProgress:
 								final switch (deleter.state)
 								{
 									case Deleter.State.none:
@@ -1397,13 +1391,81 @@ struct Browser
 			case 'p':
 				togglePause();
 				return true;
-			case '?':
-			case Curses.Key.f1:
-				mode = Mode.help;
-				textScrollContext = ScrollContext.init;
-				break;
 			default:
 				// Proceed according to mode
+		}
+
+		final switch (popup)
+		{
+			case Popup.none:
+				break;
+
+			case Popup.deleteConfirm:
+				switch (ch)
+				{
+					case 'Y':
+						popup = Popup.deleteProgress;
+						deleter.start(getFullPath(selection).idup);
+						break;
+
+					default:
+						popup = Popup.none;
+						showMessage("Delete operation cancelled.");
+						break;
+				}
+				return true;
+
+			case Popup.deleteProgress:
+				final switch (deleter.state)
+				{
+					case Deleter.State.none:
+					case Deleter.State.success:
+						assert(false);
+
+					case Deleter.State.subvolumeConfirm:
+						switch (ch)
+						{
+							case 'Y':
+								deleter.confirm(Yes.proceed);
+								break;
+
+							default:
+								deleter.confirm(No.proceed);
+								break;
+						}
+						break;
+
+					case Deleter.State.progress:
+					case Deleter.State.subvolumeProgress:
+						switch (ch)
+						{
+							case 'q':
+							case 27: // ESC
+								deleter.stop();
+								break;
+
+							default:
+								// TODO: show message
+								break;
+						}
+						break;
+
+					case Deleter.State.error:
+						switch (ch)
+						{
+							case 'q':
+							case 27: // ESC
+								deleter.finish();
+								popup = Popup.none;
+								break;
+
+							default:
+								// TODO: show message
+								break;
+						}
+						break;
+				}
+				return true;
 		}
 
 		final switch (mode)
@@ -1411,6 +1473,11 @@ struct Browser
 			case Mode.browser:
 				switch (ch)
 				{
+					case '?':
+					case Curses.Key.f1:
+						mode = Mode.help;
+						textScrollContext = ScrollContext.init;
+						break;
 					case Curses.Key.left:
 					case 'h':
 					case '<':
@@ -1500,7 +1567,7 @@ struct Browser
 							showMessage(format!"Cannot delete special node %s."(selection.humanName));
 							break;
 						}
-						mode = Mode.deleteConfirm;
+						popup = Popup.deleteConfirm;
 						break;
 					case ' ':
 						if (selection)
@@ -1519,6 +1586,11 @@ struct Browser
 			case Mode.info:
 				switch (ch)
 				{
+					case '?':
+					case Curses.Key.f1:
+						mode = Mode.help;
+						textScrollContext = ScrollContext.init;
+						break;
 					case '<':
 						mode = Mode.browser;
 						if (currentPath.parent)
@@ -1558,73 +1630,6 @@ struct Browser
 
 					default:
 						goto textScroll;
-				}
-				break;
-
-			case Mode.deleteConfirm:
-				switch (ch)
-				{
-					case 'Y':
-						mode = Mode.deleteProgress;
-						deleter.start(getFullPath(selection).idup);
-						break;
-
-					default:
-						mode = Mode.browser;
-						showMessage("Delete operation cancelled.");
-						break;
-				}
-				break;
-
-			case Mode.deleteProgress:
-				final switch (deleter.state)
-				{
-					case Deleter.State.none:
-					case Deleter.State.success:
-						assert(false);
-
-					case Deleter.State.subvolumeConfirm:
-						switch (ch)
-						{
-							case 'Y':
-								deleter.confirm(Yes.proceed);
-								break;
-
-							default:
-								deleter.confirm(No.proceed);
-								break;
-						}
-						break;
-
-					case Deleter.State.progress:
-					case Deleter.State.subvolumeProgress:
-						switch (ch)
-						{
-							case 'q':
-							case 27: // ESC
-								deleter.stop();
-								break;
-
-							default:
-								// TODO: show message
-								break;
-						}
-						break;
-
-					case Deleter.State.error:
-						switch (ch)
-						{
-							case 'q':
-							case 27: // ESC
-								deleter.finish();
-								mode = Mode.browser;
-								break;
-
-							default:
-								// TODO: show message
-								break;
-						}
-						break;
 				}
 				break;
 
