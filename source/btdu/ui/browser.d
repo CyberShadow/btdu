@@ -110,6 +110,7 @@ struct Browser
 	enum Mode
 	{
 		browser,
+		marks,
 		info,
 		help,
 	}
@@ -205,8 +206,15 @@ struct Browser
 						return false;
 				}
 			if (path.parent)
+			{
 				if (!recurse(path.parent))
 					return false;
+			}
+			else
+			{
+				if (path is &marked)
+					return false;
+			}
 			buf.put('/');
 			buf.put(name);
 			return true;
@@ -266,44 +274,83 @@ struct Browser
 			}
 
 			static FastAppender!(BrowserPath*) itemsBuf;
-			itemsBuf.clear;
-			for (auto child = currentPath.firstChild; child; child = child.nextSibling)
-				itemsBuf.put(child);
-			items = itemsBuf.peek();
-
-			final switch (sortMode)
+			itemsBuf.clear();
+			final switch (mode)
 			{
-				case SortMode.name:
-					items.sort!((a, b) => a.name[] < b.name[]);
+				case Mode.browser:
+					for (auto child = currentPath.firstChild; child; child = child.nextSibling)
+						itemsBuf.put(child);
 					break;
-				case SortMode.size:
-					items.multiSort!(
-						(a, b) => a.I!getSamples() > b.I!getSamples(),
-						(a, b) => a.name[] < b.name[],
-					);
+				case Mode.marks:
+					browserRoot.enumerateMarks((ref BrowserPath path, bool marked) {
+						if (&path !is &browserRoot)
+							itemsBuf.put(&path);
+					});
 					break;
-				case SortMode.time:
-					items.multiSort!(
-						(a, b) => a.I!getAverageDuration() > b.I!getAverageDuration(),
-						(a, b) => a.name[] < b.name[],
-					);
+				case Mode.help:
+				case Mode.info:
 					break;
 			}
-			if (reverseSort)
-				items.reverse();
-			if (dirsFirst)
-				items.sort!(
-					(a, b) => !!a.firstChild > !!b.firstChild,
-					SwapStrategy.stable,
-				);
+			items = itemsBuf.peek();
+
+			final switch (mode)
+			{
+				case Mode.browser:
+					final switch (sortMode)
+					{
+						case SortMode.name:
+							items.sort!((a, b) => a.name[] < b.name[]);
+							break;
+						case SortMode.size:
+							items.multiSort!(
+								(a, b) => a.I!getSamples() > b.I!getSamples(),
+								(a, b) => a.name[] < b.name[],
+							);
+							break;
+						case SortMode.time:
+							items.multiSort!(
+								(a, b) => a.I!getAverageDuration() > b.I!getAverageDuration(),
+								(a, b) => a.name[] < b.name[],
+							);
+							break;
+					}
+					if (reverseSort)
+						items.reverse();
+					if (dirsFirst)
+						items.sort!(
+							(a, b) => !!a.firstChild > !!b.firstChild,
+							SwapStrategy.stable,
+						);
+					break;
+
+				case Mode.marks:
+					items.sort!((a, b) => *a < *b);
+					break;
+
+				case Mode.help:
+				case Mode.info:
+					break;
+			}
 
 			if (!selection && items.length)
 				selection = items[0];
 
-			if (!items.length && mode == Mode.browser && currentPath !is &browserRoot)
+			if (!items.length)
 			{
-				mode = Mode.info;
-				textScrollContext = ScrollContext.init;
+				if (mode == Mode.browser && currentPath !is &browserRoot)
+				{
+					mode = Mode.info;
+					textScrollContext = ScrollContext.init;
+				}
+				else
+				if (mode == Mode.marks)
+				{
+					mode = Mode.browser;
+					selection = null;
+					itemScrollContext = ScrollContext.init;
+					showMessage("No more marks");
+					return update();
+				}
 			}
 
 			auto totalSamples = browserRoot.data[SampleType.represented].samples;
@@ -395,6 +442,11 @@ struct Browser
 							"results will be arranged according to their block group and profile, and then by path.",
 							endl, endl,
 							"Use ", button("↑"), " ", button("↓"), " ", button("←"), " ", button("→"), " to navigate, press ", button("?"), " for help."
+						);
+
+					if (p is &marked)
+						return write(
+							"Summary of all marked nodes:"
 						);
 
 					string name = p.name[];
@@ -997,6 +1049,10 @@ struct Browser
 				auto currentPathUnits = currentPath.I!getUnits();
 				auto mostUnits = items.fold!((a, b) => max(a, b.I!getUnits()))(0.0L);
 
+				auto ratioDisplayMode = this.ratioDisplayMode;
+				if (mode == Mode.marks)
+					ratioDisplayMode = RatioDisplayMode.none;
+
 				alias minWidth = (ratioDisplayMode) =>
 					"  100.0 KiB ".length +
 					only(
@@ -1022,7 +1078,10 @@ struct Browser
 
 					attrSet(Attribute.reverse, child is selection, {
 						xOverflowEllipsis({
-							write(child.getEffectiveMark() ? '+' : ' ');
+							write(
+								child.getEffectiveMark() ? '+' :
+								mode == Mode.marks ? '-' : ' '
+							);
 							auto textWidth = measure({ writeUnits(childUnits); })[0];
 							write(formatted!"%*s"(max(0, 11 - textWidth), "")); writeUnits(childUnits); write(" ");
 
@@ -1057,16 +1116,36 @@ struct Browser
 								}
 								write("] ");
 							}
-							write(child.firstChild is null ? ' ' : '/');
 
+							auto maxItemWidth = width - (minWidth(effectiveRatioDisplayMode) - 5);
+
+							final switch (mode)
 							{
-								auto maxItemWidth = width - (minWidth(effectiveRatioDisplayMode) - 5);
-								withWindow(x, y, maxItemWidth.to!xy_t, 1, {
-									middleTruncate({
-										write(child.humanName, endl);
+								case Mode.browser:
+									write(child.firstChild is null ? ' ' : '/');
+
+									{
+										withWindow(x, y, maxItemWidth.to!xy_t, 1, {
+											middleTruncate({
+												write(child.humanName, endl);
+											});
+										});
+										x += maxItemWidth;
+									}
+									break;
+
+								case Mode.marks:
+									withWindow(x, y, maxItemWidth.to!xy_t, 1, {
+										middleTruncate({
+											write(child.pointerWriter, endl);
+										});
 									});
-								});
-								x += maxItemWidth;
+									x += maxItemWidth;
+									break;
+
+								case Mode.help:
+								case Mode.info:
+									assert(false);
 							}
 							write(endl);
 						});
@@ -1148,6 +1227,52 @@ struct Browser
 
 						break;
 
+					case Mode.marks: // TODO: DRY with Mode.browser
+
+						// Marks
+						auto infoWidth = min(60, (width - 1) / 2);
+						auto itemsWidth = width - infoWidth - 1;
+						withWindow(0, 0, itemsWidth, height, {
+							itemScrollContext.y.contentSize = items.length;
+							itemScrollContext.y.contentAreaSize = height - 1;
+							itemScrollContext.y.cursor = selection && items ? items.countUntil(selection) : 0;
+							itemScrollContext.y.normalize();
+
+							drawPanel("Marks", null, null, itemScrollContext, 0, 1, &drawItems);
+
+							assert(itemScrollContext.y.contentSize == items.length);
+						});
+
+						// "Summary"
+						auto currentInfoHeight = selection ? height / 2 : height;
+						updateMark();
+						withWindow(itemsWidth + 1, 0, infoWidth, currentInfoHeight, {
+							drawInfoPanel("Summary", button("i"), false, ScrollContext.init, &marked);
+						});
+
+						// "Selected:"
+						if (selection)
+							withWindow(itemsWidth + 1, currentInfoHeight, infoWidth, height - currentInfoHeight, {
+								auto moreButton = fmtIf(
+									selection.firstChild !is null,
+									fmtSeq(button("→"), " ", button("i")).valueFunctor,
+									       button("→")                   .valueFunctor,
+								);
+								drawInfoPanel("Selected: ", moreButton, false, ScrollContext.init, selection);
+							});
+
+						// Vertical separator
+						foreach (y; 0 .. height)
+							at(itemsWidth, y, {
+								write(
+									y == 0                 ? '╦' :
+									y == currentInfoHeight ? '╠' :
+									                         '║'
+								);
+							});
+
+						break;
+
 					case Mode.info:
 						drawInfoPanel("Details: ", null, true, textScrollContext, currentPath);
 						break;
@@ -1192,6 +1317,7 @@ struct Browser
 									printKey("Expand/collapse information panel", button("i"));
 									printKey("Delete the selected file or directory", button("d"));
 									printKey("Mark / unmark selected item", button("    "));
+									printKey("View all marks", button("⇧ Shift"), "+", button("M"));
 									printKey("Close information panel or quit btdu", button("q"));
 									write(
 										endl,
@@ -1501,26 +1627,6 @@ struct Browser
 						else
 							showMessage("Nowhere to descend into");
 						break;
-					case Curses.Key.up:
-					case 'k':
-						moveCursor(-1);
-						break;
-					case Curses.Key.down:
-					case 'j':
-						moveCursor(+1);
-						break;
-					case Curses.Key.pageUp:
-						moveCursor(-itemScrollContext.y.contentAreaSize);
-						break;
-					case Curses.Key.pageDown:
-						moveCursor(+itemScrollContext.y.contentAreaSize);
-						break;
-					case Curses.Key.home:
-						moveCursor(-itemScrollContext.y.contentSize);
-						break;
-					case Curses.Key.end:
-						moveCursor(+itemScrollContext.y.contentSize);
-						break;
 					case 'i':
 						mode = Mode.info;
 						textScrollContext = ScrollContext.init;
@@ -1577,9 +1683,86 @@ struct Browser
 						}
 						moveCursor(+1);
 						break;
-					default:
-						// TODO: show message
+					case 'M':
+						bool haveMarked;
+						browserRoot.enumerateMarks((ref _, bool isMarked) { if (isMarked) haveMarked = true; });
+						if (haveMarked)
+						{
+							mode = Mode.marks;
+							selection = null;
+							itemScrollContext = ScrollContext.init;
+						}
+						else
+							showMessage("No marks");
 						break;
+					default:
+						goto itemScroll;
+				}
+				break;
+
+			case Mode.marks:
+				switch (ch)
+				{
+					case '?':
+					case Curses.Key.f1:
+						mode = Mode.help;
+						selection = null;
+						itemScrollContext = textScrollContext = ScrollContext.init;
+						break;
+					case Curses.Key.left:
+					case 'h':
+					case '<':
+					case 'q':
+					case 27: // ESC
+						mode = Mode.browser;
+						selection = null;
+						itemScrollContext = ScrollContext.init;
+						break;
+					case '\n':
+						if (selection)
+						{
+							mode = Mode.browser;
+							currentPath = selection.parent;
+							itemScrollContext = ScrollContext.init;
+						}
+						break;
+					case Curses.Key.right:
+						if (selection)
+						{
+							mode = Mode.browser;
+							currentPath = selection;
+							selection = null;
+							itemScrollContext = ScrollContext.init;
+						}
+						break;
+					case 'd':
+						if (!selection)
+						{
+							showMessage("Nothing to delete.");
+							break;
+						}
+						if (!getFullPath(selection))
+						{
+							showMessage(format!"Cannot delete special node %s."(selection.humanName));
+							break;
+						}
+						popup = Popup.deleteConfirm;
+						break;
+					case ' ':
+						if (selection)
+						{
+							auto pos = items.countUntil(selection);
+							selection.setMark(!selection.getEffectiveMark());
+							invalidateMark();
+							items = items.remove(pos);
+							selection =
+								pos >= 0 && pos < items.length ? items[pos] :
+								items.length ? items[$-1] :
+								null;
+						}
+						break;
+					default:
+						goto itemScroll;
 				}
 				break;
 
@@ -1630,6 +1813,35 @@ struct Browser
 
 					default:
 						goto textScroll;
+				}
+				break;
+
+			itemScroll:
+				switch (ch)
+				{
+					case Curses.Key.up:
+					case 'k':
+						moveCursor(-1);
+						break;
+					case Curses.Key.down:
+					case 'j':
+						moveCursor(+1);
+						break;
+					case Curses.Key.pageUp:
+						moveCursor(-itemScrollContext.y.contentAreaSize);
+						break;
+					case Curses.Key.pageDown:
+						moveCursor(+itemScrollContext.y.contentAreaSize);
+						break;
+					case Curses.Key.home:
+						moveCursor(-itemScrollContext.y.contentSize);
+						break;
+					case Curses.Key.end:
+						moveCursor(+itemScrollContext.y.contentSize);
+						break;
+					default:
+						// TODO: show message
+						break;
 				}
 				break;
 
