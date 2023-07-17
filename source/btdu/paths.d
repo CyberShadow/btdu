@@ -442,7 +442,7 @@ struct BrowserPath
 		addSamples(type, 1, (&offset)[0..1], duration);
 	}
 
-	void addSamples(SampleType type, ulong samples, Offset[] offsets, ulong duration)
+	void addSamples(SampleType type, ulong samples, const(Offset)[] offsets, ulong duration)
 	{
 		data[type].samples += samples;
 		data[type].duration += duration;
@@ -456,7 +456,7 @@ struct BrowserPath
 			parent.addSamples(type, samples, offsets, duration);
 	}
 
-	void removeSamples(SampleType type, ulong samples, Offset[] offsets, ulong duration)
+	void removeSamples(SampleType type, ulong samples, const(Offset)[] offsets, ulong duration)
 	{
 		assert(samples <= data[type].samples && duration <= data[type].duration);
 		data[type].samples -= samples;
