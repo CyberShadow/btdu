@@ -87,3 +87,35 @@ void updateMark()
 Subprocess[] subprocesses;
 bool paused;
 debug bool importing;
+
+bool toFilesystemPath(BrowserPath* path, void delegate(const(char)[]) sink)
+{
+	sink(fsPath);
+	bool recurse(BrowserPath *path)
+	{
+		string name = path.name[];
+		if (name.skipOverNul())
+			switch (name)
+			{
+				case "DATA":
+				case "UNREACHABLE":
+					return true;
+				default:
+					return false;
+			}
+		if (path.parent)
+		{
+			if (!recurse(path.parent))
+				return false;
+		}
+		else
+		{
+			if (path is &marked)
+				return false;
+		}
+		sink("/");
+		sink(name);
+		return true;
+	}
+	return recurse(path);
+}

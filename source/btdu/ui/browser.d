@@ -192,34 +192,7 @@ struct Browser
 	private static char[] getFullPath(BrowserPath* path)
 	{
 		buf.clear();
-		buf.put(fsPath);
-		bool recurse(BrowserPath *path)
-		{
-			string name = path.name[];
-			if (name.skipOverNul())
-				switch (name)
-				{
-					case "DATA":
-					case "UNREACHABLE":
-						return true;
-					default:
-						return false;
-				}
-			if (path.parent)
-			{
-				if (!recurse(path.parent))
-					return false;
-			}
-			else
-			{
-				if (path is &marked)
-					return false;
-			}
-			buf.put('/');
-			buf.put(name);
-			return true;
-		}
-		if (recurse(path))
+		if (path.toFilesystemPath(&buf.put!(const(char)[])))
 			return buf.peek();
 		else
 			return null;
