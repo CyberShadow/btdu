@@ -91,7 +91,7 @@ mixin template SimplePath()
 	}
 
 	/// Append a single path segment to this one.
-	typeof(this)* appendName(in char[] name)
+	typeof(this)* appendName(bool existingOnly = false)(in char[] name)
 	{
 		assert(name.length, "Empty path segment");
 		assert(name.indexOf('/') < 0, "Path segment contains /: " ~ name);
@@ -99,53 +99,59 @@ mixin template SimplePath()
 		if (auto pnext = *ppnext)
 			return pnext;
 		else
-			return *ppnext = growAllocator.make!(typeof(this))(&this, NameString(name));
+			static if (existingOnly)
+				return null;
+			else
+				return *ppnext = growAllocator.make!(typeof(this))(&this, NameString(name));
 	}
 
 	/// ditto
-	private typeof(this)* appendName(NameString name)
+	private typeof(this)* appendName(bool existingOnly = false)(NameString name)
 	{
 		auto ppnext = find(name[]);
 		if (auto pnext = *ppnext)
 			return pnext;
 		else
-			return *ppnext = growAllocator.make!(typeof(this))(&this, name);
+			static if (existingOnly)
+				return null;
+			else
+				return *ppnext = growAllocator.make!(typeof(this))(&this, name);
 	}
 
 	/// Append a normalized relative string path to this one.
-	typeof(this)* appendPath(in char[] path)
+	typeof(this)* appendPath(bool existingOnly = false)(in char[] path)
 	{
 		auto p = path.indexOf('/');
 		auto nextName = p < 0 ? path : path[0 .. p];
-		auto next = appendName(nextName);
+		auto next = appendName!existingOnly(nextName);
 		if (p < 0)
 			return next;
 		else
-			return next.appendPath(path[p + 1 .. $]);
+			return next.appendPath!existingOnly(path[p + 1 .. $]);
 	}
 
 	/// ditto
-	typeof(this)* appendPath(in SubPath* path)
+	typeof(this)* appendPath(bool existingOnly = false)(in SubPath* path)
 	{
 		typeof(this)* recurse(typeof(this)* base, in SubPath* path)
 		{
 			if (!path.parent) // root
 				return base;
 			base = recurse(base, path.parent);
-			return base.appendName(path.name);
+			return base.appendName!existingOnly(path.name);
 		}
 
 		return recurse(&this, path);
 	}
 
 	/// ditto
-	typeof(this)* appendPath(in GlobalPath* path)
+	typeof(this)* appendPath(bool existingOnly = false)(in GlobalPath* path)
 	{
 		typeof(this)* recurse(typeof(this)* base, in GlobalPath* path)
 		{
 			if (path.parent)
 				base = recurse(base, path.parent);
-			return base.appendPath(path.subPath);
+			return base.appendPath!existingOnly(path.subPath);
 		}
 
 		return recurse(&this, path);
