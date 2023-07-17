@@ -23,6 +23,7 @@ import std.algorithm.comparison;
 import std.algorithm.iteration;
 import std.algorithm.searching;
 import std.array : array;
+import std.bitmanip;
 import std.experimental.allocator : makeArray, make;
 import std.string;
 import std.traits : Unqual, EnumMembers;
@@ -641,8 +642,11 @@ struct BrowserPath
 
 	// Marks
 
-	private Mark mark;
-	private bool childrenHaveMark;
+	mixin(bitfields!(
+		Mark , q{mark}            , 2,
+		ubyte, null               , 5,
+		bool , q{childrenHaveMark}, 1,
+	));
 
 	/// Returns true for marked, false for unmarked.
 	bool getEffectiveMark()
