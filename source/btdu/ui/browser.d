@@ -239,10 +239,15 @@ struct Browser
 			deleter.update();
 			if (deleter.state == Deleter.State.success)
 			{
-				showMessage(format!"Deleted %s."(selection.humanName));
+				if (deleter.items.length == 1 && !deleter.items[0].obeyMarks)
+					showMessage(format!"Deleted %s."(deleter.items[0].browserPath.humanName));
+				else
+					showMessage(format!"Deleted %d item%s."(deleter.items.length, deleter.items.length > 1 ? "s" : ""));
+				foreach (item; deleter.items)
+					item.browserPath.remove(item.obeyMarks);
+				invalidateMark();
 				popup = Popup.none;
-				deleter.state = Deleter.State.none;
-				selection.remove();
+				deleter.finish();
 				selection = null;
 			}
 
@@ -667,6 +672,9 @@ struct Browser
 					writeExplanation();
 					if (x != xMargin || y != topY)
 						write(endl, endl);
+
+					if (p.deleted)
+						write("(This item was deleted from within btdu.)", endl, endl);
 
 					if (p.parent && p.parent.parent && p.parent.parent.name[] == "\0ERROR")
 					{
@@ -1291,6 +1299,7 @@ struct Browser
 									printKey("Delete the selected file or directory", button("d"));
 									printKey("Mark / unmark selected item", button("    "));
 									printKey("View all marks", button("⇧ Shift"), "+", button("M"));
+									printKey("Delete all marked items", button("⇧ Shift"), "+", button("D"));
 									printKey("Close information panel or quit btdu", button("q"));
 									write(
 										endl,
@@ -1326,14 +1335,62 @@ struct Browser
 							case Popup.deleteConfirm:
 								assert(deleter.state == Deleter.State.ready);
 								title = "Confirm deletion";
+								bool single = deleter.items.length == 1 && !deleter.items[0].obeyMarks;
 								write("Are you sure you want to delete:", endl, endl);
-								xOverflowPath({ write(bold(getFullPath(selection)), endl, endl); });
-								if (expert && totalSamples)
+								xOverflowPath({
+									if (single)
+										write(bold(deleter.items[0].browserPath.toFilesystemPath), endl);
+									else
+									{
+										foreach (i, item; deleter.items)
+										{
+											if (i == 10 && deleter.items.length > 11)
+											{
+												write(bold(formatted!"- (and %d more)"(deleter.items.length - 10)), endl);
+												break;
+											}
+											write("- ", bold(item.browserPath.toFilesystemPath), endl);
+											if (item.obeyMarks)
+											{
+												item.browserPath.enumerateMarks((ref BrowserPath path, bool isMarked)
+													{
+														if (!isMarked)
+														{
+															write("  - except ", bold((&path).toFilesystemPath), endl);
+															return false;
+														}
+														else
+														{
+															assert(&path is item.browserPath);
+															return true;
+														}
+													});
+											}
+										}
+									}
+									write(endl);
+								});
+
+								if (expert)
+								{
+									ulong delTotalSamples, delExclusiveSamples;
+									if (single)
+									{
+										delTotalSamples = totalSamples;
+										delExclusiveSamples = selection.data[SampleType.exclusive].samples;
+									}
+									else
+									{
+										// Assume that we are deleting marked items
+										delTotalSamples = markTotalSamples;
+										delExclusiveSamples = marked.data[SampleType.exclusive].samples;
+									}
 									write(
-										"This will free ~", bold(humanSize(selection.data[SampleType.exclusive].samples * real(totalSize) / totalSamples)),
-										" (±", humanSize(estimateError(totalSamples, selection.data[SampleType.exclusive].samples) * totalSize), ").", endl,
+										"This will free ~", bold(humanSize(delExclusiveSamples * real(totalSize) / delTotalSamples)),
+										" (±", humanSize(estimateError(delTotalSamples, delExclusiveSamples) * totalSize), ").", endl,
 										endl,
 									);
+								}
 								write("Press ", button("⇧ Shift"), "+", button("Y"), " to confirm,", endl,
 									"any other key to cancel.", endl,
 								);
@@ -1559,6 +1616,7 @@ struct Browser
 							case 'q':
 							case 27: // ESC
 								deleter.finish();
+								invalidateMark();
 								popup = Popup.none;
 								break;
 
@@ -1639,20 +1697,6 @@ struct Browser
 						ratioDisplayMode %= enumLength!RatioDisplayMode;
 						showMessage(format("Showing %s", ratioDisplayMode));
 						break;
-					case 'd':
-						if (!selection)
-						{
-							showMessage("Nothing to delete.");
-							break;
-						}
-						if (!getFullPath(selection))
-						{
-							showMessage(format!"Cannot delete special node %s."(selection.humanName));
-							break;
-						}
-						deleter.prepare(getFullPath(selection).idup);
-						popup = Popup.deleteConfirm;
-						break;
 					case ' ':
 						if (selection)
 						{
@@ -1712,20 +1756,6 @@ struct Browser
 							selection = null;
 							itemScrollContext = ScrollContext.init;
 						}
-						break;
-					case 'd':
-						if (!selection)
-						{
-							showMessage("Nothing to delete.");
-							break;
-						}
-						if (!getFullPath(selection))
-						{
-							showMessage(format!"Cannot delete special node %s."(selection.humanName));
-							break;
-						}
-						deleter.prepare(getFullPath(selection).idup);
-						popup = Popup.deleteConfirm;
 						break;
 					case ' ':
 						if (selection)
@@ -1817,6 +1847,55 @@ struct Browser
 						break;
 					case Curses.Key.end:
 						moveCursor(+itemScrollContext.y.contentSize);
+						break;
+					case 'd':
+						if (!selection)
+						{
+							showMessage("Nothing to delete.");
+							break;
+						}
+						if (!getFullPath(selection))
+						{
+							showMessage(format!"Cannot delete special node %s."(selection.humanName));
+							break;
+						}
+						deleter.prepare([Deleter.Item(selection, false)]);
+						popup = Popup.deleteConfirm;
+						break;
+					case 'D':
+						bool haveMarked;
+						BrowserPath* anySpecialNode = null;
+						browserRoot.enumerateMarks((ref path, bool isMarked)
+						{
+							if (isMarked)
+								haveMarked = true;
+							if (!anySpecialNode && !getFullPath(&path))
+								anySpecialNode = &path;
+						});
+						if (!haveMarked)
+						{
+							showMessage("No marks");
+							break;
+						}
+						if (anySpecialNode)
+						{
+							showMessage(format!"Cannot delete special node %s."(anySpecialNode.humanName));
+							break;
+						}
+						if (mode == Mode.browser)
+						{
+							// Switch to marks screen now
+							mode = Mode.marks;
+							selection = null;
+							itemScrollContext = ScrollContext.init;
+						}
+						Deleter.Item[] items;
+						browserRoot.enumerateMarks((ref BrowserPath path, bool isMarked) {
+							if (isMarked)
+								items ~= Deleter.Item(&path, true);
+						});
+						deleter.prepare(items);
+						popup = Popup.deleteConfirm;
 						break;
 					default:
 						// TODO: show message

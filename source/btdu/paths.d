@@ -568,12 +568,40 @@ struct BrowserPath
 	}
 
 	/// Approximate the effect of deleting the filesystem object represented by the path.
-	void remove()
+	void remove(bool obeyMarks)
 	{
+		if (deleting)
+			return; // already deleted
+
 		assert(parent);
 
 		// Mark this subtree for deletion, to aid the rebalancing below.
-		markForDeletion();
+		markForDeletion(obeyMarks);
+
+		// Delete the subtree recursively.
+		doDelete();
+	}
+
+	// Mark this subtree for deletion, to aid the rebalancing below.
+	private bool markForDeletion(bool obeyMarks)
+	{
+		if (obeyMarks && mark == Mark.unmarked)
+			return false;
+		deleting = true;
+		for (auto p = firstChild; p; p = p.nextSibling)
+			if (!p.markForDeletion(obeyMarks))
+				deleting = false;
+		return deleting;
+	}
+
+	private void doDelete()
+	{
+		// Evict children first
+		for (auto p = firstChild; p; p = p.nextSibling)
+			p.doDelete();
+
+		if (!deleting)
+			return;
 
 		// Rebalance the hierarchy's statistics by updating and moving sample data as needed.
 		evict();
@@ -586,22 +614,10 @@ struct BrowserPath
 		}
 	}
 
-	// Mark this subtree for deletion, to aid the rebalancing below.
-	private void markForDeletion()
-	{
-		deleting = true;
-		for (auto p = firstChild; p; p = p.nextSibling)
-			p.markForDeletion();
-	}
-
 	/// Clear all samples or move them elsewhere.
 	private void evict()
 	{
 		assert(parent);
-
-		// Evict children first
-		for (auto p = firstChild; p; p = p.nextSibling)
-			p.evict();
 
 		// Save this node's remaining stats before we remove them.
 		auto data = this.data;
@@ -661,6 +677,8 @@ struct BrowserPath
 		}
 	}
 
+	@property bool deleted() { return deleting; }
+
 	// Marks
 
 	mixin(bitfields!(
@@ -704,13 +722,19 @@ struct BrowserPath
 			p.childrenHaveMark = true;
 	}
 
-	void enumerateMarks(scope void delegate(ref BrowserPath, bool marked) callback)
+	void enumerateMarks(scope bool delegate(ref BrowserPath, bool marked) callback)
 	{
 		if (mark != Mark.parent)
-			callback(this, mark == Mark.marked);
+			if (!callback(this, mark == Mark.marked))
+				return;
 		if (childrenHaveMark)
 			for (auto p = firstChild; p; p = p.nextSibling)
 				p.enumerateMarks(callback);
+	}
+
+	void enumerateMarks(scope void delegate(ref BrowserPath, bool marked) callback)
+	{
+		enumerateMarks((ref BrowserPath path, bool marked) { callback(path, marked); return true; });
 	}
 }
 

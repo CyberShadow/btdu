@@ -21,7 +21,9 @@ module btdu.ui.deletion;
 
 import std.algorithm.comparison;
 import std.algorithm.searching;
+import std.conv : to;
 import std.exception;
+import std.path;
 import std.typecons;
 
 import core.sync.event;
@@ -31,6 +33,9 @@ import core.thread : Thread;
 import ae.sys.file : listDir, getMounts;
 
 import btrfs : getSubvolumeID, deleteSubvolume;
+
+import btdu.paths : BrowserPath, Mark;
+import btdu.state : toFilesystemPath;
 
 struct Deleter
 {
@@ -56,10 +61,21 @@ struct Deleter
 		return this.state == Deleter.State.progress;
 	}
 
-	void prepare(string path)
+	/// One item to delete.
+	struct Item
+	{
+		/// The `BrowserPath` of the item to delete.
+		BrowserPath* browserPath;
+		/// If set, deletion will stop if the corresponding node has a negative mark.
+		bool obeyMarks;
+	}
+	Item[] items;
+
+	void prepare(Item[] items)
 	{
 		assert(this.state == State.none);
-		this.current = path;
+		this.items = items;
+		this.current = items.length ? items[0].browserPath.toFilesystemPath.to!string : null;
 		this.state = State.ready;
 	}
 
@@ -81,56 +97,97 @@ struct Deleter
 
 	private void threadFunc()
 	{
-		ulong initialDeviceID;
-		listDir!((e) {
-			synchronized(this.thread)
-				this.current = e.fullName;
+		foreach (item; items)
+		{
+			auto fsPath = item.browserPath.toFilesystemPath.to!string;
+			assert(fsPath && fsPath.isAbsolute);
 
-			if (this.stopping)
-			{
-				// e.stop();
-				// return;
-				throw new Exception("User abort");
-			}
-
-			if (!initialDeviceID)
-				initialDeviceID = e.needStat!(e.StatTarget.dirEntry)().st_dev;
-
-			if (e.entryIsDir)
-			{
-				auto stat = e.needStat!(e.StatTarget.dirEntry)();
-
-				// A subvolume root, or a different btrfs filesystem is mounted here
-				auto isTreeRoot = stat.st_ino.among(2, 256);
-
-				if (stat.st_dev != initialDeviceID || isTreeRoot)
+			ulong initialDeviceID;
+			listDir!((
+				// The directory entry
+				e,
+				// Only true when `e` is the root (`item.fsPath`)
+				bool root,
+				// The corresponding parent `BrowserPath`, if we are to obey marks
+				BrowserPath* parentBrowserPath,
+				// We will set this to false if we don't fully clear out this directory
+				bool* unlinkOK,
+			) {
+				auto entryBrowserPath =
+					root ? parentBrowserPath :
+					parentBrowserPath ? parentBrowserPath.appendName!true(e.baseNameFS)
+					: null;
+				if (entryBrowserPath && entryBrowserPath.mark == Mark.unmarked)
 				{
-					if (getMounts().canFind!(mount => mount.file == e.fullNameFS))
-						throw new Exception("Path resides in another filesystem, stopping");
-					enforce(isTreeRoot, "Unexpected st_dev change");
-					// Can only be a subvolume going forward.
-
-					this.state = State.subvolumeConfirm;
-					this.subvolumeResume.wait();
-					if (this.stopping)
-						throw new Exception("User abort");
-
-					auto fd = openat(e.dirFD, e.baseNameFSPtr, O_RDONLY);
-					errnoEnforce(fd >= 0, "openat");
-					auto subvolumeID = getSubvolumeID(fd);
-					deleteSubvolume(fd, subvolumeID);
-
-					this.state = State.progress;
-					return; // The ioctl will also unlink the directory entry
+					if (unlinkOK) *unlinkOK = false;
+					return;
 				}
 
-				e.recurse();
-			}
+				synchronized(this.thread)
+					this.current = e.fullName;
 
-			int ret = unlinkat(e.dirFD, e.baseNameFSPtr,
-				e.entryIsDir ? AT_REMOVEDIR : 0);
-			errnoEnforce(ret == 0, "unlinkat failed");
-		}, Yes.includeRoot)(this.current);
+				if (this.stopping)
+				{
+					// e.stop();
+					// return;
+					throw new Exception("User abort");
+				}
+
+				if (!initialDeviceID)
+					initialDeviceID = e.needStat!(e.StatTarget.dirEntry)().st_dev;
+
+				bool entryUnlinkOK = true;
+				if (e.entryIsDir)
+				{
+					auto stat = e.needStat!(e.StatTarget.dirEntry)();
+
+					// A subvolume root, or a different btrfs filesystem is mounted here
+					auto isTreeRoot = stat.st_ino.among(2, 256);
+
+					if (stat.st_dev != initialDeviceID || isTreeRoot)
+					{
+						if (getMounts().canFind!(mount => mount.file == e.fullNameFS))
+							throw new Exception("Path resides in another filesystem, stopping");
+						enforce(isTreeRoot, "Unexpected st_dev change");
+						// Can only be a subvolume going forward.
+
+						bool haveNegativeMarks = false;
+						if (entryBrowserPath)
+							entryBrowserPath.enumerateMarks((ref const BrowserPath path, bool isMarked) { if (!isMarked) haveNegativeMarks = true; });
+						if (!haveNegativeMarks) // Can't delete subvolume if the user excluded some items inside it.
+						{
+							this.state = State.subvolumeConfirm;
+							this.subvolumeResume.wait();
+							if (this.stopping)
+								throw new Exception("User abort");
+
+							auto fd = openat(e.dirFD, e.baseNameFSPtr, O_RDONLY);
+							errnoEnforce(fd >= 0, "openat");
+							auto subvolumeID = getSubvolumeID(fd);
+							deleteSubvolume(fd, subvolumeID);
+
+							this.state = State.progress;
+							return; // The ioctl will also unlink the directory entry
+						}
+					}
+
+					e.recurse(false, entryBrowserPath, &entryUnlinkOK);
+				}
+
+				if (entryUnlinkOK)
+				{
+					int ret = unlinkat(e.dirFD, e.baseNameFSPtr,
+						e.entryIsDir ? AT_REMOVEDIR : 0);
+					errnoEnforce(ret == 0, "unlinkat failed");
+				}
+				if (unlinkOK) *unlinkOK &= entryUnlinkOK;
+			}, Yes.includeRoot)(
+				fsPath,
+				true,
+				item.obeyMarks ? item.browserPath : null,
+				null,
+			);
+		}
 	}
 
 	void confirm(Flag!"proceed" proceed)

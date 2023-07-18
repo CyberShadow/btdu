@@ -119,3 +119,12 @@ bool toFilesystemPath(BrowserPath* path, void delegate(const(char)[]) sink)
 	}
 	return recurse(path);
 }
+
+auto toFilesystemPath(BrowserPath* path)
+{
+	import ae.utils.functor.primitives : functor;
+	import ae.utils.text.functor : stringifiable;
+	return path
+		.functor!((path, writer) => path.toFilesystemPath(writer))
+		.stringifiable;
+}
