@@ -29,6 +29,7 @@ import std.conv;
 import std.exception;
 import std.meta;
 import std.socket;
+import std.stdio : File;
 import std.typecons;
 
 import ae.utils.text.functor : stringifiable, fmtSeq;
@@ -74,9 +75,9 @@ struct Curses
 				throw new Exception("Could not detect a TTY to display interactive UI on.");
 			}();
 
-			inputFile = fdopen(inputFD, "rb");
-			outputFile = fdopen(outputFD, "wb");
-			newterm(getenv("TERM"), outputFile, inputFile);
+			inputFile.fdopen(inputFD, "rb");
+			outputFile.fdopen(outputFD, "wb");
+			newterm(getenv("TERM"), outputFile.getFP(), inputFile.getFP());
 
 			stdinSocket = new Socket(cast(socket_t)inputFD, AddressFamily.UNSPEC);
 			stdinSocket.blocking = false;
@@ -98,10 +99,9 @@ struct Curses
 			import core.stdc.stdio : fclose;
 			import core.sys.posix.unistd : close;
 
-			if (inputFile)
-				fclose(inputFile);
-			if (outputFile)
-				fclose(outputFile);
+			stdinSocket.blocking = true;
+			inputFile.close();
+			outputFile.close();
 			if (ttyFD >= 0)
 				close(ttyFD);
 		}
@@ -740,9 +740,23 @@ struct Curses
 
 	Key readKey() { return Key(getch()); }
 
+	void suspend(scope void delegate(File input, File output) fn)
+	{
+		def_prog_mode();
+		endwin();
+		stdinSocket.blocking = true;
+		scope (exit)
+		{
+			stdinSocket.blocking = false;
+			reset_prog_mode();
+			refresh();
+		}
+		fn(inputFile, outputFile);
+	}
+
 private:
 	int ttyFD = -1;
-	FILE* inputFile, outputFile;
+	File inputFile, outputFile;
 }
 
 private:
