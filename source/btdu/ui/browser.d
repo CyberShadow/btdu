@@ -44,12 +44,13 @@ import ae.utils.time : stdDur, stdTime;
 import btrfs;
 
 import btdu.alloc : StaticAppender;
-import btdu.ui.curses;
-import btdu.ui.deletion;
 import btdu.common;
-import btdu.state;
+import btdu.impexp : exportData;
 import btdu.paths;
 import btdu.proto : logicalOffsetHole, logicalOffsetSlack;
+import btdu.state;
+import btdu.ui.curses;
+import btdu.ui.deletion;
 
 alias imported = btdu.state.imported;
 
@@ -1300,6 +1301,7 @@ struct Browser
 									printKey("Mark / unmark selected item", button("    "));
 									printKey("View all marks", button("⇧ Shift"), "+", button("M"));
 									printKey("Delete all marked items", button("⇧ Shift"), "+", button("D"));
+									printKey("Export results to file", button("⇧ Shift"), "+", button("O"));
 									printKey("Close information panel or quit btdu", button("q"));
 									write(
 										endl,
@@ -1896,6 +1898,30 @@ struct Browser
 						});
 						deleter.prepare(items);
 						popup = Popup.deleteConfirm;
+						break;
+					case 'O':
+						curses.suspend((inputFile, outputFile) {
+							import std.process : pipe, spawnProcess, wait;
+							import ae.sys.file : readFile;
+							auto p = pipe();
+							auto pid = spawnProcess(
+								["/bin/sh", "-c", `printf 'Saving results.\nFile name: ' >&2 && read -r fn && printf -- %s "$fn"`],
+								inputFile,
+								p.writeEnd,
+								outputFile,
+							);
+							auto output = p.readEnd.readFile();
+							auto status = wait(pid);
+							if (status == 0 && output.length)
+							{
+								auto path = cast(string)output;
+								outputFile.writeln("Exporting..."); outputFile.flush();
+								exportData(path);
+								showMessage("Exported to " ~ path);
+							}
+							else
+								showMessage("Export canceled");
+						});
 						break;
 					default:
 						// TODO: show message
