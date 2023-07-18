@@ -141,13 +141,6 @@ Please report defects and enhancement requests to the GitHub issue tracker:
 		}());
 	}
 
-	Socket stdinSocket;
-	if (!headless)
-	{
-		stdinSocket = new Socket(cast(socket_t)stdin.fileno, AddressFamily.UNSPEC);
-		stdinSocket.blocking = false;
-	}
-
 	Browser browser;
 	if (!headless)
 	{
@@ -183,10 +176,10 @@ Please report defects and enhancement requests to the GitHub issue tracker:
 	{
 		readSet.reset();
 		exceptSet.reset();
-		if (stdinSocket)
+		if (browser.curses.stdinSocket)
 		{
-			readSet.add(stdinSocket);
-			exceptSet.add(stdinSocket);
+			readSet.add(browser.curses.stdinSocket);
+			exceptSet.add(browser.curses.stdinSocket);
 		}
 		if (!paused)
 			foreach (ref subproc; subprocesses)
@@ -198,7 +191,7 @@ Please report defects and enhancement requests to the GitHub issue tracker:
 			Socket.select(readSet, null, exceptSet);
 		auto now = MonoTime.currTime();
 
-		if (stdinSocket && browser.handleInput())
+		if (browser.curses.stdinSocket && browser.handleInput())
 		{
 			do {} while (browser.handleInput()); // Process all input
 			if (browser.done)

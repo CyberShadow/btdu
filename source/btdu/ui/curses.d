@@ -28,6 +28,7 @@ import std.algorithm.comparison : min, max;
 import std.conv;
 import std.exception;
 import std.meta;
+import std.socket;
 import std.typecons;
 
 import ae.utils.text.functor : stringifiable, fmtSeq;
@@ -39,6 +40,8 @@ import deimos.ncurses;
 struct Curses
 {
 	@disable this(this);
+
+	Socket stdinSocket;
 
 	void start()
 	{
@@ -74,6 +77,9 @@ struct Curses
 			inputFile = fdopen(inputFD, "rb");
 			outputFile = fdopen(outputFD, "wb");
 			newterm(getenv("TERM"), outputFile, inputFile);
+
+			stdinSocket = new Socket(cast(socket_t)inputFD, AddressFamily.UNSPEC);
+			stdinSocket.blocking = false;
 		}
 
 		timeout(0); // Use non-blocking read
