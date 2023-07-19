@@ -58,9 +58,9 @@ struct Browser
 {
 	Curses curses;
 
-	BrowserPath* currentPath;
-	BrowserPath* selection;
-	BrowserPath*[] items;
+	BrowserPathPtr currentPath;
+	BrowserPathPtr selection;
+	BrowserPathPtr[] items;
 	bool done;
 
 	struct ScrollContext
@@ -142,7 +142,7 @@ struct Browser
 		shared_,
 	}
 	SizeMetric sizeDisplayMode = SizeMetric.represented;
-	static SampleType sizeMetricSampleType(SizeMetric metric)
+	static SampleType sizeMetricSampleType(SizeMetric metric) @nogc
 	{
 		final switch (metric)
 		{
@@ -168,7 +168,7 @@ struct Browser
 	{
 		curses.start();
 
-		currentPath = &browserRoot;
+		currentPath = browserRoot;
 	}
 
 	@property bool needRefresh()
@@ -190,7 +190,7 @@ struct Browser
 	private static StaticAppender!char buf, buf2; // Reusable buffers
 
 	// Returns full path as string, or null.
-	private static char[] getFullPath(BrowserPath* path)
+	private static char[] getFullPath(BrowserPathPtr path)
 	{
 		buf.clear();
 		if (path.toFilesystemPath(&buf.put!(const(char)[])))
@@ -199,33 +199,33 @@ struct Browser
 			return null;
 	}
 
-	private real getSamples(BrowserPath* path)
+	private real getSamples(BrowserPathPtr path) @nogc
 	{
 		final switch (sizeDisplayMode)
 		{
 			case SizeMetric.represented:
 			case SizeMetric.exclusive:
 			case SizeMetric.shared_:
-				return path.data[sizeMetricSampleType(sizeDisplayMode)].samples;
+				return path.getSampleCount(sizeMetricSampleType(sizeDisplayMode));
 			case SizeMetric.distributed:
 				return path.distributedSamples;
 		}
 	}
 
-	private real getDuration(BrowserPath* path)
+	private real getDuration(BrowserPathPtr path) @nogc
 	{
 		final switch (sizeDisplayMode)
 		{
 			case SizeMetric.represented:
 			case SizeMetric.exclusive:
 			case SizeMetric.shared_:
-				return path.data[sizeMetricSampleType(sizeDisplayMode)].duration;
+				return path.getDuration(sizeMetricSampleType(sizeDisplayMode));
 			case SizeMetric.distributed:
 				return path.distributedDuration;
 		}
 	}
 
-	private real getAverageDuration(BrowserPath* path)
+	private real getAverageDuration(BrowserPathPtr path)
 	{
 		auto samples = getSamples(path);
 		auto duration = getDuration(path);
@@ -252,7 +252,7 @@ struct Browser
 				selection = null;
 			}
 
-			static FastAppender!(BrowserPath*) itemsBuf;
+			static FastAppender!BrowserPathPtr itemsBuf;
 			itemsBuf.clear();
 			final switch (mode)
 			{
@@ -261,9 +261,9 @@ struct Browser
 						itemsBuf.put(child);
 					break;
 				case Mode.marks:
-					browserRoot.enumerateMarks((ref BrowserPath path, bool marked) {
-						if (&path !is &browserRoot)
-							itemsBuf.put(&path);
+					browserRoot.enumerateMarks((BrowserPathPtr path, bool marked) {
+						if (path !is browserRoot)
+							itemsBuf.put(path);
 					});
 					break;
 				case Mode.help:
@@ -303,7 +303,7 @@ struct Browser
 					break;
 
 				case Mode.marks:
-					items.sort!((a, b) => *a < *b);
+					items.sort!((a, b) => a < b);
 					break;
 
 				case Mode.help:
@@ -316,7 +316,7 @@ struct Browser
 
 			if (!items.length)
 			{
-				if (mode == Mode.browser && currentPath !is &browserRoot)
+				if (mode == Mode.browser && currentPath !is browserRoot)
 				{
 					mode = Mode.info;
 					textScrollContext = ScrollContext.init;
@@ -332,7 +332,7 @@ struct Browser
 				}
 			}
 
-			auto totalSamples = browserRoot.data[SampleType.represented].samples;
+			auto totalSamples = browserRoot.enter!(p => p.data[SampleType.represented].samples);
 
 			eraseWindow();
 			enum minHeight =
@@ -355,19 +355,19 @@ struct Browser
 				xOverflowEllipsis({
 					// Top bar
 					size_t numMarked, numUnmarked;
-					browserRoot.enumerateMarks((ref _, bool marked) { (marked ? numMarked : numUnmarked)++; });
+					browserRoot.enumerateMarks((_, bool marked) { (marked ? numMarked : numUnmarked)++; });
 					if (numMarked)
 					{
 						assert(numUnmarked > 0); numUnmarked--; // Root is always unmarked
 						at(0, 0, {
-							if (expert)
+							if (samplingConfiguration.has.allSampleTypes)
 							{
 								if (markTotalSamples == 0)
 									write(" ? in");
 								else
 									write(formatted!" ~%s (±%s) in"(
-										humanSize(marked.data[SampleType.exclusive].samples * real(totalSize) / markTotalSamples),
-										humanSize(estimateError(markTotalSamples, marked.data[SampleType.exclusive].samples) * totalSize),
+										humanSize(marked.getSampleCount(SampleType.exclusive) * real(totalSize) / markTotalSamples),
+										humanSize(estimateError(markTotalSamples, marked.getSampleCount(SampleType.exclusive)) * totalSize),
 									));
 							}
 							write(" ", numMarked);
@@ -401,7 +401,7 @@ struct Browser
 							else
 								write(bold("-"));
 
-							if (expert)
+							if (samplingConfiguration.has.allSampleTypes)
 								write("  Size metric: ", bold(sizeDisplayMode.to!string.chomp("_")));
 						}
 						write(endl);
@@ -411,11 +411,11 @@ struct Browser
 
 			alias button = (text) => reversed("[", bold(text), "]");
 
-			void drawInfo(BrowserPath* p, bool fullScreen)
+			void drawInfo(BrowserPathPtr p, bool fullScreen)
 			{
 				void writeExplanation()
 				{
-					if (p is &browserRoot)
+					if (p is browserRoot)
 						return write(
 							"Welcome to btdu. You are in the hierarchy root; ",
 							"results will be arranged according to their block group and profile, and then by path.",
@@ -423,7 +423,7 @@ struct Browser
 							"Use ", button("↑"), " ", button("↓"), " ", button("←"), " ", button("→"), " to navigate, press ", button("?"), " for help."
 						);
 
-					if (p is &marked)
+					if (p is marked)
 						return write(
 							"Summary of all marked nodes:"
 						);
@@ -690,7 +690,7 @@ struct Browser
 						}
 					}
 
-					alias logicalOffsetStr = stringifiable!(
+					alias logicalOffsetStr = offset => functor!(
 						(offset, sink)
 						{
 							switch (offset.logical)
@@ -699,12 +699,13 @@ struct Browser
 								case logicalOffsetSlack: sink("<SLACK>"); return;
 								default: sink.formattedWrite!"%s"(offset.logical);
 							}
-						}, Offset);
+						})(offset).stringifiable();
 					alias physicalOffsetStr = offset => formatted!"%d:%d"(offset.devID, offset.physical);
 
-					auto sampleCountWidth = getTextWidth(browserRoot.data[expert ? SampleType.shared_ : SampleType.represented].samples);
+					auto biggestSampleType = samplingConfiguration.has.allSampleTypes ? SampleType.shared_ : SampleType.represented;
+					auto sampleCountWidth = getTextWidth(browserRoot.enter!(p => p.data[biggestSampleType].samples));
 
-					if (expert)
+					if (samplingConfiguration.has.allSampleTypes)
 					{
 						void writeSizeColumn(int column, SizeMetric metric)
 						{
@@ -726,7 +727,7 @@ struct Browser
 										{
 											auto numSamples = metric == SizeMetric.distributed
 												? p.distributedSamples
-												: p.data[sizeMetricSampleType(metric)].samples;
+												: p.enter(functor!((sampleType, p) => p.data[sampleType].samples)(sizeMetricSampleType(metric)));
 											write("~", bold(humanSize(numSamples * real(totalSize) / totalSamples, true)));
 											auto showError = metric.among(SizeMetric.represented, SizeMetric.exclusive);
 											if (showError)
@@ -740,7 +741,7 @@ struct Browser
 										if (metric == SizeMetric.distributed)
 											write(formatted!"%*.3f"(sampleCountWidth + 4, p.distributedSamples));
 										else
-											write(formatted!"%*d"(sampleCountWidth, p.data[sizeMetricSampleType(metric)].samples));
+											write(formatted!"%*d"(sampleCountWidth, p.getSampleCount(sizeMetricSampleType(metric))));
 									}
 									break;
 							}
@@ -771,11 +772,11 @@ struct Browser
 						write("Represented size: ");
 						if (totalSamples > 0)
 						{
-							write("~", bold(humanSize(p.data[type].samples * real(totalSize) / totalSamples)));
-							if (showError) write(" ±", humanSize(estimateError(totalSamples, p.data[type].samples) * totalSize));
+							write("~", bold(humanSize(p.getSampleCount(type) * real(totalSize) / totalSamples)));
+							if (showError) write(" ±", humanSize(estimateError(totalSamples, p.getSampleCount(type)) * totalSize));
 							write(formatted!" (%d sample%s)"(
-								p.data[type].samples,
-								p.data[type].samples == 1 ? "" : "s",
+								p.getSampleCount(type),
+								p.getSampleCount(type) == 1 ? "" : "s",
 							));
 						}
 						else
@@ -787,14 +788,20 @@ struct Browser
 					auto fullPath = getFullPath(p);
 					if (fullPath) xOverflowChars({ write("Full path: ", fullPath, endl); });
 
-					write("Average query duration: ");
-					if (p.data[SampleType.represented].samples > 0)
-						write(stdDur(p.data[SampleType.represented].duration / p.data[SampleType.represented].samples).durationAsDecimalString, endl);
-					else
-						write("-", endl);
+					if (samplingConfiguration.has.duration)
+					{
+						write("Average query duration: ");
+						if (p.getSampleCount(SampleType.represented) > 0)
+							write(stdDur(p.getDuration(SampleType.represented) / p.getSampleCount(SampleType.represented)).durationAsDecimalString, endl);
+						else
+							write("-", endl);
+					}
 
 					{
 						bool showSeenAs;
+						if (!samplingConfiguration.has.seenAs)
+							showSeenAs = false;
+						else
 						if (p.seenAs.empty)
 							showSeenAs = false;
 						else
@@ -805,7 +812,7 @@ struct Browser
 
 						if (showSeenAs)
 						{
-							auto representedSamples = p.data[SampleType.represented].samples;
+							auto representedSamples = p.getSampleCount(SampleType.represented);
 							write(endl, "Shares data with: ", endl, endl);
 							auto seenAs = p.seenAs
 								.byKeyValue
@@ -858,13 +865,15 @@ struct Browser
 						}
 					}
 
-					if (sizeDisplayMode != SizeMetric.distributed && p.data[sizeMetricSampleType(sizeDisplayMode)].samples > 0)
+					if (samplingConfiguration.has.offsets &&
+						sizeDisplayMode != SizeMetric.distributed &&
+						p.getSampleCount(sizeMetricSampleType(sizeDisplayMode)) > 0)
 					{
 						write(endl, "Latest offsets (", bold(sizeDisplayMode.to!string.chomp("_")), " samples):", endl, endl);
-						auto data = p.data[sizeMetricSampleType(sizeDisplayMode)];
+						auto sampleType = sizeMetricSampleType(sizeDisplayMode);
 
 						xOverflowEllipsis({
-							writeTable(3, 1 + min(data.samples, 4),
+							writeTable(3, 1 + min(p.getSampleCount(sampleType), 4),
 								(int column, int row)
 								{
 									final switch (row)
@@ -883,24 +892,24 @@ struct Browser
 											final switch (column)
 											{
 												case 0:
-													return write(formatted!"#%*d"(sampleCountWidth, data.samples - row));
+													return write(formatted!"#%*d"(sampleCountWidth, p.getSampleCount(sampleType) - row));
 												case 1:
-													if (!physical)
+													if (!samplingConfiguration.has.physical)
 														return write("-");
-													return writeOffset(physicalOffsetStr(data.offsets[index]));
+													return p.enter!(p => writeOffset(physicalOffsetStr(p.data[sampleType].offsets[index])));
 												case 2:
-													return writeOffset(logicalOffsetStr(data.offsets[index]));
+													return p.enter!(p => writeOffset(logicalOffsetStr(p.data[sampleType].offsets[index])));
 											}
 										case 4: return write(
 											column == 0 ? "" :
-											column == 1 && !physical ? "" :
+											column == 1 && !samplingConfiguration.has.physical ? "" :
 											"• • •"
 										);
 									}
 								},
 								(int column, int row) => (
 									row == 0 || row == 4 ? Alignment.center :
-									column == 1 && !physical ? Alignment.center :
+									column == 1 && !samplingConfiguration.has.physical ? Alignment.center :
 									column == 0 ? Alignment.left :
 									Alignment.right
 								),
@@ -997,7 +1006,7 @@ struct Browser
 
 			void drawItems()
 			{
-				real getUnits(BrowserPath* path)
+				real getUnits(BrowserPathPtr path)
 				{
 					final switch (sortMode)
 					{
@@ -1104,7 +1113,7 @@ struct Browser
 							final switch (mode)
 							{
 								case Mode.browser:
-									write(child.firstChild is null ? ' ' : '/');
+									write(!child.firstChild ? ' ' : '/');
 
 									{
 										withWindow(x, y, maxItemWidth.to!xy_t, 1, {
@@ -1119,7 +1128,7 @@ struct Browser
 								case Mode.marks:
 									withWindow(x, y, maxItemWidth.to!xy_t, 1, {
 										middleTruncate({
-											write(child.pointerWriter, endl);
+											write(child, endl);
 										});
 									});
 									x += maxItemWidth;
@@ -1135,7 +1144,7 @@ struct Browser
 				}
 			}
 
-			alias drawInfoPanel = (titlePrefix, overflowKeyText, bool fullScreen, auto ref ScrollContext scrollContext, BrowserPath* p)
+			alias drawInfoPanel = (titlePrefix, overflowKeyText, bool fullScreen, auto ref ScrollContext scrollContext, BrowserPathPtr p)
 			{
 				auto leftMargin = fullScreen ? 0 : 1;
 				auto rightMargin = 0;
@@ -1145,7 +1154,7 @@ struct Browser
 					auto bottomOverflowText = fmtSeq(" more - press ", overflowKeyText, " to view ");
 
 				drawPanel(
-					fmtSeq(titlePrefix, bold(fmtIf(p is &browserRoot, () => "/", functor!(p => p.humanName)(p)))),
+					fmtSeq(titlePrefix, bold(fmtIf(p is browserRoot, () => "/", functor!(p => p.humanName)(p)))),
 					null,
 					bottomOverflowText,
 					scrollContext,
@@ -1171,7 +1180,7 @@ struct Browser
 							itemScrollContext.y.cursor = selection && items ? items.countUntil(selection) : 0;
 							itemScrollContext.y.normalize();
 
-							auto displayedPath = currentPath is &browserRoot ? "/" : buf.stringify(currentPath.pointerWriter);
+							auto displayedPath = currentPath is browserRoot ? "/" : buf.stringify(currentPath);
 							auto maxPathWidth = width - 8 /*- prefix.length*/;
 							if (displayedPath.length > maxPathWidth) // TODO: this slice is wrong
 								displayedPath = buf2.stringify!"…%s"(displayedPath[$ - (maxPathWidth - 1) .. $]);
@@ -1190,7 +1199,7 @@ struct Browser
 						if (selection)
 							withWindow(itemsWidth + 1, currentInfoHeight, infoWidth, height - currentInfoHeight, {
 								auto moreButton = fmtIf(
-									selection.firstChild !is null,
+									!!selection.firstChild,
 									fmtSeq(button("→"), " ", button("i")).valueFunctor,
 									       button("→")                   .valueFunctor,
 								);
@@ -1229,14 +1238,14 @@ struct Browser
 						auto currentInfoHeight = selection ? height / 2 : height;
 						updateMark();
 						withWindow(itemsWidth + 1, 0, infoWidth, currentInfoHeight, {
-							drawInfoPanel("Summary", button("i"), false, ScrollContext.init, &marked);
+							drawInfoPanel("Summary", button("i"), false, ScrollContext.init, marked);
 						});
 
 						// "Selected:"
 						if (selection)
 							withWindow(itemsWidth + 1, currentInfoHeight, infoWidth, height - currentInfoHeight, {
 								auto moreButton = fmtIf(
-									selection.firstChild !is null,
+									!!selection.firstChild,
 									fmtSeq(button("→"), " ", button("i")).valueFunctor,
 									       button("→")                   .valueFunctor,
 								);
@@ -1354,16 +1363,16 @@ struct Browser
 											write("- ", bold(item.browserPath.toFilesystemPath), endl);
 											if (item.obeyMarks)
 											{
-												item.browserPath.enumerateMarks((ref BrowserPath path, bool isMarked)
+												item.browserPath.enumerateMarks((BrowserPathPtr path, bool isMarked)
 													{
 														if (!isMarked)
 														{
-															write("  - except ", bold((&path).toFilesystemPath), endl);
+															write("  - except ", bold(path.toFilesystemPath), endl);
 															return false;
 														}
 														else
 														{
-															assert(&path is item.browserPath);
+															assert(path is item.browserPath);
 															return true;
 														}
 													});
@@ -1373,19 +1382,19 @@ struct Browser
 									write(endl);
 								});
 
-								if (expert)
+								if (samplingConfiguration.has.allSampleTypes)
 								{
 									ulong delTotalSamples, delExclusiveSamples;
 									if (single)
 									{
 										delTotalSamples = totalSamples;
-										delExclusiveSamples = selection.data[SampleType.exclusive].samples;
+										delExclusiveSamples = selection.getSampleCount(SampleType.exclusive);
 									}
 									else
 									{
 										// Assume that we are deleting marked items
 										delTotalSamples = markTotalSamples;
-										delExclusiveSamples = marked.data[SampleType.exclusive].samples;
+										delExclusiveSamples = marked.getSampleCount(SampleType.exclusive);
 									}
 									write(
 										"This will free ~", bold(humanSize(delExclusiveSamples * real(totalSize) / delTotalSamples)),
@@ -1681,7 +1690,7 @@ struct Browser
 						setSort(SortMode.time);
 						break;
 					case 'm':
-						if (expert)
+						if (samplingConfiguration.has.allSampleTypes)
 						{
 							sizeDisplayMode = cast(SizeMetric)((sizeDisplayMode + 1) % enumLength!SizeMetric);
 							showMessage(format!"Showing %s size"(sizeDisplayMode.to!string.chomp("_")));
@@ -1709,7 +1718,7 @@ struct Browser
 						break;
 					case 'M':
 						bool haveMarked;
-						browserRoot.enumerateMarks((ref _, bool isMarked) { if (isMarked) haveMarked = true; });
+						browserRoot.enumerateMarks((_, bool isMarked) { if (isMarked) haveMarked = true; });
 						if (haveMarked)
 						{
 							mode = Mode.marks;
@@ -1769,7 +1778,7 @@ struct Browser
 							selection =
 								pos >= 0 && pos < items.length ? items[pos] :
 								items.length ? items[$-1] :
-								null;
+								BrowserPathPtr.init;
 						}
 						break;
 					default:
@@ -1866,13 +1875,13 @@ struct Browser
 						break;
 					case 'D':
 						bool haveMarked;
-						BrowserPath* anySpecialNode = null;
-						browserRoot.enumerateMarks((ref path, bool isMarked)
+						BrowserPathPtr anySpecialNode;
+						browserRoot.enumerateMarks((path, bool isMarked)
 						{
 							if (isMarked)
 								haveMarked = true;
-							if (!anySpecialNode && !getFullPath(&path))
-								anySpecialNode = &path;
+							if (!anySpecialNode && !getFullPath(path))
+								anySpecialNode = path;
 						});
 						if (!haveMarked)
 						{
@@ -1892,9 +1901,9 @@ struct Browser
 							itemScrollContext = ScrollContext.init;
 						}
 						Deleter.Item[] items;
-						browserRoot.enumerateMarks((ref BrowserPath path, bool isMarked) {
+						browserRoot.enumerateMarks((BrowserPathPtr path, bool isMarked) {
 							if (isMarked)
-								items ~= Deleter.Item(&path, true);
+								items ~= Deleter.Item(path, true);
 						});
 						deleter.prepare(items);
 						popup = Popup.deleteConfirm;

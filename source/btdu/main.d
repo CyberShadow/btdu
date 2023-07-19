@@ -58,6 +58,7 @@ void program(
 	Switch!hiddenOption subprocess = false,
 	Switch!("Measure physical space (instead of logical).", 'p') physical = false,
 	Switch!("Expert mode: collect and show additional metrics.\nUses more memory.", 'x') expert = false,
+	Switch!("Low-memory mode: collect and show fewer metrics.\nUses less memory. Can be combined with other modes.") lowMem = false,
 	Switch!hiddenOption man = false,
 	Option!(string, "Set UI refresh interval.\nSpecify 0 to refresh as fast as possible.", "DURATION", 'i', "interval") refreshIntervalStr = null,
 	Switch!("Run without launching the result browser UI.") headless = false,
@@ -98,15 +99,18 @@ Please report defects and enhancement requests to the GitHub issue tracker:
 
 	if (doImport)
 	{
-		if (procs || seed || subprocess || expert || physical || maxSamples || maxTime || minResolution || exportPath)
+		if (procs || seed || subprocess || expert || physical || lowMem || maxSamples || maxTime || minResolution || exportPath)
 			throw new Exception("Conflicting command-line options");
 
 		stderr.writeln("Loading results from file...");
 		importData(path);
 	}
 
-	.expert = expert;
-	.physical = physical;
+	samplingConfiguration.has.extras = !lowMem;
+	samplingConfiguration.has.expert = expert;
+	samplingConfiguration.has.physical = physical;
+
+	browserRoot.enter!((ref p) { p = new typeof(*p); });
 
 	if (!doImport)
 	{
@@ -222,13 +226,13 @@ Please report defects and enhancement requests to the GitHub issue tracker:
 		}
 
 		if ((maxSamples
-				&& browserRoot.data[SampleType.represented].samples >= maxSamples) ||
+				&& browserRoot.getSampleCount(SampleType.represented) >= maxSamples) ||
 			(maxTime
 				&& now > startTime + parsedMaxTime) ||
 			(minResolution
-				&& browserRoot.data[SampleType.represented].samples
+				&& browserRoot.getSampleCount(SampleType.represented)
 				&& totalSize
-				&& (totalSize / browserRoot.data[SampleType.represented].samples) <= parsedMinResolution))
+				&& (totalSize / browserRoot.getSampleCount(SampleType.represented)) <= parsedMinResolution))
 		{
 			if (headless || exitOnLimit)
 				break;
@@ -248,7 +252,7 @@ Please report defects and enhancement requests to the GitHub issue tracker:
 
 	if (headless)
 	{
-		auto totalSamples = browserRoot.data[SampleType.represented].samples;
+		auto totalSamples = browserRoot.getSampleCount(SampleType.represented);
 		stderr.writefln(
 			"Collected %s samples (achieving a resolution of ~%s) in %s.",
 			totalSamples,
@@ -259,9 +263,11 @@ Please report defects and enhancement requests to the GitHub issue tracker:
 
 	if (exportPath)
 	{
+		/*
 		stderr.writeln("Exporting results...");
 		exportData(exportPath);
 		stderr.writeln("Exported results to: ", exportPath);
+		*/ assert(false, "TODO!!!");
 	}
 
 	if (du)

@@ -34,8 +34,8 @@ import ae.sys.file : listDir, getMounts;
 
 import btrfs : getSubvolumeID, deleteSubvolume;
 
-import btdu.paths : BrowserPath, Mark;
-import btdu.state : toFilesystemPath;
+import btdu.paths : Mark;
+import btdu.state : BrowserPathPtr, toFilesystemPath;
 
 struct Deleter
 {
@@ -65,7 +65,7 @@ struct Deleter
 	struct Item
 	{
 		/// The `BrowserPath` of the item to delete.
-		BrowserPath* browserPath;
+		BrowserPathPtr browserPath;
 		/// If set, deletion will stop if the corresponding node has a negative mark.
 		bool obeyMarks;
 	}
@@ -109,14 +109,14 @@ struct Deleter
 				// Only true when `e` is the root (`item.fsPath`)
 				bool root,
 				// The corresponding parent `BrowserPath`, if we are to obey marks
-				BrowserPath* parentBrowserPath,
+				BrowserPathPtr parentBrowserPath,
 				// We will set this to false if we don't fully clear out this directory
 				bool* unlinkOK,
 			) {
 				auto entryBrowserPath =
 					root ? parentBrowserPath :
-					parentBrowserPath ? parentBrowserPath.appendName!true(e.baseNameFS)
-					: null;
+					parentBrowserPath ? parentBrowserPath.appendName(e.baseNameFS, true)
+					: BrowserPathPtr.init;
 				if (entryBrowserPath && entryBrowserPath.mark == Mark.unmarked)
 				{
 					if (unlinkOK) *unlinkOK = false;
@@ -153,7 +153,7 @@ struct Deleter
 
 						bool haveNegativeMarks = false;
 						if (entryBrowserPath)
-							entryBrowserPath.enumerateMarks((ref const BrowserPath path, bool isMarked) { if (!isMarked) haveNegativeMarks = true; });
+							entryBrowserPath.enumerateMarks((/*const*/ BrowserPathPtr /*path*/, bool isMarked) { if (!isMarked) haveNegativeMarks = true; });
 						if (!haveNegativeMarks) // Can't delete subvolume if the user excluded some items inside it.
 						{
 							this.state = State.subvolumeConfirm;
@@ -184,7 +184,7 @@ struct Deleter
 			}, Yes.includeRoot)(
 				fsPath,
 				true,
-				item.obeyMarks ? item.browserPath : null,
+				item.obeyMarks ? item.browserPath : BrowserPathPtr.init,
 				null,
 			);
 		}

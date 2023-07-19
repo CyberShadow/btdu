@@ -61,7 +61,7 @@ struct Subprocess
 				thisExePath,
 				"--subprocess",
 				"--seed", rndGen.uniform!Seed.text,
-				"--physical=" ~ physical.text,
+				"--physical=" ~ samplingConfiguration.has.physical.text,
 				"--",
 				fsPath,
 			],
@@ -147,7 +147,7 @@ struct Subprocess
 	private struct Result
 	{
 		Offset offset;
-		BrowserPath* browserPath;
+		BrowserPathPtr browserPath;
 		GlobalPath* inodeRoot;
 		bool haveInode, havePath;
 		bool ignoringOffset;
@@ -158,7 +158,7 @@ struct Subprocess
 	void handleMessage(ResultStartMessage m)
 	{
 		result.offset = m.offset;
-		result.browserPath = &browserRoot;
+		result.browserPath = browserRoot;
 		static immutable flagNames = [
 			"DATA",
 			"SYSTEM",
@@ -180,7 +180,7 @@ struct Subprocess
 			result.browserPath = result.browserPath.appendName("\0SINGLE");
 		foreach_reverse (b; 0 .. flagNames.length)
 			if (m.chunkFlags & (1UL << b))
-				result.browserPath = result.browserPath.appendName(flagNames[b]);
+				result.browserPath = result.browserPath.appendName(flagNames[b][]);
 		if ((m.chunkFlags & BTRFS_BLOCK_GROUP_DATA) == 0)
 			result.haveInode = true; // Sampler won't even try
 	}
@@ -245,15 +245,16 @@ struct Subprocess
 		bool allMarked = true;
 		if (allPaths.peek().length)
 		{
-			foreach (ref path; allPaths.peek())
-				(*representativeBrowserPath.seenAs.getOrAdd(path, 0UL))++;
+			if (samplingConfiguration.has.seenAs)
+				foreach (ref path; allPaths.peek())
+					(*representativeBrowserPath.seenAs.getOrAdd(path, 0UL))++;
 
-			if (expert)
+			if (samplingConfiguration.has.allSampleTypes)
 			{
 				auto distributedSamples = 1.0 / allPaths.peek().length;
 				auto distributedDuration = double(m.duration) / allPaths.peek().length;
 
-				static FastAppender!(BrowserPath*) browserPaths;
+				static FastAppender!BrowserPathPtr browserPaths;
 				browserPaths.clear();
 				foreach (ref path; allPaths.peek())
 				{
@@ -264,7 +265,7 @@ struct Subprocess
 					browserPath.addDistributedSample(distributedSamples, distributedDuration);
 				}
 
-				auto exclusiveBrowserPath = BrowserPath.commonPrefix(browserPaths.peek());
+				auto exclusiveBrowserPath = BrowserPathPtr.commonPrefix(browserPaths.peek());
 				exclusiveBrowserPath.addSample(SampleType.exclusive, result.offset, m.duration);
 
 				foreach (ref path; browserPaths.get())
@@ -279,7 +280,7 @@ struct Subprocess
 				if (false) // `allMarked` result will not be used in non-expert mode anyway...
 				foreach (ref path; allPaths.peek())
 				{
-					auto browserPath = result.browserPath.appendPath!true(&path);
+					auto browserPath = result.browserPath.appendPath(&path, true);
 					if (browserPath && !browserPath.getEffectiveMark())
 					{
 						allMarked = false;
@@ -290,7 +291,7 @@ struct Subprocess
 		}
 		else
 		{
-			if (expert)
+			if (samplingConfiguration.has.allSampleTypes)
 			{
 				representativeBrowserPath.addSample(SampleType.shared_, result.offset, m.duration);
 				representativeBrowserPath.addSample(SampleType.exclusive, result.offset, m.duration);
@@ -302,7 +303,7 @@ struct Subprocess
 		markTotalSamples++;
 		if (allMarked)
 		{
-			if (expert)
+			if (samplingConfiguration.has.allSampleTypes)
 				marked.addSample(SampleType.exclusive, result.offset, m.duration);
 		}
 

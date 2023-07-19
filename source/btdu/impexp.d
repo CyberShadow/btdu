@@ -11,7 +11,6 @@ import ae.sys.data;
 import ae.sys.datamm;
 import ae.utils.json;
 
-import btdu.common : pointerWriter;
 import btdu.paths;
 import btdu.state;
 
@@ -22,9 +21,10 @@ struct SerializedState
 {
 	bool expert;
 	@JSONOptional bool physical;
+	@JSONOptional bool lowMem;
 	string fsPath;
 	ulong totalSize;
-	BrowserPath* root;
+	BrowserPathPtr root;
 }
 
 void importData(string path)
@@ -37,11 +37,15 @@ void importData(string path)
 	debug importing = true;
 	auto s = json.jsonParse!SerializedState();
 
-	expert = s.expert;
-	physical = s.physical;
+	samplingConfiguration = cast(SamplingConfiguration)(
+		(s.expert ? SamplingConfiguration.expert : 0) |
+		(s.physical ? SamplingConfiguration.physical : 0) |
+		(s.lowMem ? 0 : SamplingConfiguration.extras)
+	);
+
 	fsPath = s.fsPath;
 	totalSize = s.totalSize;
-	move(*s.root, browserRoot);
+	move(s.root, browserRoot);
 
 	browserRoot.resetParents();
 	debug importing = false;
@@ -51,11 +55,12 @@ void importData(string path)
 void exportData(string path)
 {
 	SerializedState s;
-	s.expert = expert;
-	s.physical = physical;
+	s.expert = samplingConfiguration.has.expert;
+	s.physical = samplingConfiguration.has.physical;
+	s.lowMem = !samplingConfiguration.has.extras;
 	s.fsPath = fsPath;
 	s.totalSize = totalSize;
-	s.root = &browserRoot;
+	s.root = browserRoot;
 
 	alias LockingBinaryWriter = typeof(File.lockingBinaryWriter());
 	alias JsonFileSerializer = CustomJsonSerializer!(JsonWriter!LockingBinaryWriter);
@@ -80,17 +85,17 @@ void exportDu()
 		return 1024;
 	}();
 
-	auto totalSamples = browserRoot.data[SampleType.represented].samples;
+	auto totalSamples = browserRoot.getSampleCount(SampleType.represented);
 
-	void visit(BrowserPath* path)
+	void visit(BrowserPathPtr path)
 	{
 		for (auto child = path.firstChild; child; child = child.nextSibling)
 			visit(child);
 
-		auto samples = path.data[SampleType.represented].samples;
+		auto samples = path.getSampleCount(SampleType.represented);
 		auto size = ceil(samples * real(totalSize) / totalSamples / blockSize).to!ulong;
-		stdout.writefln("%d\t%s%s", size, fsPath, path.pointerWriter);
+		stdout.writefln("%d\t%s%s", size, fsPath, path);
 	}
 	if (totalSamples)
-		visit(&browserRoot);
+		visit(browserRoot);
 }

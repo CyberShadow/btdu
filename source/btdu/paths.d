@@ -33,6 +33,7 @@ import containers.hashmap;
 import containers.internal.hash : generateHash;
 
 import ae.utils.appender;
+import ae.utils.array : amap;
 import ae.utils.json : JSONName, JSONOptional, JSONFragment;
 import ae.utils.meta;
 
@@ -91,7 +92,7 @@ mixin template SimplePath()
 	}
 
 	/// Append a single path segment to this one.
-	typeof(this)* appendName(bool existingOnly = false)(in char[] name)
+	typeof(this)* appendName(in char[] name, bool existingOnly = false)
 	{
 		assert(name.length, "Empty path segment");
 		assert(name.indexOf('/') < 0, "Path segment contains /: " ~ name);
@@ -99,59 +100,59 @@ mixin template SimplePath()
 		if (auto pnext = *ppnext)
 			return pnext;
 		else
-			static if (existingOnly)
+			/*static*/ if (existingOnly)
 				return null;
 			else
 				return *ppnext = growAllocator.make!(typeof(this))(&this, NameString(name));
 	}
 
 	/// ditto
-	private typeof(this)* appendName(bool existingOnly = false)(NameString name)
+	private typeof(this)* appendName(NameString name, bool existingOnly = false)
 	{
 		auto ppnext = find(name[]);
 		if (auto pnext = *ppnext)
 			return pnext;
 		else
-			static if (existingOnly)
+			/*static*/ if (existingOnly)
 				return null;
 			else
 				return *ppnext = growAllocator.make!(typeof(this))(&this, name);
 	}
 
 	/// Append a normalized relative string path to this one.
-	typeof(this)* appendPath(bool existingOnly = false)(in char[] path)
+	typeof(this)* appendPath(in char[] path, bool existingOnly = false)
 	{
 		auto p = path.indexOf('/');
 		auto nextName = p < 0 ? path : path[0 .. p];
-		auto next = appendName!existingOnly(nextName);
+		auto next = appendName(nextName, existingOnly);
 		if (p < 0)
 			return next;
 		else
-			return next.appendPath!existingOnly(path[p + 1 .. $]);
+			return next.appendPath(path[p + 1 .. $], existingOnly);
 	}
 
 	/// ditto
-	typeof(this)* appendPath(bool existingOnly = false)(in SubPath* path)
+	typeof(this)* appendPath(in SubPath* path, bool existingOnly = false)
 	{
 		typeof(this)* recurse(typeof(this)* base, in SubPath* path)
 		{
 			if (!path.parent) // root
 				return base;
 			base = recurse(base, path.parent);
-			return base.appendName!existingOnly(path.name);
+			return base.appendName(path.name, existingOnly);
 		}
 
 		return recurse(&this, path);
 	}
 
 	/// ditto
-	typeof(this)* appendPath(bool existingOnly = false)(in GlobalPath* path)
+	typeof(this)* appendPath(in GlobalPath* path, bool existingOnly = false)
 	{
 		typeof(this)* recurse(typeof(this)* base, in GlobalPath* path)
 		{
 			if (path.parent)
 				base = recurse(base, path.parent);
-			return base.appendPath!existingOnly(path.subPath);
+			return base.appendPath(path.subPath, existingOnly);
 		}
 
 		return recurse(&this, path);
@@ -218,21 +219,6 @@ mixin template SimplePath()
 
 	auto humanName() const
 	{
-		struct HumanName
-		{
-			string name;
-			void toString(scope void delegate(const(char)[]) sink) const
-			{
-				if (name.startsWith("\0"))
-				{
-					sink("<");
-					sink(name[1 .. $]);
-					sink(">");
-				}
-				else
-					sink(name);
-			}
-		}
 		return HumanName(name[]);
 	}
 }
@@ -338,6 +324,9 @@ mixin template PathCmp()
 			maxLength - bLength,
 		]);
 	}
+
+	// BrowserPathPtr shim
+	int opCmp(const(typeof(this))* b) const { return this.opCmp(*b); }
 }
 
 /// Path within a tree (subvolume)
@@ -421,9 +410,48 @@ enum Mark : ubyte
 	unmarked,  /// Negative mark (cancels out a positive mark in an ancestor)
 }
 
-/// Browser path (GUI hierarchy)
-struct BrowserPath
+/// Bit field which enables or disables which metrics are collected at runtime
+/// (and thus use memory).
+enum SamplingConfiguration : ubyte
 {
+	none     = 0,
+
+	extras   = 1 << 0, /// Duration, offsets, and paths sharing data (disabled by --low-mem)
+	duration = extras,
+	offsets  = extras,
+	seenAs   = extras,
+
+	expert   = 1 << 1,  /// All sample types (for --expert)
+	allSampleTypes = expert,
+	distributed = expert,
+
+	physical = 1 << 2, /// Physical samples (for --physical)
+
+	full     = extras | expert | physical, // For metaprogramming
+	length   = 1 << 3, /// max + 1
+}
+
+// Note: this could be a type template instead of a mixin template if not for
+// https://issues.dlang.org/show_bug.cgi?id=23917
+mixin template OptionalVar(T, string name, bool condition, T init = T.init)
+{
+	static if (condition)
+		T optionalVar = init;
+	else
+		@property ref inout(T) optionalVar() inout { assert(false); }
+
+	mixin("alias optionalVar " ~ name ~ ";");
+}
+
+enum ulong noOffset = cast(ulong)-1;
+
+/// Browser path (GUI hierarchy).
+/// It is templated by a parameter which controls whether to reserve
+/// memory for expert-mode data.
+struct BrowserPath(SamplingConfiguration config_)
+{
+	enum config = config_;
+
 	mixin SimplePath;
 	mixin PathCommon;
 
@@ -438,54 +466,113 @@ struct BrowserPath
 	struct Data
 	{
 		ulong samples; /// For non-leaves, sum of leaves
-		ulong duration; /// Total hnsecs
-		Offset[3] offsets; /// Examples (the last 3 seen) of sample offsets
+		mixin OptionalVar!(ulong, q{duration}, config.has.duration()); /// Total hnsecs
+		struct Offset
+		{
+			ulong logical = noOffset;
+			mixin OptionalVar!(ulong, q{devID}, config.has.physical(), noOffset);
+			mixin OptionalVar!(ulong, q{physical}, config.has.physical(), noOffset);
+
+			this(.Offset proto)
+			{
+				this.logical = proto.logical;
+				static if (config.has.physical)
+				{
+					this.devID = proto.devID;
+					this.physical = proto.physical;
+				}
+			}
+		}
+		enum numOffsets = (config.has.offsets) ? 3 : 0;
+		Offset[numOffsets] offsets; /// Examples (the last 3 seen) of sample offsets
+
+		void addOffset(Offset offset)
+		{
+			// Add a new offset at the end, pushing existing ones towards 0
+			foreach (i; 0 .. numOffsets)
+				this.offsets[i] = i + 1 == numOffsets
+					? offset
+					: this.offsets[i + 1];
+		}
+
+		void removeOffsets(const(Offset)[] offsets)
+		{
+			foreach (i; 0 .. this.offsets.length)
+				if (this.offsets[i] != Data.Offset.init && offsets.canFind(this.offsets[i]))
+					// Delete matching offsets, pushing existing ones from the start towards the end
+					foreach_reverse (j; 0 .. i + 1)
+						this.offsets = j == 0
+							? Data.Offset.init
+							: this.offsets[j - 1];
+		}
 	}
-	Data[enumLength!SampleType] data;
-	double distributedSamples = 0, distributedDuration = 0;
+	static if (config.has.allSampleTypes)
+		enum maxSampleType = enumLength!SampleType;
+	else
+		enum maxSampleType = cast(SampleType)(SampleType.represented + 1);
+	Data[maxSampleType] data;
+	mixin OptionalVar!(double, q{distributedSamples}, config.has.distributed(), 0);
+	mixin OptionalVar!(double, q{distributedDuration}, config.has.distributed(), 0);
 	private bool deleting;
+
+	ulong getSampleCount(SampleType type) { return data[type].samples; }
+	ulong getDuration(SampleType type) { return data[type].duration; }
 
 	void addSample(SampleType type, Offset offset, ulong duration)
 	{
 		addSamples(type, 1, (&offset)[0..1], duration);
 	}
 
-	void addSamples(SampleType type, ulong samples, const(Offset)[] offsets, ulong duration)
+	void addSamples(SampleType type, ref const Data data)
 	{
-		data[type].samples += samples;
-		data[type].duration += duration;
-		foreach (offset; offsets)
-			// Add new offsets at the end, pushing existing ones towards 0
-			foreach (i; 0 .. data[type].offsets.length)
-				data[type].offsets[i] = i + 1 == Data.offsets.length
-					? offset
-					: data[type].offsets[i + 1];
+		assert(type < maxSampleType);
+		this.data[type].samples += data.samples;
+		static if (config.has.duration)
+			this.data[type].duration += data.duration;
+		static if (config.has.offsets)
+			foreach (offset; data.offsets)
+				if (offset != Data.Offset.init)
+					this.data[type].addOffset(offset);
 		if (parent)
-			parent.addSamples(type, samples, offsets, duration);
+			parent.addSamples(type, data);
 	}
 
-	void removeSamples(SampleType type, ulong samples, const(Offset)[] offsets, ulong duration)
+	void addSamples(SampleType type, ulong samples, const(Offset)[] offsets, ulong duration)
 	{
-		assert(samples <= data[type].samples && duration <= data[type].duration);
-		data[type].samples -= samples;
-		data[type].duration -= duration;
-		foreach (i; 0 .. data[type].offsets.length)
-			if (offsets.canFind(data[type].offsets[i]))
-				// Delete matching offsets, pushing existing ones from the start towards the end
-				foreach_reverse (j; 0 .. i + 1)
-					data[type].offsets = j == 0
-						? Offset.init
-						: data[type].offsets[j - 1];
-		if (parent)
-			parent.removeSamples(type, samples, offsets, duration);
+		Data data;
+		data.samples = samples;
+		data.duration = duration;
+		foreach (offset; offsets)
+			data.addOffset(Data.Offset(offset));
+		addSamples(type, data);
 	}
+
+	void removeSamples(SampleType type, ref const Data data)
+	{
+		assert(data.samples <= this.data[type].samples);
+		this.data[type].samples -= data.samples;
+		static if (config.has.duration)
+		{
+			assert(data.duration <= this.data[type].duration);
+			this.data[type].duration -= data.duration;
+		}
+		static if (config.has.offsets)
+			this.data[type].removeOffsets(data.offsets);
+		if (parent)
+			parent.removeSamples(type, data);
+	}
+
+	void clearSamples(SampleType type) { data[type] = Data.init; }
 
 	void addDistributedSample(double sampleShare, double durationShare)
 	{
-		distributedSamples += sampleShare;
-		distributedDuration += durationShare;
-		if (parent)
-			parent.addDistributedSample(sampleShare, durationShare);
+		static if (config.has.distributed)
+		{
+			distributedSamples += sampleShare;
+			distributedDuration += durationShare;
+			if (parent)
+				parent.addDistributedSample(sampleShare, durationShare);
+		}
 	}
 
 	void removeDistributedSample(double sampleShare, double durationShare)
@@ -495,7 +582,8 @@ struct BrowserPath
 
 	/// Other paths this address is reachable via,
 	/// and samples seen from those addresses
-	HashMap!(GlobalPath, size_t, CasualAllocator, generateHash!GlobalPath, false, false) seenAs;
+	alias SeenAs = HashMap!(GlobalPath, size_t, CasualAllocator, generateHash!GlobalPath, false, false);
+	mixin OptionalVar!(SeenAs, q{seenAs}, config.has.seenAs());
 
 	/// Serialized representation
 	struct SerializedForm
@@ -506,11 +594,14 @@ struct BrowserPath
 		{
 			// Same order as SampleType
 			@JSONOptional Data represented;
-			@JSONOptional Data exclusive;
-			@JSONName("shared")
-			@JSONOptional Data shared_;
-			@JSONOptional JSONFragment distributedSamples = JSONFragment("0");
-			@JSONOptional JSONFragment distributedDuration = JSONFragment("0");
+			static if (config.has.allSampleTypes)
+			{
+				@JSONOptional Data exclusive;
+				@JSONName("shared")
+				@JSONOptional Data shared_;
+				@JSONOptional JSONFragment distributedSamples = JSONFragment("0");
+				@JSONOptional JSONFragment distributedDuration = JSONFragment("0");
+			}
 		}
 		SampleData data;
 		@JSONOptional Nullable!bool mark;
@@ -524,12 +615,15 @@ struct BrowserPath
 		s.name = this.name[];
 		for (auto p = firstChild; p; p = p.nextSibling)
 			s.children ~= p;
-		static foreach (sampleType; EnumMembers!SampleType)
+		static foreach (sampleType; SampleType.init .. maxSampleType)
 			s.data.tupleof[sampleType] = data[sampleType];
-		if (this.distributedSamples !is 0.)
-			s.data.distributedSamples.json = this.distributedSamples.format!"%17e";
-		if (this.distributedDuration !is 0.)
-			s.data.distributedDuration.json = this.distributedDuration.format!"%17e";
+		static if (config.has.distributed)
+		{
+			if (this.distributedSamples !is 0.)
+				s.data.distributedSamples.json = this.distributedSamples.format!"%17e";
+			if (this.distributedDuration !is 0.)
+				s.data.distributedDuration.json = this.distributedDuration.format!"%17e";
+		}
 		s.mark =
 			this.mark == Mark.parent ? Nullable!bool.init :
 			this.mark == Mark.marked ? true.nullable :
@@ -547,10 +641,13 @@ struct BrowserPath
 			child.nextSibling = p.firstChild;
 			p.firstChild = child;
 		}
-		static foreach (sampleType; EnumMembers!SampleType)
+		static foreach (sampleType; SampleType.init .. maxSampleType)
 			p.data[sampleType] = s.data.tupleof[sampleType];
-		p.distributedSamples = s.data.distributedSamples.json.strip.to!double;
-		p.distributedDuration = s.data.distributedDuration.json.strip.to!double;
+		static if (config.has.distributed)
+		{
+			p.distributedSamples = s.data.distributedSamples.json.strip.to!double;
+			p.distributedDuration = s.data.distributedDuration.json.strip.to!double;
+		}
 		p.mark =
 			s.mark.isNull() ? Mark.parent :
 			s.mark.get() ? Mark.marked :
@@ -621,58 +718,65 @@ struct BrowserPath
 
 		// Save this node's remaining stats before we remove them.
 		auto data = this.data;
-		auto distributedSamples = this.distributedSamples;
-		auto distributedDuration = this.distributedDuration;
+		static if (config.has.distributed)
+		{
+			auto distributedSamples = this.distributedSamples;
+			auto distributedDuration = this.distributedDuration;
+		}
 
 		// Remove sample data from this node and its parents.
 		// After recursion, for non-leaf nodes, most of these should now be at zero (as far as we can estimate).
-		static foreach (sampleType; EnumMembers!SampleType)
+		static foreach (sampleType; SampleType.init .. maxSampleType)
 			if (data[sampleType].samples) // avoid quadratic complexity
-				removeSamples(sampleType, data[sampleType].samples, data[sampleType].offsets[], data[sampleType].duration);
-		if (distributedSamples) // avoid quadratic complexity
-			removeDistributedSample(distributedSamples, distributedDuration);
+				removeSamples(sampleType, data[sampleType]);
+		static if (config.has.distributed)
+			if (distributedSamples) // avoid quadratic complexity
+				removeDistributedSample(distributedSamples, distributedDuration);
 
-		if (seenAs.empty)
-			return;  // Directory (non-leaf) node - nothing else to do here.
+		static if (config.has.seenAs)
+			if (seenAs.empty)
+				return;  // Directory (non-leaf) node - nothing else to do here.
 
 		// For leaf nodes, some stats can be redistributed to other references.
 		// We need to do some path calculations first,
 		// such as inferring the GlobalPath from the BrowserPath and seenAs.
-		BrowserPath* root;
-		foreach (ref otherPath; seenAs.byKey)
+		static if (config.has.seenAs)
 		{
-			root = this.unappendPath(&otherPath);
-			if (root)
-				break;
-		}
-		debug assert(root);
-		if (!root)
-			return;
-
-		// These paths will inherit the remains.
-		auto remainingPaths = seenAs.byKey
-			.filter!(otherPath => !root.appendPath(&otherPath).deleting)
-			.array;
-
-		// Redistribute to siblings
-		if (!remainingPaths.empty)
-		{
-			auto newRepresentativePath = selectRepresentativePath(remainingPaths);
-			foreach (ref remainingPath; remainingPaths)
+			BrowserPath* root;
+			foreach (ref otherPath; seenAs.byKey)
 			{
-				// Redistribute samples
-				if (remainingPath == newRepresentativePath)
-					root.appendPath(&remainingPath).addSamples(
-						SampleType.represented,
-						data[SampleType.represented].samples,
-						data[SampleType.represented].offsets[],
-						data[SampleType.represented].duration,
-					);
-				if (distributedSamples)
-					root.appendPath(&remainingPath).addDistributedSample(
-						distributedSamples / remainingPaths.length,
-						distributedDuration / remainingPaths.length,
-					);
+				root = this.unappendPath(&otherPath);
+				if (root)
+					break;
+			}
+			debug assert(root);
+			if (!root)
+				return;
+
+			// These paths will inherit the remains.
+			auto remainingPaths = seenAs.byKey
+				.filter!(otherPath => !root.appendPath(&otherPath).deleting)
+				.array;
+
+			// Redistribute to siblings
+			if (!remainingPaths.empty)
+			{
+				auto newRepresentativePath = selectRepresentativePath(remainingPaths);
+				foreach (ref remainingPath; remainingPaths)
+				{
+					// Redistribute samples
+					if (remainingPath == newRepresentativePath)
+						root.appendPath(&remainingPath).addSamples(
+							SampleType.represented,
+							data[SampleType.represented],
+						);
+					static if (config.has.distributed)
+						if (distributedSamples)
+							root.appendPath(&remainingPath).addDistributedSample(
+								distributedSamples / remainingPaths.length,
+								distributedDuration / remainingPaths.length,
+							);
+				}
 			}
 		}
 	}
@@ -722,20 +826,29 @@ struct BrowserPath
 			p.childrenHaveMark = true;
 	}
 
-	void enumerateMarks(scope bool delegate(ref BrowserPath, bool marked) callback)
+	void enumerateMarks(scope bool delegate(typeof(this)*, bool marked) callback)
 	{
 		if (mark != Mark.parent)
-			if (!callback(this, mark == Mark.marked))
+			if (!callback(&this, mark == Mark.marked))
 				return;
 		if (childrenHaveMark)
 			for (auto p = firstChild; p; p = p.nextSibling)
 				p.enumerateMarks(callback);
 	}
 
-	void enumerateMarks(scope void delegate(ref BrowserPath, bool marked) callback)
+	void enumerateMarks(scope void delegate(typeof(this)*, bool marked) callback)
 	{
-		enumerateMarks((ref BrowserPath path, bool marked) { callback(path, marked); return true; });
+		enumerateMarks((typeof(this)* path, bool marked) { callback(path, marked); return true; });
 	}
+}
+
+unittest
+{
+	/// Test instantiation
+	static foreach (config; SamplingConfiguration.init .. SamplingConfiguration.length)
+	{{
+		BrowserPath!config p; cast(void) p;
+	}}
 }
 
 GlobalPath selectRepresentativePath(GlobalPath[] paths)
@@ -775,6 +888,22 @@ bool skipOverNul(C)(ref C[] str)
 		return true;
 	}
 	return false;
+}
+
+struct HumanName
+{
+	string name;
+	void toString(scope void delegate(const(char)[]) sink) const
+	{
+		if (name.startsWith("\0"))
+		{
+			sink("<");
+			sink(name[1 .. $]);
+			sink(">");
+		}
+		else
+			sink(name);
+	}
 }
 
 /// Inline string type.
