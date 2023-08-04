@@ -294,10 +294,25 @@ struct Browser
 						itemsBuf.put(child);
 					break;
 				case Mode.marks:
-					browserRoot.enumerateMarks((BrowserPath* path, bool marked) {
-						if (path !is &browserRoot)
-							itemsBuf.put(path);
+					struct Node { BrowserPath* path; Node[] children; }
+					Node root;
+					Node* current = &root;
+					browserRoot.enumerateMarks((BrowserPath* path, bool marked, scope void delegate() recurse) {
+						auto old = current;
+						old.children ~= Node(path);
+						current = &old.children[$-1];
+						recurse();
+						current = old;
 					});
+					void visit(ref Node n)
+					{
+						if (n.path && n.path !is &browserRoot)
+							itemsBuf.put(n.path);
+						n.children.sort!((a, b) => compareItems(a.path, b.path) < 0);
+						foreach (ref child; n.children)
+							visit(child);
+					}
+					visit(root);
 					break;
 				case Mode.help:
 				case Mode.info:
@@ -312,7 +327,7 @@ struct Browser
 					break;
 
 				case Mode.marks:
-					items.sort!((a, b) => *a < *b);
+					// sorted during population
 					break;
 
 				case Mode.help:
@@ -1764,6 +1779,15 @@ struct Browser
 							selection = null;
 							itemScrollContext = ScrollContext.init;
 						}
+						break;
+					case 'n':
+						setSort(SortMode.name);
+						break;
+					case 's':
+						setSort(SortMode.size);
+						break;
+					case 'T':
+						setSort(SortMode.time);
 						break;
 					case ' ':
 						if (selection)
