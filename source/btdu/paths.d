@@ -687,13 +687,19 @@ struct BrowserPath
 		bool , q{childrenHaveMark}, 1,
 	));
 
+	/// Returns the mark as it is inherited from the parent, if any.
+	private bool getParentMark()
+	{
+		return parent ? parent.getEffectiveMark() : false;
+	}
+
 	/// Returns true for marked, false for unmarked.
 	bool getEffectiveMark()
 	{
 		final switch (mark)
 		{
 			case Mark.parent:
-				return parent ? parent.getEffectiveMark() : false;
+				return getParentMark();
 			case Mark.marked:
 				return true;
 			case Mark.unmarked:
@@ -712,14 +718,41 @@ struct BrowserPath
 		}
 	}
 
-	void setMark(bool marked)
+	private void setMarkWithoutChildren(bool marked)
 	{
-		clearMark();
-		if (getEffectiveMark() == marked)
+		if (getParentMark() == marked)
+		{
+			mark = Mark.parent;
 			return;
+		}
 		mark = marked ? Mark.marked : Mark.unmarked;
 		for (auto p = parent; p && !p.childrenHaveMark; p = p.parent)
 			p.childrenHaveMark = true;
+	}
+
+	void setMark(bool marked)
+	{
+		clearMark();
+		assert(mark == Mark.parent);
+		setMarkWithoutChildren(marked);
+	}
+
+	/// Flips all marks, including this node.
+	void invertMarks()
+	{
+		setMarkWithoutChildren(!getEffectiveMark());
+		invertChildMarks();
+	}
+
+	private void invertChildMarks()
+	{
+		for (auto p = firstChild; p; p = p.nextSibling)
+		{
+			if (p.mark)
+				p.mark = p.mark == Mark.marked ? Mark.unmarked : Mark.marked;
+			if (p.childrenHaveMark)
+				p.invertChildMarks();
+		}
 	}
 
 	void enumerateMarks(scope void delegate(BrowserPath*, bool marked, scope void delegate() recurse) callback)

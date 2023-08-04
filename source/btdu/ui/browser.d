@@ -1322,6 +1322,7 @@ struct Browser
 									printKey("Expand/collapse information panel", button("i"));
 									printKey("Delete the selected file or directory", button("d"));
 									printKey("Mark / unmark selected item", button("    "));
+									printKey("Invert marks", button("*"));
 									printKey("View all marks", button("⇧ Shift"), "+", button("M"));
 									printKey("Delete all marked items", button("⇧ Shift"), "+", button("D"));
 									printKey("Export results to file", button("⇧ Shift"), "+", button("O"));
@@ -1726,6 +1727,10 @@ struct Browser
 							invalidateMark();
 						}
 						moveCursor(+1);
+						break;
+					case '*':
+						currentPath.invertMarks();
+						invalidateMark();
 						break;
 					case 'M':
 						bool haveMarked;
