@@ -99,7 +99,8 @@ struct Curses
 			import core.stdc.stdio : fclose;
 			import core.sys.posix.unistd : close;
 
-			stdinSocket.blocking = true;
+			if (stdinSocket)
+				stdinSocket.blocking = true;
 			inputFile.close();
 			outputFile.close();
 			if (ttyFD >= 0)
