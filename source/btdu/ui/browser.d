@@ -439,12 +439,17 @@ struct Browser
 				void writeExplanation()
 				{
 					if (p is &browserRoot)
-						return write(
-							"Welcome to btdu. You are in the hierarchy root; ",
-							"results will be arranged according to their block group and profile, and then by path.",
-							endl, endl,
-							"Use ", button("↑"), " ", button("↓"), " ", button("←"), " ", button("→"), " to navigate, press ", button("?"), " for help."
-						);
+					{
+						if (mode == Mode.browser)
+							return write(
+								"Welcome to btdu. You are in the hierarchy root; ",
+								"results will be arranged according to their block group and profile, and then by path.",
+								endl, endl,
+								"Use ", button("↑"), " ", button("↓"), " ", button("←"), " ", button("→"), " to navigate, press ", button("?"), " for help."
+							);
+						else
+							return write("The hierarchy root (all samples).");
+					}
 
 					if (p is &marked)
 						return write(
