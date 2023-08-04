@@ -58,7 +58,9 @@ void invalidateMark()
 /// Update stats in `marked` for a redisplay.
 void updateMark()
 {
-	marked.data[] = (BrowserPath.Data[enumLength!SampleType]).init;
+	static foreach (sampleType; EnumMembers!SampleType)
+		if (sampleType != SampleType.exclusive)
+			marked.data[sampleType] = BrowserPath.Data.init;
 	marked.distributedSamples = marked.distributedDuration = 0;
 
 	browserRoot.enumerateMarks(
@@ -67,13 +69,15 @@ void updateMark()
 			if (isMarked)
 			{
 				static foreach (sampleType; EnumMembers!SampleType)
-					marked.addSamples(sampleType, path.data[sampleType].samples, path.data[sampleType].offsets[], path.data[sampleType].duration);
+					if (sampleType != SampleType.exclusive)
+						marked.addSamples(sampleType, path.data[sampleType].samples, path.data[sampleType].offsets[], path.data[sampleType].duration);
 				marked.addDistributedSample(path.distributedSamples, path.distributedDuration);
 			}
 			else
 			{
 				static foreach (sampleType; EnumMembers!SampleType)
-					marked.removeSamples(sampleType, path.data[sampleType].samples, path.data[sampleType].offsets[], path.data[sampleType].duration);
+					if (sampleType != SampleType.exclusive)
+						marked.removeSamples(sampleType, path.data[sampleType].samples, path.data[sampleType].offsets[], path.data[sampleType].duration);
 				marked.removeDistributedSample(path.distributedSamples, path.distributedDuration);
 			}
 		}
