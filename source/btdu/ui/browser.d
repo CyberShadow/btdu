@@ -1363,17 +1363,14 @@ struct Browser
 											write("- ", bold(item.browserPath.toFilesystemPath), endl);
 											if (item.obeyMarks)
 											{
-												item.browserPath.enumerateMarks((ref BrowserPath path, bool isMarked)
+												item.browserPath.enumerateMarks((ref BrowserPath path, bool isMarked, scope void delegate() recurse)
 													{
 														if (!isMarked)
-														{
 															write("  - except ", bold((&path).toFilesystemPath), endl);
-															return false;
-														}
 														else
 														{
 															assert(&path is item.browserPath);
-															return true;
+															recurse();
 														}
 													});
 											}
