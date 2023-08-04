@@ -1142,7 +1142,10 @@ struct Browser
 								case Mode.marks:
 									withWindow(x, y, maxItemWidth.to!xy_t, 1, {
 										middleTruncate({
-											write(child.pointerWriter, endl);
+											if (child is &browserRoot)
+												write("/", endl);
+											else
+												write(child.pointerWriter, endl);
 										});
 									});
 									x += maxItemWidth;
