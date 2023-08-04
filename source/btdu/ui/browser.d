@@ -232,6 +232,39 @@ struct Browser
 		return samples ? duration / samples : -real.infinity;
 	}
 
+	private int compareItems(BrowserPath* a, BrowserPath* b)
+	{
+		static int cmp(T)(T a, T b) { return a < b ? -1 : a > b ? +1 : 0; }
+		int firstNonZero(int a, lazy int b) { return a ? a : b; }
+		int result;
+		if (dirsFirst)
+		{
+			result = -cmp(!!a.firstChild, !!b.firstChild);
+			if (result)
+				return result;
+		}
+		result = {
+			final switch (sortMode)
+			{
+				case SortMode.name:
+					return cmp(a.name[], b.name[]);
+				case SortMode.size:
+					return firstNonZero(
+						-cmp(a.I!getSamples(), b.I!getSamples()),
+						cmp(a.name[], b.name[]),
+					);
+				case SortMode.time:
+					return firstNonZero(
+						-cmp(a.I!getAverageDuration(), b.I!getAverageDuration()),
+						cmp(a.name[], b.name[]),
+					);
+			}
+		}();
+		if (reverseSort)
+			result = -result;
+		return result;
+	}
+
 	void update()
 	{
 		auto wand = curses.getWand();
@@ -275,31 +308,7 @@ struct Browser
 			final switch (mode)
 			{
 				case Mode.browser:
-					final switch (sortMode)
-					{
-						case SortMode.name:
-							items.sort!((a, b) => a.name[] < b.name[]);
-							break;
-						case SortMode.size:
-							items.multiSort!(
-								(a, b) => a.I!getSamples() > b.I!getSamples(),
-								(a, b) => a.name[] < b.name[],
-							);
-							break;
-						case SortMode.time:
-							items.multiSort!(
-								(a, b) => a.I!getAverageDuration() > b.I!getAverageDuration(),
-								(a, b) => a.name[] < b.name[],
-							);
-							break;
-					}
-					if (reverseSort)
-						items.reverse();
-					if (dirsFirst)
-						items.sort!(
-							(a, b) => !!a.firstChild > !!b.firstChild,
-							SwapStrategy.stable,
-						);
+					items.sort!((a, b) => compareItems(a, b) < 0);
 					break;
 
 				case Mode.marks:
