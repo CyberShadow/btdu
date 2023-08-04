@@ -44,8 +44,6 @@ SubPath subPathRoot;
 GlobalPath*[u64] globalRoots;
 BrowserPath browserRoot;
 
-shared static this() { browserRoot.setMark(false); }
-
 BrowserPath marked;  /// A fake `BrowserPath` used to represent all marked nodes.
 ulong markTotalSamples; /// Number of seen samples since the mark was invalidated.
 
@@ -66,8 +64,6 @@ void updateMark()
 	browserRoot.enumerateMarks(
 		(const BrowserPath* path, bool isMarked)
 		{
-			if (path is &browserRoot)
-				return;
 			if (isMarked)
 			{
 				static foreach (sampleType; EnumMembers!SampleType)

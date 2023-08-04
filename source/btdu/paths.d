@@ -693,7 +693,7 @@ struct BrowserPath
 		final switch (mark)
 		{
 			case Mark.parent:
-				return parent.getEffectiveMark();
+				return parent ? parent.getEffectiveMark() : false;
 			case Mark.marked:
 				return true;
 			case Mark.unmarked:
@@ -715,7 +715,7 @@ struct BrowserPath
 	void setMark(bool marked)
 	{
 		clearMark();
-		if (parent && getEffectiveMark() == marked)
+		if (getEffectiveMark() == marked)
 			return;
 		mark = marked ? Mark.marked : Mark.unmarked;
 		for (auto p = parent; p && !p.childrenHaveMark; p = p.parent)

@@ -306,7 +306,7 @@ struct Browser
 					});
 					void visit(ref Node n)
 					{
-						if (n.path && n.path !is &browserRoot)
+						if (n.path)
 							itemsBuf.put(n.path);
 						n.children.sort!((a, b) => compareItems(a.path, b.path) < 0);
 						foreach (ref child; n.children)
@@ -382,7 +382,6 @@ struct Browser
 					browserRoot.enumerateMarks((_, bool marked) { (marked ? numMarked : numUnmarked)++; });
 					if (numMarked)
 					{
-						assert(numUnmarked > 0); numUnmarked--; // Root is always unmarked
 						at(0, 0, {
 							if (expert)
 							{
