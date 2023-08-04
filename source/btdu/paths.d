@@ -722,7 +722,7 @@ struct BrowserPath
 			p.childrenHaveMark = true;
 	}
 
-	void enumerateMarks(scope void delegate(ref BrowserPath, bool marked, scope void delegate() recurse) callback)
+	void enumerateMarks(scope void delegate(BrowserPath*, bool marked, scope void delegate() recurse) callback)
 	{
 		void recurse()
 		{
@@ -732,14 +732,14 @@ struct BrowserPath
 		}
 
 		if (mark != Mark.parent)
-			callback(this, mark == Mark.marked, &recurse);
+			callback(&this, mark == Mark.marked, &recurse);
 		else
 			recurse();
 	}
 
-	void enumerateMarks(scope void delegate(ref BrowserPath, bool marked) callback)
+	void enumerateMarks(scope void delegate(BrowserPath*, bool marked) callback)
 	{
-		enumerateMarks((ref BrowserPath path, bool marked, scope void delegate() recurse) { callback(path, marked); recurse(); });
+		enumerateMarks((BrowserPath* path, bool marked, scope void delegate() recurse) { callback(path, marked); recurse(); });
 	}
 }
 

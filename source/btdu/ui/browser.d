@@ -294,9 +294,9 @@ struct Browser
 						itemsBuf.put(child);
 					break;
 				case Mode.marks:
-					browserRoot.enumerateMarks((ref BrowserPath path, bool marked) {
-						if (&path !is &browserRoot)
-							itemsBuf.put(&path);
+					browserRoot.enumerateMarks((BrowserPath* path, bool marked) {
+						if (path !is &browserRoot)
+							itemsBuf.put(path);
 					});
 					break;
 				case Mode.help:
@@ -364,7 +364,7 @@ struct Browser
 				xOverflowEllipsis({
 					// Top bar
 					size_t numMarked, numUnmarked;
-					browserRoot.enumerateMarks((ref _, bool marked) { (marked ? numMarked : numUnmarked)++; });
+					browserRoot.enumerateMarks((_, bool marked) { (marked ? numMarked : numUnmarked)++; });
 					if (numMarked)
 					{
 						assert(numUnmarked > 0); numUnmarked--; // Root is always unmarked
@@ -1363,13 +1363,13 @@ struct Browser
 											write("- ", bold(item.browserPath.toFilesystemPath), endl);
 											if (item.obeyMarks)
 											{
-												item.browserPath.enumerateMarks((ref BrowserPath path, bool isMarked, scope void delegate() recurse)
+												item.browserPath.enumerateMarks((BrowserPath* path, bool isMarked, scope void delegate() recurse)
 													{
 														if (!isMarked)
-															write("  - except ", bold((&path).toFilesystemPath), endl);
+															write("  - except ", bold((path).toFilesystemPath), endl);
 														else
 														{
-															assert(&path is item.browserPath);
+															assert(path is item.browserPath);
 															recurse();
 														}
 													});
@@ -1715,7 +1715,7 @@ struct Browser
 						break;
 					case 'M':
 						bool haveMarked;
-						browserRoot.enumerateMarks((ref _, bool isMarked) { if (isMarked) haveMarked = true; });
+						browserRoot.enumerateMarks((_, bool isMarked) { if (isMarked) haveMarked = true; });
 						if (haveMarked)
 						{
 							mode = Mode.marks;
@@ -1873,12 +1873,12 @@ struct Browser
 					case 'D':
 						bool haveMarked;
 						BrowserPath* anySpecialNode = null;
-						browserRoot.enumerateMarks((ref path, bool isMarked)
+						browserRoot.enumerateMarks((path, bool isMarked)
 						{
 							if (isMarked)
 								haveMarked = true;
-							if (!anySpecialNode && !getFullPath(&path))
-								anySpecialNode = &path;
+							if (!anySpecialNode && !getFullPath(path))
+								anySpecialNode = path;
 						});
 						if (!haveMarked)
 						{
@@ -1898,9 +1898,9 @@ struct Browser
 							itemScrollContext = ScrollContext.init;
 						}
 						Deleter.Item[] items;
-						browserRoot.enumerateMarks((ref BrowserPath path, bool isMarked) {
+						browserRoot.enumerateMarks((BrowserPath* path, bool isMarked) {
 							if (isMarked)
-								items ~= Deleter.Item(&path, true);
+								items ~= Deleter.Item(path, true);
 						});
 						deleter.prepare(items);
 						popup = Popup.deleteConfirm;

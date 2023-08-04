@@ -153,7 +153,7 @@ struct Deleter
 
 						bool haveNegativeMarks = false;
 						if (entryBrowserPath)
-							entryBrowserPath.enumerateMarks((ref const BrowserPath path, bool isMarked) { if (!isMarked) haveNegativeMarks = true; });
+							entryBrowserPath.enumerateMarks((_, bool isMarked) { if (!isMarked) haveNegativeMarks = true; });
 						if (!haveNegativeMarks) // Can't delete subvolume if the user excluded some items inside it.
 						{
 							this.state = State.subvolumeConfirm;

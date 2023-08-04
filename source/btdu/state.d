@@ -64,9 +64,9 @@ void updateMark()
 	marked.distributedSamples = marked.distributedDuration = 0;
 
 	browserRoot.enumerateMarks(
-		(ref const BrowserPath path, bool isMarked)
+		(const BrowserPath* path, bool isMarked)
 		{
-			if (&path is &browserRoot)
+			if (path is &browserRoot)
 				return;
 			if (isMarked)
 			{
