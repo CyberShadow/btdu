@@ -1814,6 +1814,10 @@ struct Browser
 								null;
 						}
 						break;
+					case '*':
+						browserRoot.invertMarks();
+						invalidateMark();
+						break;
 					default:
 						goto itemScroll;
 				}
