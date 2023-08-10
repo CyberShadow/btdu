@@ -60,6 +60,7 @@ struct Browser
 
 	BrowserPath* currentPath;
 	BrowserPath* selection;
+	BrowserPath* previousPath; // when quitting from special BrowserPath pointers
 	BrowserPath*[] items;
 	bool done;
 
@@ -111,7 +112,6 @@ struct Browser
 	enum Mode
 	{
 		browser,
-		marks,
 		info,
 		help,
 	}
@@ -298,29 +298,34 @@ struct Browser
 			final switch (mode)
 			{
 				case Mode.browser:
-					for (auto child = currentPath.firstChild; child; child = child.nextSibling)
-						itemsBuf.put(child);
-					break;
-				case Mode.marks:
-					struct Node { BrowserPath* path; Node[] children; }
-					Node root;
-					Node* current = &root;
-					browserRoot.enumerateMarks((BrowserPath* path, bool marked, scope void delegate() recurse) {
-						auto old = current;
-						old.children ~= Node(path);
-						current = &old.children[$-1];
-						recurse();
-						current = old;
-					});
-					void visit(ref Node n)
+					if (currentPath is &marked)
 					{
-						if (n.path)
-							itemsBuf.put(n.path);
-						n.children.sort!((a, b) => compareItems(a.path, b.path) < 0);
-						foreach (ref child; n.children)
-							visit(child);
+						struct Node { BrowserPath* path; Node[] children; }
+						Node root;
+						Node* current = &root;
+						browserRoot.enumerateMarks((BrowserPath* path, bool marked, scope void delegate() recurse) {
+							auto old = current;
+							old.children ~= Node(path);
+							current = &old.children[$-1];
+							recurse();
+							current = old;
+						});
+						void visit(ref Node n)
+						{
+							if (n.path)
+								itemsBuf.put(n.path);
+							n.children.sort!((a, b) => compareItems(a.path, b.path) < 0);
+							foreach (ref child; n.children)
+								visit(child);
+						}
+						visit(root);
 					}
-					visit(root);
+					else
+					{
+						for (auto child = currentPath.firstChild; child; child = child.nextSibling)
+							itemsBuf.put(child);
+						itemsBuf.peek().sort!((a, b) => compareItems(a, b) < 0);
+					}
 					break;
 				case Mode.help:
 				case Mode.info:
@@ -328,39 +333,25 @@ struct Browser
 			}
 			items = itemsBuf.peek();
 
-			final switch (mode)
-			{
-				case Mode.browser:
-					items.sort!((a, b) => compareItems(a, b) < 0);
-					break;
-
-				case Mode.marks:
-					// sorted during population
-					break;
-
-				case Mode.help:
-				case Mode.info:
-					break;
-			}
-
 			if (!selection && items.length)
 				selection = items[0];
 
 			if (!items.length)
 			{
+				if (mode == Mode.browser && currentPath is &marked)
+				{
+					assert(previousPath);
+					currentPath = previousPath;
+					selection = previousPath = null;
+					itemScrollContext = ScrollContext.init;
+					showMessage("No more marks");
+					return update();
+				}
+				else
 				if (mode == Mode.browser && currentPath !is &browserRoot)
 				{
 					mode = Mode.info;
 					textScrollContext = ScrollContext.init;
-				}
-				else
-				if (mode == Mode.marks)
-				{
-					mode = Mode.browser;
-					selection = null;
-					itemScrollContext = ScrollContext.init;
-					showMessage("No more marks");
-					return update();
 				}
 			}
 
@@ -1074,7 +1065,7 @@ struct Browser
 				auto mostUnits = items.fold!((a, b) => max(a, b.I!getUnits()))(0.0L);
 
 				auto ratioDisplayMode = this.ratioDisplayMode;
-				if (mode == Mode.marks)
+				if (currentPath is &marked)
 					ratioDisplayMode = RatioDisplayMode.none;
 
 				alias minWidth = (ratioDisplayMode) =>
@@ -1104,7 +1095,7 @@ struct Browser
 						xOverflowEllipsis({
 							write(
 								child.getEffectiveMark() ? '+' :
-								mode == Mode.marks ? '-' : ' '
+								currentPath is &marked ? '-' : ' '
 							);
 							auto totalSamples = child.I!getTotalSamples(sizeDisplayMode);
 							auto textWidth = measure({ writeUnits(childUnits, totalSamples); })[0];
@@ -1144,36 +1135,28 @@ struct Browser
 
 							auto maxItemWidth = width - (minWidth(effectiveRatioDisplayMode) - 5);
 
-							final switch (mode)
+							if (currentPath is &marked)
 							{
-								case Mode.browser:
-									write(child.firstChild is null ? ' ' : '/');
-
-									{
-										withWindow(x, y, maxItemWidth.to!xy_t, 1, {
-											middleTruncate({
-												write(child.humanName, endl);
-											});
-										});
-										x += maxItemWidth;
-									}
-									break;
-
-								case Mode.marks:
-									withWindow(x, y, maxItemWidth.to!xy_t, 1, {
-										middleTruncate({
-											if (child is &browserRoot)
-												write("/", endl);
-											else
-												write(child.pointerWriter, endl);
-										});
+								withWindow(x, y, maxItemWidth.to!xy_t, 1, {
+									middleTruncate({
+										if (child is &browserRoot)
+											write("/", endl);
+										else
+											write(child.pointerWriter, endl);
 									});
-									x += maxItemWidth;
-									break;
+								});
+								x += maxItemWidth;
+							}
+							else
+							{
+								write(child.firstChild is null ? ' ' : '/');
 
-								case Mode.help:
-								case Mode.info:
-									assert(false);
+								withWindow(x, y, maxItemWidth.to!xy_t, 1, {
+									middleTruncate({
+										write(child.humanName, endl);
+									});
+								});
+								x += maxItemWidth;
 							}
 							write(endl);
 						});
@@ -1217,11 +1200,16 @@ struct Browser
 							itemScrollContext.y.cursor = selection && items ? items.countUntil(selection) : 0;
 							itemScrollContext.y.normalize();
 
-							auto displayedPath = currentPath is &browserRoot ? "/" : buf.stringify(currentPath.pointerWriter);
-							auto maxPathWidth = width - 8 /*- prefix.length*/;
-							if (displayedPath.length > maxPathWidth) // TODO: this slice is wrong
-								displayedPath = buf2.stringify!"…%s"(displayedPath[$ - (maxPathWidth - 1) .. $]);
-							drawPanel(bold(displayedPath), null, null, itemScrollContext, 0, 1, &drawItems);
+							if (currentPath is &marked)
+								drawPanel("Marks", null, null, itemScrollContext, 0, 1, &drawItems);
+							else
+							{
+								auto displayedPath = currentPath is &browserRoot ? "/" : buf.stringify(currentPath.pointerWriter);
+								auto maxPathWidth = width - 8 /*- prefix.length*/;
+								if (displayedPath.length > maxPathWidth) // TODO: this slice is wrong
+									displayedPath = buf2.stringify!"…%s"(displayedPath[$ - (maxPathWidth - 1) .. $]);
+								drawPanel(bold(displayedPath), null, null, itemScrollContext, 0, 1, &drawItems);
+							}
 
 							assert(itemScrollContext.y.contentSize == items.length);
 						});
@@ -1229,53 +1217,13 @@ struct Browser
 						// "Viewing:"
 						auto currentInfoHeight = selection ? height / 2 : height;
 						withWindow(itemsWidth + 1, 0, infoWidth, currentInfoHeight, {
-							drawInfoPanel("Viewing: ", button("i"), false, ScrollContext.init, currentPath);
-						});
-
-						// "Selected:"
-						if (selection)
-							withWindow(itemsWidth + 1, currentInfoHeight, infoWidth, height - currentInfoHeight, {
-								auto moreButton = fmtIf(
-									selection.firstChild !is null,
-									fmtSeq(button("→"), " ", button("i")).valueFunctor,
-									       button("→")                   .valueFunctor,
-								);
-								drawInfoPanel("Selected: ", moreButton, false, ScrollContext.init, selection);
-							});
-
-						// Vertical separator
-						foreach (y; 0 .. height)
-							at(itemsWidth, y, {
-								write(
-									y == 0                 ? '╦' :
-									y == currentInfoHeight ? '╠' :
-									                         '║'
-								);
-							});
-
-						break;
-
-					case Mode.marks: // TODO: DRY with Mode.browser
-
-						// Marks
-						auto infoWidth = min(60, (width - 1) / 2);
-						auto itemsWidth = width - infoWidth - 1;
-						withWindow(0, 0, itemsWidth, height, {
-							itemScrollContext.y.contentSize = items.length;
-							itemScrollContext.y.contentAreaSize = height - 1;
-							itemScrollContext.y.cursor = selection && items ? items.countUntil(selection) : 0;
-							itemScrollContext.y.normalize();
-
-							drawPanel("Marks", null, null, itemScrollContext, 0, 1, &drawItems);
-
-							assert(itemScrollContext.y.contentSize == items.length);
-						});
-
-						// "Summary"
-						auto currentInfoHeight = selection ? height / 2 : height;
-						updateMark();
-						withWindow(itemsWidth + 1, 0, infoWidth, currentInfoHeight, {
-							drawInfoPanel("Summary", button("i"), false, ScrollContext.init, &marked);
+							if (currentPath is &marked)
+							{
+								updateMark();
+								drawInfoPanel("Summary", button("i"), false, ScrollContext.init, &marked);
+							}
+							else
+								drawInfoPanel("Viewing: ", button("i"), false, ScrollContext.init, currentPath);
 						});
 
 						// "Selected:"
@@ -1682,6 +1630,8 @@ struct Browser
 					case Curses.Key.left:
 					case 'h':
 					case '<':
+						if (previousPath)
+							goto exitSpecialPath;
 						if (currentPath.parent)
 						{
 							selection = currentPath;
@@ -1691,12 +1641,21 @@ struct Browser
 						else
 							showMessage("Already at top-level");
 						break;
-					case Curses.Key.right:
 					case '\n':
+						if (selection && selection.parent && currentPath != selection.parent)
+						{
+							currentPath = selection.parent;
+							previousPath = null;
+							itemScrollContext = ScrollContext.init;
+							break;
+						}
+						goto case Curses.Key.right;
+					case Curses.Key.right:
+					case 'l':
 						if (selection)
 						{
 							currentPath = selection;
-							selection = null;
+							selection = previousPath = null;
 							itemScrollContext = textScrollContext = ScrollContext.init;
 						}
 						else
@@ -1707,125 +1666,64 @@ struct Browser
 						textScrollContext = ScrollContext.init;
 						break;
 					case 'q':
+						if (previousPath)
+							goto exitSpecialPath;
 						done = true;
 						break;
-					case 'n':
-						setSort(SortMode.name);
+					case 27: // ESC
+						if (previousPath)
+							goto exitSpecialPath;
 						break;
-					case 's':
-						setSort(SortMode.size);
-						break;
-					case 'T':
-						setSort(SortMode.time);
-						break;
-					case 'm':
-						if (expert)
-						{
-							sizeDisplayMode = cast(SizeMetric)((sizeDisplayMode + 1) % enumLength!SizeMetric);
-							showMessage(format!"Showing %s size"(sizeDisplayMode.to!string.chomp("_")));
-						}
-						else
-							showMessage("Not in expert mode - re-run with --expert");
-						break;
-					case 't':
-						dirsFirst = !dirsFirst;
-						showMessage(format!"%s directories before files"(
-								dirsFirst ? "Sorting" : "Not sorting"));
-						break;
-					case 'g':
-						ratioDisplayMode++;
-						ratioDisplayMode %= enumLength!RatioDisplayMode;
-						showMessage(format("Showing %s", ratioDisplayMode));
+					exitSpecialPath:
+						assert(previousPath);
+						currentPath = previousPath;
+						selection = previousPath = null;
+						itemScrollContext = ScrollContext.init;
 						break;
 					case ' ':
 						if (selection)
 						{
-							selection.setMark(!selection.getEffectiveMark());
-							invalidateMark();
+							if (currentPath is &marked)
+							{
+								auto pos = items.countUntil(selection);
+								selection.setMark(!selection.getEffectiveMark());
+								invalidateMark();
+								items = items.remove(pos);
+								selection =
+									pos >= 0 && pos < items.length ? items[pos] :
+									items.length ? items[$-1] :
+									null;
+							}
+							else
+							{
+								selection.setMark(!selection.getEffectiveMark());
+								invalidateMark();
+								moveCursor(+1);
+							}
 						}
-						moveCursor(+1);
 						break;
 					case '*':
-						currentPath.invertMarks();
+						auto p = currentPath;
+						if (p is &marked)
+							p = &browserRoot;
+						p.invertMarks();
 						invalidateMark();
 						break;
 					case 'M':
+						if (currentPath is &marked)
+							break;
 						bool haveMarked;
 						browserRoot.enumerateMarks((_, bool isMarked) { if (isMarked) haveMarked = true; });
 						if (haveMarked)
 						{
-							mode = Mode.marks;
+							if (!previousPath)
+								previousPath = currentPath;
+							currentPath = &marked;
 							selection = null;
 							itemScrollContext = ScrollContext.init;
 						}
 						else
 							showMessage("No marks");
-						break;
-					default:
-						goto itemScroll;
-				}
-				break;
-
-			case Mode.marks:
-				switch (ch)
-				{
-					case '?':
-					case Curses.Key.f1:
-						mode = Mode.help;
-						selection = null;
-						itemScrollContext = textScrollContext = ScrollContext.init;
-						break;
-					case Curses.Key.left:
-					case 'h':
-					case '<':
-					case 'q':
-					case 27: // ESC
-						mode = Mode.browser;
-						selection = null;
-						itemScrollContext = ScrollContext.init;
-						break;
-					case '\n':
-						if (selection)
-						{
-							mode = Mode.browser;
-							currentPath = selection.parent;
-							itemScrollContext = ScrollContext.init;
-						}
-						break;
-					case Curses.Key.right:
-						if (selection)
-						{
-							mode = Mode.browser;
-							currentPath = selection;
-							selection = null;
-							itemScrollContext = ScrollContext.init;
-						}
-						break;
-					case 'n':
-						setSort(SortMode.name);
-						break;
-					case 's':
-						setSort(SortMode.size);
-						break;
-					case 'T':
-						setSort(SortMode.time);
-						break;
-					case ' ':
-						if (selection)
-						{
-							auto pos = items.countUntil(selection);
-							selection.setMark(!selection.getEffectiveMark());
-							invalidateMark();
-							items = items.remove(pos);
-							selection =
-								pos >= 0 && pos < items.length ? items[pos] :
-								items.length ? items[$-1] :
-								null;
-						}
-						break;
-					case '*':
-						browserRoot.invertMarks();
-						invalidateMark();
 						break;
 					default:
 						goto itemScroll;
@@ -1905,6 +1803,34 @@ struct Browser
 					case Curses.Key.end:
 						moveCursor(+itemScrollContext.y.contentSize);
 						break;
+					case 'n':
+						setSort(SortMode.name);
+						break;
+					case 's':
+						setSort(SortMode.size);
+						break;
+					case 'T':
+						setSort(SortMode.time);
+						break;
+					case 'm':
+						if (expert)
+						{
+							sizeDisplayMode = cast(SizeMetric)((sizeDisplayMode + 1) % enumLength!SizeMetric);
+							showMessage(format!"Showing %s size"(sizeDisplayMode.to!string.chomp("_")));
+						}
+						else
+							showMessage("Not in expert mode - re-run with --expert");
+						break;
+					case 't':
+						dirsFirst = !dirsFirst;
+						showMessage(format!"%s directories before files"(
+								dirsFirst ? "Sorting" : "Not sorting"));
+						break;
+					case 'g':
+						ratioDisplayMode++;
+						ratioDisplayMode %= enumLength!RatioDisplayMode;
+						showMessage(format("Showing %s", ratioDisplayMode));
+						break;
 					case 'd':
 						if (!selection)
 						{
@@ -1942,7 +1868,9 @@ struct Browser
 						if (mode == Mode.browser)
 						{
 							// Switch to marks screen now
-							mode = Mode.marks;
+							if (!previousPath)
+								previousPath = currentPath;
+							currentPath = &marked;
 							selection = null;
 							itemScrollContext = ScrollContext.init;
 						}
