@@ -84,6 +84,19 @@ void updateMark()
 	);
 }
 
+ulong getTotalSamples()
+{
+	return browserRoot.data[SampleType.represented].samples;
+}
+
+ulong getTotalSamples(BrowserPath* p, SampleType type)
+{
+	if (p is &marked && type == SampleType.exclusive)
+		return markTotalSamples;
+	else
+		return browserRoot.data[SampleType.represented].samples;
+}
+
 Subprocess[] subprocesses;
 bool paused;
 debug bool importing;

@@ -232,6 +232,14 @@ struct Browser
 		return samples ? duration / samples : -real.infinity;
 	}
 
+	private static ulong getTotalSamples(BrowserPath* p, SizeMetric metric)
+	{
+		if (metric == SizeMetric.distributed)
+			return .getTotalSamples();
+		else
+			return .getTotalSamples(p, sizeMetricSampleType(metric));
+	}
+
 	private int compareItems(BrowserPath* a, BrowserPath* b)
 	{
 		static int cmp(T)(T a, T b) { return a < b ? -1 : a > b ? +1 : 0; }
@@ -356,8 +364,6 @@ struct Browser
 				}
 			}
 
-			auto totalSamples = browserRoot.data[SampleType.represented].samples;
-
 			eraseWindow();
 			enum minHeight =
 				1 + // Top status bar
@@ -416,6 +422,7 @@ struct Browser
 							});
 						else
 						{
+							auto totalSamples = .getTotalSamples();
 							write(" Samples: ", bold(totalSamples));
 
 							write("  Resolution: ");
@@ -734,6 +741,20 @@ struct Browser
 
 					if (expert)
 					{
+						void writeSamples(double numSamples, ulong totalSamples, bool showError)
+						{
+							if (totalSamples == 0)
+								write("-");
+							else
+							{
+								write("~", bold(humanSize(numSamples * real(totalSize) / totalSamples, true)));
+								if (showError)
+									write(" ±", humanSize(estimateError(totalSamples, numSamples) * totalSize));
+								else
+									write("           ");
+							}
+						}
+
 						void writeSizeColumn(int column, SizeMetric metric)
 						{
 							final switch (column)
@@ -748,20 +769,11 @@ struct Browser
 								case 2: // samples
 									if (column == 1) // size
 									{
-										if (totalSamples == 0)
-											write("-");
-										else
-										{
-											auto numSamples = metric == SizeMetric.distributed
-												? p.distributedSamples
-												: p.data[sizeMetricSampleType(metric)].samples;
-											write("~", bold(humanSize(numSamples * real(totalSize) / totalSamples, true)));
-											auto showError = metric.among(SizeMetric.represented, SizeMetric.exclusive);
-											if (showError)
-												write(" ±", humanSize(estimateError(totalSamples, numSamples) * totalSize));
-											else
-												write("           ");
-										}
+										auto numSamples = metric == SizeMetric.distributed
+											? p.distributedSamples
+											: p.data[sizeMetricSampleType(metric)].samples;
+										auto showError = !!metric.among(SizeMetric.represented, SizeMetric.exclusive);
+										writeSamples(numSamples, p.I!getTotalSamples(metric), showError);
 									}
 									else // samples
 									{
@@ -797,6 +809,7 @@ struct Browser
 						enum showError = true;
 
 						write("Represented size: ");
+						auto totalSamples = p.I!getTotalSamples(SizeMetric.represented);
 						if (totalSamples > 0)
 						{
 							write("~", bold(humanSize(p.data[type].samples * real(totalSize) / totalSamples)));
@@ -867,6 +880,7 @@ struct Browser
 												return write("- ");
 											return write(pair.value * 100 / representedSamples, "%");
 										case 2:
+											auto totalSamples = p.getTotalSamples(SampleType.represented);
 											if (!totalSamples)
 												return write("-");
 											return write(
@@ -1037,7 +1051,7 @@ struct Browser
 					}
 				}
 
-				void writeUnits(real units)
+				void writeUnits(real units, ulong totalSamples)
 				{
 					final switch (sortMode)
 					{
@@ -1092,8 +1106,9 @@ struct Browser
 								child.getEffectiveMark() ? '+' :
 								mode == Mode.marks ? '-' : ' '
 							);
-							auto textWidth = measure({ writeUnits(childUnits); })[0];
-							write(formatted!"%*s"(max(0, 11 - textWidth), "")); writeUnits(childUnits); write(" ");
+							auto totalSamples = child.I!getTotalSamples(sizeDisplayMode);
+							auto textWidth = measure({ writeUnits(childUnits, totalSamples); })[0];
+							write(formatted!"%*s"(max(0, 11 - textWidth), "")); writeUnits(childUnits, totalSamples); write(" ");
 
 							auto effectiveRatioDisplayMode = ratioDisplayMode;
 							while (effectiveRatioDisplayMode && width < minWidth(effectiveRatioDisplayMode))
@@ -1404,18 +1419,12 @@ struct Browser
 
 								if (expert)
 								{
-									ulong delTotalSamples, delExclusiveSamples;
-									if (single)
-									{
-										delTotalSamples = totalSamples;
-										delExclusiveSamples = selection.data[SampleType.exclusive].samples;
-									}
-									else
-									{
+									auto p = single
+										? selection
 										// Assume that we are deleting marked items
-										delTotalSamples = markTotalSamples;
-										delExclusiveSamples = marked.data[SampleType.exclusive].samples;
-									}
+										: &marked;
+									auto delTotalSamples = p.getTotalSamples(SampleType.exclusive);
+									auto delExclusiveSamples = p.data[SampleType.exclusive].samples;
 									write(
 										"This will free ~", bold(humanSize(delExclusiveSamples * real(totalSize) / delTotalSamples)),
 										" (±", humanSize(estimateError(delTotalSamples, delExclusiveSamples) * totalSize), ").", endl,
