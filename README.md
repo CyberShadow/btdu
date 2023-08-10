@@ -100,15 +100,21 @@ Example:
     # btdu --headless --export=results.json --max-time=10m /path/to/filesystem/root
     $ btdu --import results.json
 
+### Deleting
+
+You can delete the selected file or directory from the filesystem by pressing <kbd>d</kbd> then <kbd>⇧ Shift</kbd><kbd>Y</kbd>. This will recursively delete the file or directory shown as "Full path".
+
+Deleting files during a btdu run (whether via btdu or externally) skews the results. When deleting files from btdu, it will make a best-effort attempt to adjust the results to match. Statistics such as exclusive size may be inaccurate. Re-run btdu to obtain fresh results.
+
 ### Marking
 
 You can mark or unmark items under the cursor by pressing the space bar.
 
-### Deleting
+Press <kbd>⇧ Shift</kbd><kbd>M</kbd> to view all marks, and <kbd>⇧ Shift</kbd><kbd>D</kbd> then <kbd>⇧ Shift</kbd><kbd>Y</kbd> to delete all marked items.
 
-You can delete the selected file or directory from the filesystem by pressing <kbd>d</kbd> <kbd>Y</kbd>. This will recursively delete the file or directory shown as "Full path".
+Press <kbd>*</kbd> to invert marks on the current screen.
 
-Deleting files during a btdu run (whether via btdu or externally) skews the results. When deleting files from btdu, it will make a best-effort attempt to adjust the results to match. Statistics such as exclusive size may be inaccurate. Re-run btdu to obtain fresh results.
+Marks are saved in exported `.json` files; a boolean field named `"mark"` will be present on marked nodes. Press <kbd>⇧ Shift</kbd><kbd>O</kbd> to save an export file during an interactive session.
 
 License
 -------
