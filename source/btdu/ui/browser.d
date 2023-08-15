@@ -538,16 +538,18 @@ struct Browser
 							case "UNREACHABLE":
 								return write(
 									"This node represents sample points in extents which are not used by any files.", endl,
-									"Despite not being directly used, these blocks are kept because another part of the extent they belong to is actually used by files.",
+									"Despite not being directly used, these blocks are kept (and cannot be reused) because another part of the extent they belong to is actually used by files.",
 									endl, endl,
 									"This can happen if a large file is written in one go, and then later one block is overwritten - ",
 									"btrfs may keep the old extent which still contains the old copy of the overwritten block.",
 									endl, endl,
 									"Children of this node indicate the path of files using the extent containing the unreachable samples. ",
-									"Defragmentation of these files may reduce the amount of such unreachable blocks.",
+									"Rewriting these files (e.g. with \"cp --reflink=never\") will create new extents without unreachable blocks; ",
+									"defragmentation may also reduce the amount of such unreachable blocks.",
 									endl, endl,
 									"More precisely, this node represents samples for which BTRFS_IOC_LOGICAL_INO returned zero results, ",
-									"but BTRFS_IOC_LOGICAL_INO_V2 with BTRFS_LOGICAL_INO_ARGS_IGNORE_OFFSET returned something else."
+									"but BTRFS_IOC_LOGICAL_INO_V2 with BTRFS_LOGICAL_INO_ARGS_IGNORE_OFFSET returned something else.", endl,
+									"This effect is also referred to as \"bookend extents\".",
 								);
 							case "UNUSED":
 								return write(
