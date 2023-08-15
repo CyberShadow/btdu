@@ -1754,7 +1754,7 @@ struct Browser
 							goto case '<';
 					case 'q':
 					case 27: // ESC
-						if (items.length)
+						if (currentPath.firstChild)
 							goto case 'i';
 						else
 							goto case '<';
