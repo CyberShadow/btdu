@@ -35,7 +35,7 @@ import std.stdio : stdin, stdout, stderr;
 import std.string;
 import std.typecons;
 
-import ae.sys.file : getMounts, getPathMountInfo;
+import ae.sys.file : getMounts, getPathMountInfo, MountInfo;
 import ae.sys.shutdown;
 import ae.utils.funopt;
 import ae.utils.main;
@@ -283,7 +283,10 @@ void checkBtrfs(string fsPath)
 	enforce(fd.isBTRFS,
 		fsPath ~ " is not a btrfs filesystem");
 
-	auto mounts = getMounts().array;
+	MountInfo[] mounts;
+	try
+		mounts = getMounts().array;
+	catch (Exception e) {}
 	enforce(fd.isSubvolume, {
 		auto rootPath = mounts.getPathMountInfo(fsPath).file;
 		if (!rootPath)
