@@ -1854,7 +1854,7 @@ struct Browser
 						{
 							if (isMarked)
 								haveMarked = true;
-							if (!anySpecialNode && !getFullPath(path))
+							if (!anySpecialNode && isMarked && !getFullPath(path))
 								anySpecialNode = path;
 						});
 						if (!haveMarked)
