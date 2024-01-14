@@ -13,9 +13,15 @@ jobs:
     - name: Build
       run: |
         ci/build-docker.sh ${{ matrix.arch }}
+    - name: Generate checksums
+      run: |
+        for f in btdu-*-${{ matrix.arch }} ; do
+          sha256sum "$f" | tee "$f".sha256sum
+        done
     - name: Upload binary
       uses: actions/upload-artifact@v2
       with:
         name: btdu-${{ matrix.arch }}
         path: |
           btdu-*-${{ matrix.arch }}
+          btdu-*-${{ matrix.arch }}.sha256sum
