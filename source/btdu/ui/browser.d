@@ -1216,9 +1216,22 @@ struct Browser
 							assert(itemScrollContext.y.contentSize == items.length);
 						});
 
+						// "Selected:"
+						auto selectionInfoHeight = 0;
+						if (selection) {
+							selectionInfoHeight += height / 2;
+							withWindow(itemsWidth + 1, 0, infoWidth, selectionInfoHeight, {
+								auto moreButton = fmtIf(
+									selection.firstChild !is null,
+									fmtSeq(button("→"), " ", button("i")).valueFunctor,
+									       button("→")                   .valueFunctor,
+								);
+								drawInfoPanel("Selected: ", moreButton, false, ScrollContext.init, selection);
+							});
+						}
+
 						// "Viewing:"
-						auto currentInfoHeight = selection ? height / 2 : height;
-						withWindow(itemsWidth + 1, 0, infoWidth, currentInfoHeight, {
+						withWindow(itemsWidth + 1, selectionInfoHeight, infoWidth, height - selectionInfoHeight, {
 							if (currentPath is &marked)
 							{
 								updateMark();
@@ -1228,24 +1241,13 @@ struct Browser
 								drawInfoPanel("Viewing: ", button("i"), false, ScrollContext.init, currentPath);
 						});
 
-						// "Selected:"
-						if (selection)
-							withWindow(itemsWidth + 1, currentInfoHeight, infoWidth, height - currentInfoHeight, {
-								auto moreButton = fmtIf(
-									selection.firstChild !is null,
-									fmtSeq(button("→"), " ", button("i")).valueFunctor,
-									       button("→")                   .valueFunctor,
-								);
-								drawInfoPanel("Selected: ", moreButton, false, ScrollContext.init, selection);
-							});
-
 						// Vertical separator
 						foreach (y; 0 .. height)
 							at(itemsWidth, y, {
 								write(
-									y == 0                 ? '╦' :
-									y == currentInfoHeight ? '╠' :
-									                         '║'
+									y == 0                   ? '╦' :
+									y == selectionInfoHeight ? '╠' :
+									                           '║'
 								);
 							});
 
