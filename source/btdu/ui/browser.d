@@ -30,6 +30,7 @@ import std.conv;
 import std.encoding : sanitize;
 import std.exception : errnoEnforce, enforce;
 import std.format;
+import std.math.rounding : round;
 import std.range;
 import std.string;
 import std.traits;
@@ -1032,15 +1033,28 @@ struct Browser
 
 			void drawItems()
 			{
-				real getUnits(BrowserPath* path)
+				struct UnitValue
+				{
+					real units, unitsLow, unitsHigh;
+				}
+
+				UnitValue getUnits(BrowserPath* path)
 				{
 					final switch (sortMode)
 					{
 						case SortMode.name:
 						case SortMode.size:
-							return getSamples(path);
+							auto samples = getSamples(path);
+							auto totalSamples = path.I!getTotalSamples(sizeDisplayMode);
+							auto error = estimateError(totalSamples, samples) * totalSamples;
+							return UnitValue(
+								samples,
+								max(samples - error, 0),
+								min(samples + error, totalSamples),
+							);
 						case SortMode.time:
-							return getAverageDuration(path);
+							auto duration = getAverageDuration(path);
+							return UnitValue(duration, duration, duration);
 					}
 				}
 
@@ -1064,7 +1078,7 @@ struct Browser
 				}
 
 				auto currentPathUnits = currentPath.I!getUnits();
-				auto mostUnits = items.fold!((a, b) => max(a, b.I!getUnits()))(0.0L);
+				auto mostUnits = items.fold!((a, b) => max(a, b.I!getUnits().unitsHigh))(0.0L);
 
 				auto ratioDisplayMode = this.ratioDisplayMode;
 				if (currentPath is &marked)
@@ -1100,8 +1114,8 @@ struct Browser
 								currentPath is &marked ? '-' : ' '
 							);
 							auto totalSamples = child.I!getTotalSamples(sizeDisplayMode);
-							auto textWidth = measure({ writeUnits(childUnits, totalSamples); })[0];
-							write(formatted!"%*s"(max(0, 11 - textWidth), "")); writeUnits(childUnits, totalSamples); write(" ");
+							auto textWidth = measure({ writeUnits(childUnits.units, totalSamples); })[0];
+							write(formatted!"%*s"(max(0, 11 - textWidth), "")); writeUnits(childUnits.units, totalSamples); write(" ");
 
 							auto effectiveRatioDisplayMode = ratioDisplayMode;
 							while (effectiveRatioDisplayMode && width < minWidth(effectiveRatioDisplayMode))
@@ -1114,8 +1128,8 @@ struct Browser
 								write('[');
 								if (effectiveRatioDisplayMode & RatioDisplayMode.percentage)
 								{
-									if (currentPathUnits)
-										write(formatted!"%5.1f%%"(100.0 * childUnits / currentPathUnits));
+									if (currentPathUnits.units)
+										write(formatted!"%5.1f%%"(100.0 * childUnits.units / currentPathUnits.units));
 									else
 										write("    -%");
 								}
@@ -1123,12 +1137,15 @@ struct Browser
 									write(' ');
 								if (effectiveRatioDisplayMode & RatioDisplayMode.graph)
 								{
-									if (mostUnits && childUnits != -real.infinity)
+									if (mostUnits && childUnits.units != -real.infinity)
 									{
-										auto barPos = cast(size_t)(barWidth * childUnits / mostUnits);
-										foreach (_; 0 .. barPos)
+										auto barPosLow  = cast(size_t)round(barWidth * childUnits.unitsLow  / mostUnits);
+										auto barPosHigh = cast(size_t)round(barWidth * childUnits.unitsHigh / mostUnits);
+										foreach (_; 0 .. barPosLow)
 											write('#');
-										foreach (_; barPos .. barWidth)
+										foreach (_; barPosLow .. barPosHigh)
+											write('?');
+										foreach (_; barPosHigh .. barWidth)
 											write(' ');
 									}
 									else
