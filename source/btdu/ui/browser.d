@@ -1109,6 +1109,8 @@ struct Browser
 
 							if (effectiveRatioDisplayMode)
 							{
+								auto barWidth = max(10, (width - x - 4) / 5);
+
 								write('[');
 								if (effectiveRatioDisplayMode & RatioDisplayMode.percentage)
 								{
@@ -1121,16 +1123,17 @@ struct Browser
 									write(' ');
 								if (effectiveRatioDisplayMode & RatioDisplayMode.graph)
 								{
-									char[10] bar;
 									if (mostUnits && childUnits != -real.infinity)
 									{
-										auto barPos = cast(size_t)(10 * childUnits / mostUnits);
-										bar[0 .. barPos] = '#';
-										bar[barPos .. $] = ' ';
+										auto barPos = cast(size_t)(barWidth * childUnits / mostUnits);
+										foreach (_; 0 .. barPos)
+											write('#');
+										foreach (_; barPos .. barWidth)
+											write(' ');
 									}
 									else
-										bar[] = '-';
-									write(bar[]);
+										foreach (_; 0 .. barWidth)
+											write('-');
 								}
 								write("] ");
 							}
