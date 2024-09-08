@@ -2,7 +2,7 @@
 	"fileVersion": 1,
 	"versions": {
 		"ae": "0.0.3461",
-		"btrfs": "0.0.19",
+		"btrfs": "0.0.21",
 		"ncurses": "1.0.0",
 		"emsi_containers": "0.9.0"
 	}
