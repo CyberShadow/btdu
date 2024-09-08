@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020, 2021, 2022, 2023  Vladimir Panteleev <btdu@cy.md>
+ * Copyright (C) 2020, 2021, 2022, 2023, 2024  Vladimir Panteleev <btdu@cy.md>
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public
@@ -1196,7 +1196,7 @@ struct Browser
 						// Items
 						auto infoWidth = min(60, (width - 1) / 2);
 						auto itemsWidth = width - infoWidth - 1;
-						withWindow(0, 0, itemsWidth, height, {
+						withWindow(infoWidth + 1, 0, itemsWidth, height, {
 							itemScrollContext.y.contentSize = items.length;
 							itemScrollContext.y.contentAreaSize = height - 1;
 							itemScrollContext.y.cursor = selection && items ? items.countUntil(selection) : 0;
@@ -1218,7 +1218,7 @@ struct Browser
 
 						// "Viewing:"
 						auto currentInfoHeight = selection ? height / 2 : height;
-						withWindow(itemsWidth + 1, 0, infoWidth, currentInfoHeight, {
+						withWindow(0, 0, infoWidth, currentInfoHeight, {
 							if (currentPath is &marked)
 							{
 								updateMark();
@@ -1230,7 +1230,7 @@ struct Browser
 
 						// "Selected:"
 						if (selection)
-							withWindow(itemsWidth + 1, currentInfoHeight, infoWidth, height - currentInfoHeight, {
+							withWindow(0, currentInfoHeight, infoWidth, height - currentInfoHeight, {
 								auto moreButton = fmtIf(
 									selection.firstChild !is null,
 									fmtSeq(button("→"), " ", button("i")).valueFunctor,
@@ -1241,10 +1241,10 @@ struct Browser
 
 						// Vertical separator
 						foreach (y; 0 .. height)
-							at(itemsWidth, y, {
+							at(infoWidth, y, {
 								write(
 									y == 0                 ? '╦' :
-									y == currentInfoHeight ? '╠' :
+									y == currentInfoHeight ? '╣' :
 									                         '║'
 								);
 							});
