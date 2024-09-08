@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020, 2021, 2022, 2023  Vladimir Panteleev <btdu@cy.md>
+ * Copyright (C) 2020, 2021, 2022, 2023, 2024  Vladimir Panteleev <btdu@cy.md>
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public
@@ -474,7 +474,7 @@ struct BrowserPath
 			if (data[type].offsets[i] != Offset.init && offsets.canFind(data[type].offsets[i]))
 				// Delete matching offsets, pushing existing ones from the start towards the end
 				foreach_reverse (j; 0 .. i + 1)
-					data[type].offsets = j == 0
+					data[type].offsets[j] = j == 0
 						? Offset.init
 						: data[type].offsets[j - 1];
 		if (parent)
