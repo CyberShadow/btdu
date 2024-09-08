@@ -280,7 +280,8 @@ struct Browser
 		with (wand)
 		{
 			deleter.update();
-			if (deleter.state == Deleter.State.success)
+			auto deleterState = deleter.getState();
+			if (deleterState.status == Deleter.Status.success)
 			{
 				if (deleter.items.length == 1 && !deleter.items[0].obeyMarks)
 					showMessage(format!"Deleted %s."(deleter.items[0].browserPath.humanName));
@@ -1352,7 +1353,7 @@ struct Browser
 								assert(false);
 
 							case Popup.deleteConfirm:
-								assert(deleter.state == Deleter.State.ready);
+								assert(deleterState.status == Deleter.Status.ready);
 								title = "Confirm deletion";
 								bool single = deleter.items.length == 1 && !deleter.items[0].obeyMarks;
 								write("Are you sure you want to delete:", endl, endl);
@@ -1407,41 +1408,38 @@ struct Browser
 								break;
 
 							case Popup.deleteProgress:
-								final switch (deleter.state)
+								final switch (deleterState.status)
 								{
-									case Deleter.State.none:
-									case Deleter.State.ready:
-									case Deleter.State.success:
+									case Deleter.Status.none:
+									case Deleter.Status.ready:
+									case Deleter.Status.success:
 										assert(false);
-									case Deleter.State.subvolumeConfirm:
+									case Deleter.Status.subvolumeConfirm:
 										title = "Confirm subvolume deletion";
 										write("Are you sure you want to delete the subvolume:", endl, endl);
-										xOverflowPath({ write(bold(deleter.current), endl, endl); });
+										xOverflowPath({ write(bold(deleterState.current), endl, endl); });
 										write("Press ", button("⇧ Shift"), "+", button("Y"), " to confirm,", endl,
 											"any other key to cancel.", endl,
 										);
 										break;
 
-									case Deleter.State.progress:
-									case Deleter.State.subvolumeProgress:
+									case Deleter.Status.progress:
+									case Deleter.Status.subvolumeProgress:
 										title = "Deletion in progress";
-										synchronized(deleter.thread)
-										{
-											if (deleter.stopping)
-												write("Stopping deletion:", endl, endl);
-											else
-												write("Deleting", (deleter.state == Deleter.State.subvolumeProgress ? " the subvolume" : ""), ":", endl, endl);
-											xOverflowPath({ write(bold(deleter.current), endl); });
-											if (!deleter.stopping)
-												write(endl, "Press ", button("q"), " to stop.");
-										}
+										if (deleterState.stopping)
+											write("Stopping deletion:", endl, endl);
+										else
+											write("Deleting", (deleterState.status == Deleter.Status.subvolumeProgress ? " the subvolume" : ""), ":", endl, endl);
+										xOverflowPath({ write(bold(deleterState.current), endl); });
+										if (!deleterState.stopping)
+											write(endl, "Press ", button("q"), " to stop.");
 										break;
 
-									case Deleter.State.error:
+									case Deleter.Status.error:
 										title = "Deletion error";
 										write("Error deleting:", endl, endl);
-										xOverflowPath({ write(bold(deleter.current), endl, endl); });
-										write(deleter.error, endl, endl);
+										xOverflowPath({ write(bold(deleterState.current), endl, endl); });
+										write(deleterState.error, endl, endl);
 										write(
 											"Displayed usage may be inaccurate;", endl,
 											"please restart btdu.", endl,
@@ -1585,14 +1583,14 @@ struct Browser
 				return true;
 
 			case Popup.deleteProgress:
-				final switch (deleter.state)
+				final switch (deleter.getState().status)
 				{
-					case Deleter.State.none:
-					case Deleter.State.ready:
-					case Deleter.State.success:
+					case Deleter.Status.none:
+					case Deleter.Status.ready:
+					case Deleter.Status.success:
 						assert(false);
 
-					case Deleter.State.subvolumeConfirm:
+					case Deleter.Status.subvolumeConfirm:
 						switch (ch)
 						{
 							case 'Y':
@@ -1605,8 +1603,8 @@ struct Browser
 						}
 						break;
 
-					case Deleter.State.progress:
-					case Deleter.State.subvolumeProgress:
+					case Deleter.Status.progress:
+					case Deleter.Status.subvolumeProgress:
 						switch (ch)
 						{
 							case 'q':
@@ -1620,7 +1618,7 @@ struct Browser
 						}
 						break;
 
-					case Deleter.State.error:
+					case Deleter.Status.error:
 						switch (ch)
 						{
 							case 'q':

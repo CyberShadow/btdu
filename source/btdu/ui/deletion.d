@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2023  Vladimir Panteleev <btdu@cy.md>
+ * Copyright (C) 2023, 2024  Vladimir Panteleev <btdu@cy.md>
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public
@@ -39,7 +39,7 @@ import btdu.state : toFilesystemPath;
 
 struct Deleter
 {
-	enum State
+	enum Status
 	{
 		none,
 		ready, // confirmation
@@ -49,16 +49,30 @@ struct Deleter
 		subvolumeConfirm,
 		subvolumeProgress,
 	}
-	State state;
+
+	struct State
+	{
+		Status status;
+		string current, error;
+		bool stopping;
+	}
+	private State state;
 
 	Thread thread;
-	string current, error;
-	bool stopping;
 	Event subvolumeResume;
+
+	State getState()
+	{
+		if (thread)
+			synchronized (this.thread)
+				return state;
+		else
+			return state;
+	}
 
 	@property bool needRefresh()
 	{
-		return this.state == Deleter.State.progress;
+		return this.state.status == Deleter.Status.progress;
 	}
 
 	/// One item to delete.
@@ -73,25 +87,26 @@ struct Deleter
 
 	void prepare(Item[] items)
 	{
-		assert(this.state == State.none);
+		assert(this.state.status == Status.none);
+
 		this.items = items;
-		this.current = items.length ? items[0].browserPath.toFilesystemPath.to!string : null;
-		this.state = State.ready;
+		this.state.current = items.length ? items[0].browserPath.toFilesystemPath.to!string : null;
+		this.state.status = Status.ready;
 	}
 
 	void cancel()
 	{
-		assert(this.state == State.ready);
-		this.state = State.none;
+		assert(this.state.status == Status.ready);
+		this.state.status = Status.none;
 	}
 
 	void start()
 	{
-		assert(this.state == State.ready);
-		this.stopping = false;
+		assert(this.state.status == Status.ready);
+		this.state.stopping = false;
+		this.state.status = Status.progress;
 		this.subvolumeResume.initialize(false, false);
 		this.thread = new Thread(&threadFunc);
-		this.state = State.progress;
 		this.thread.start();
 	}
 
@@ -124,9 +139,9 @@ struct Deleter
 				}
 
 				synchronized(this.thread)
-					this.current = e.fullName;
+					this.state.current = e.fullName;
 
-				if (this.stopping)
+				if (this.state.stopping)
 				{
 					// e.stop();
 					// return;
@@ -156,9 +171,9 @@ struct Deleter
 							entryBrowserPath.enumerateMarks((_, bool isMarked) { if (!isMarked) haveNegativeMarks = true; });
 						if (!haveNegativeMarks) // Can't delete subvolume if the user excluded some items inside it.
 						{
-							this.state = State.subvolumeConfirm;
+							this.state.status = Status.subvolumeConfirm;
 							this.subvolumeResume.wait();
-							if (this.stopping)
+							if (this.state.stopping)
 								throw new Exception("User abort");
 
 							auto fd = openat(e.dirFD, e.baseNameFSPtr, O_RDONLY);
@@ -166,7 +181,7 @@ struct Deleter
 							auto subvolumeID = getSubvolumeID(fd);
 							deleteSubvolume(fd, subvolumeID);
 
-							this.state = State.progress;
+							this.state.status = Status.progress;
 							return; // The ioctl will also unlink the directory entry
 						}
 					}
@@ -192,44 +207,44 @@ struct Deleter
 
 	void confirm(Flag!"proceed" proceed)
 	{
-		assert(this.state == State.subvolumeConfirm);
+		assert(this.state.status == Status.subvolumeConfirm);
 		if (proceed)
-			this.state = State.subvolumeProgress;
+			this.state.status = Status.subvolumeProgress;
 		else
 		{
-			this.stopping = true;
-			this.state = State.progress;
+			this.state.stopping = true;
+			this.state.status = Status.progress;
 		}
 		this.subvolumeResume.set();
 	}
 
 	void stop()
 	{
-		this.stopping = true;
+		this.state.stopping = true;
 	}
 
 	void finish()
 	{
-		assert(this.state.among(State.success, State.error));
-		this.state = State.none;
+		assert(this.state.status.among(Status.success, Status.error));
+		this.state.status = Status.none;
 	}
 
 	void update()
 	{
-		if (this.state == State.progress && !this.thread.isRunning())
+		if (this.state.status == Status.progress && !this.thread.isRunning())
 		{
 			try
 			{
 				this.thread.join();
 
 				// Success:
-				this.state = State.success;
+				this.state.status = Status.success;
 			}
 			catch (Exception e)
 			{
 				// Failure:
-				this.error = e.msg;
-				this.state = State.error;
+				this.state.error = e.msg;
+				this.state.status = Status.error;
 			}
 			this.thread = null;
 			this.subvolumeResume.terminate();
