@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2023  Vladimir Panteleev <btdu@cy.md>
+ * Copyright (C) 2023, 2024  Vladimir Panteleev <btdu@cy.md>
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public
@@ -77,7 +77,12 @@ struct Curses
 
 			inputFile.fdopen(inputFD, "rb");
 			outputFile.fdopen(outputFD, "wb");
-			newterm(getenv("TERM"), outputFile.getFP(), inputFile.getFP());
+			auto screen = newterm(getenv("TERM"), outputFile.getFP(), inputFile.getFP());
+			enforce(screen,
+				"Could not create the ncurses screen object. " ~
+				"Are terminfo files installed for your terminal? " ~
+				"Perhaps try running with \"TERM=xterm\"."
+			);
 
 			stdinSocket = new Socket(cast(socket_t)inputFD, AddressFamily.UNSPEC);
 			stdinSocket.blocking = false;
