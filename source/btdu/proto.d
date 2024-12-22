@@ -157,7 +157,7 @@ private void serialize(T)(ref T value)
 			serialize(f);
 	}
 	else
-		static assert(false, "Can't serialize" ~ T.stringof);
+		static assert(false, "Can't serialize " ~ T.stringof);
 }
 
 private void sendRaw(const(void)[] data)
@@ -205,7 +205,7 @@ private T deserialize(T)(ref ubyte[] buf)
 		return value;
 	}
 	else
-		static assert(false, "Can't deserialize" ~ T.stringof);
+		static assert(false, "Can't deserialize " ~ T.stringof);
 }
 
 /// Decode received data.
