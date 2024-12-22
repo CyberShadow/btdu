@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020, 2021, 2022, 2023  Vladimir Panteleev <btdu@cy.md>
+ * Copyright (C) 2020, 2021, 2022, 2023, 2024  Vladimir Panteleev <btdu@cy.md>
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public
@@ -148,7 +148,7 @@ private void serialize(T)(ref T value)
 			sendBuf.put(value.asBytes);
 		else
 			foreach (ref e; value)
-				serialize(value);
+				serialize(e);
 	}
 	else
 	static if (is(T == struct))
