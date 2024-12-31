@@ -15,6 +15,8 @@ For the represented and exclusive size, btdu displays a confidence range, e.g.:
 
 This should be interpreted as: given the data btdu collected so far, it is [confident with 95% certainty](https://en.wikipedia.org/wiki/Confidence_interval) that the object size is within 16.9 GiB of 763.0 GiB.
 
+In the file browser, the confidence range is visually represented in the size graph using question marks.
+
 Logical vs. physical space
 --------------------------
 
