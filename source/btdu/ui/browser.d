@@ -200,45 +200,41 @@ struct Browser
 			return null;
 	}
 
-	private real getSamples(BrowserPath* path)
+	private static real getSamples(BrowserPath* path, SizeMetric metric)
 	{
-		final switch (sizeDisplayMode)
+		final switch (metric)
 		{
 			case SizeMetric.represented:
 			case SizeMetric.exclusive:
 			case SizeMetric.shared_:
-				return path.data[sizeMetricSampleType(sizeDisplayMode)].samples;
+				return path.data[sizeMetricSampleType(metric)].samples;
 			case SizeMetric.distributed:
 				return path.distributedSamples;
 		}
 	}
 
-	private real getDuration(BrowserPath* path)
+	private real getSamples(BrowserPath* path) { return getSamples(path, sizeDisplayMode); }
+
+	private static real getDuration(BrowserPath* path, SizeMetric metric)
 	{
-		final switch (sizeDisplayMode)
+		final switch (metric)
 		{
 			case SizeMetric.represented:
 			case SizeMetric.exclusive:
 			case SizeMetric.shared_:
-				return path.data[sizeMetricSampleType(sizeDisplayMode)].duration;
+				return path.data[sizeMetricSampleType(metric)].duration;
 			case SizeMetric.distributed:
 				return path.distributedDuration;
 		}
 	}
+
+	private real getDuration(BrowserPath* path) { return getDuration(path, sizeDisplayMode); }
 
 	private real getAverageDuration(BrowserPath* path)
 	{
 		auto samples = getSamples(path);
 		auto duration = getDuration(path);
 		return samples ? duration / samples : -real.infinity;
-	}
-
-	private static ulong getTotalSamples(BrowserPath* p, SizeMetric metric)
-	{
-		if (metric == SizeMetric.distributed)
-			return .getTotalSamples();
-		else
-			return .getTotalSamples(p, sizeMetricSampleType(metric));
 	}
 
 	private int compareItems(BrowserPath* a, BrowserPath* b)
@@ -415,7 +411,7 @@ struct Browser
 							});
 						else
 						{
-							auto totalSamples = .getTotalSamples();
+							auto totalSamples = getTotalUniqueSamplesFor(&browserRoot);
 							write(" Samples: ", bold(totalSamples));
 
 							write("  Resolution: ");
@@ -736,7 +732,7 @@ struct Browser
 
 					if (expert)
 					{
-						void writeSamples(double numSamples, ulong totalSamples, bool showError)
+						void writeSamples(double numSamples, double totalSamples, bool showError)
 						{
 							if (totalSamples == 0)
 								write("-");
@@ -764,11 +760,10 @@ struct Browser
 								case 2: // samples
 									if (column == 1) // size
 									{
-										auto numSamples = metric == SizeMetric.distributed
-											? p.distributedSamples
-											: p.data[sizeMetricSampleType(metric)].samples;
+										auto samples = p.I!getSamples(metric);
+										auto totalSamples = (&browserRoot).I!getSamples(metric);
 										auto showError = !!metric.among(SizeMetric.represented, SizeMetric.exclusive);
-										writeSamples(numSamples, p.I!getTotalSamples(metric), showError);
+										writeSamples(samples, totalSamples, showError);
 									}
 									else // samples
 									{
@@ -804,7 +799,7 @@ struct Browser
 						enum showError = true;
 
 						write("Represented size: ");
-						auto totalSamples = p.I!getTotalSamples(SizeMetric.represented);
+						auto totalSamples = getTotalUniqueSamplesFor(p);
 						if (totalSamples > 0)
 						{
 							write("~", bold(humanSize(p.data[type].samples * real(totalSize) / totalSamples)));
@@ -875,7 +870,7 @@ struct Browser
 												return write("- ");
 											return write(pair.value * 100 / representedSamples, "%");
 										case 2:
-											auto totalSamples = p.getTotalSamples(SampleType.represented);
+											auto totalSamples = getTotalUniqueSamplesFor(p);
 											if (!totalSamples)
 												return write("-");
 											return write(
@@ -1034,6 +1029,8 @@ struct Browser
 
 			void drawItems()
 			{
+				auto totalSamples = (&browserRoot).I!getSamples();
+
 				struct UnitValue
 				{
 					real units, unitsLow, unitsHigh;
@@ -1045,8 +1042,7 @@ struct Browser
 					{
 						case SortMode.name:
 						case SortMode.size:
-							auto samples = getSamples(path);
-							auto totalSamples = path.I!getTotalSamples(sizeDisplayMode);
+							auto samples = path.I!getSamples();
 							auto error = estimateError(totalSamples, samples) * totalSamples;
 							return UnitValue(
 								samples,
@@ -1059,7 +1055,7 @@ struct Browser
 					}
 				}
 
-				void writeUnits(real units, ulong totalSamples)
+				void writeUnits(real units)
 				{
 					final switch (sortMode)
 					{
@@ -1114,9 +1110,8 @@ struct Browser
 								child.getEffectiveMark() ? '+' :
 								currentPath is &marked ? '-' : ' '
 							);
-							auto totalSamples = child.I!getTotalSamples(sizeDisplayMode);
-							auto textWidth = measure({ writeUnits(childUnits.units, totalSamples); })[0];
-							write(formatted!"%*s"(max(0, 11 - textWidth), "")); writeUnits(childUnits.units, totalSamples); write(" ");
+							auto textWidth = measure({ writeUnits(childUnits.units); })[0];
+							write(formatted!"%*s"(max(0, 11 - textWidth), "")); writeUnits(childUnits.units); write(" ");
 
 							auto effectiveRatioDisplayMode = ratioDisplayMode;
 							while (effectiveRatioDisplayMode && width < minWidth(effectiveRatioDisplayMode))
@@ -1394,7 +1389,7 @@ struct Browser
 										? selection
 										// Assume that we are deleting marked items
 										: &marked;
-									auto delTotalSamples = p.getTotalSamples(SampleType.exclusive);
+									auto delTotalSamples = getTotalUniqueSamplesFor(p);
 									auto delExclusiveSamples = p.data[SampleType.exclusive].samples;
 									write(
 										"This will free ~", bold(humanSize(delExclusiveSamples * real(totalSize) / delTotalSamples)),

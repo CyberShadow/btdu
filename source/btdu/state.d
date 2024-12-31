@@ -84,17 +84,35 @@ void updateMark()
 	);
 }
 
-ulong getTotalSamples()
+/// Returns the total number of unique samples collected by btdu since `p` was born.
+/// Comparing the returned number with the number of samples recorded in `p` itself
+/// can give us a proportion of how much disk space `p` is using.
+ulong getTotalUniqueSamplesFor(BrowserPath* p)
 {
-	return browserRoot.data[SampleType.represented].samples;
-}
-
-ulong getTotalSamples(BrowserPath* p, SampleType type)
-{
-	if (p is &marked && type == SampleType.exclusive)
+	if (p is &marked)
+	{
+		// The `marked` node is special in that, unlike every real `BrowserPath`,
+		// it exists for some fraction of the time since when btdu started running
+		// (since the point it was last "invalidated").
 		return markTotalSamples;
+	}
 	else
-		return browserRoot.data[SampleType.represented].samples;
+	{
+		// We assume that all seen paths equally existed since btdu was started.
+
+		// We use `browserRoot` because we add samples to all nodes going up in the hierarchy,
+		// so we will always include `browserRoot`.
+		auto reference = &browserRoot;
+
+		// We use `SampleType.represented` because
+		// 1. It is always going to be collected
+		//    (it's the only sample type collected in non-expert mode);
+		// 2. At the root level, it will exactly correspond to the total number
+		//    of samples collected.
+		enum type = SampleType.represented;
+
+		return reference.data[type].samples;
+	}
 }
 
 Subprocess[] subprocesses;

@@ -114,6 +114,8 @@ Press <kbd>⇧ Shift</kbd><kbd>M</kbd> to view all marks, and <kbd>⇧ Shift</kb
 
 Press <kbd>*</kbd> to invert marks on the current screen.
 
+In [`--expert` mode](CONCEPTS.md#size-metrics), btdu will show the total exclusive size of (i.e. how much would be freed by deleting) the marked items it the top status bar.
+
 Marks are saved in exported `.json` files; a boolean field named `"mark"` will be present on marked nodes. Press <kbd>⇧ Shift</kbd><kbd>O</kbd> to save an export file during an interactive session.
 
 License
