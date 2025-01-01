@@ -1,7 +1,9 @@
 btdu - sampling disk usage profiler for btrfs
 =============================================
 
-<img align="right" src="https://dump.cy.md/a8e2054ffc05bc120b390e48c6d4e43d/19%3A02%3A24-upload.png">
+<p align="center">
+  <img src="https://dump.cy.md/e17c462459de465a66f2d511f3201866/btdu_0_6.png">
+</p>
 
 Some [btrfs](https://btrfs.wiki.kernel.org/) features may make it difficult to estimate what disk space is being used for:
 
