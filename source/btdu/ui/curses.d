@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2023, 2024  Vladimir Panteleev <btdu@cy.md>
+ * Copyright (C) 2023, 2024, 2025  Vladimir Panteleev <btdu@cy.md>
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public
@@ -254,7 +254,7 @@ struct Curses
 					// put(ok ? peek(j, origY) : space);
 					if (inMask(j, origY))
 					{
-						put(peek(j, origY));
+						put(peek(j, origY), 1);
 						poke(j, origY, space);
 					}
 					else
@@ -273,7 +273,7 @@ struct Curses
 			// We did not find a blank, so just put a hyphen if we can.
 			if (origX >= 2 && inMask(origX - 1, origY))
 			{
-				put(peek(origX - 1, origY));
+				put(peek(origX - 1, origY), 1);
 				poke(origX - 1, origY, "‐"d.ptr.toCChar(attr, color));
 			}
 		}
@@ -332,7 +332,7 @@ struct Curses
 		}
 
 		/// Put a raw `cchar_t`, obeying overflow and advancing the cursor.
-		void put(cchar_t c)
+		void put(cchar_t c, int width)
 		{
 			bool ok = prePut();
 
@@ -345,7 +345,7 @@ struct Curses
 
 			if (inMask(x, y))
 				poke(x, y, c);
-			x++;
+			x += width;
 			maxX = max(maxX, x);
 		}
 
@@ -366,7 +366,7 @@ struct Curses
 			auto fillerCChar = filler.toCChar(attr, color);
 			auto oldMaxX = maxX;
 			while (x + x0 < maskX0 || inMask(x, y))
-				put(fillerCChar);
+				put(fillerCChar, 1);
 			maxX = oldMaxX;
 			x = xMargin; // CR
 			y++;   // LF
@@ -515,7 +515,7 @@ struct Curses
 			struct Sink
 			{
 				size_t count;
-				void charSink(cchar_t) { count++; }
+				void charSink(cchar_t, int width) { count += width; }
 				void put(const(char)[] str)
 				{
 					toCChars(str, &charSink, 0, 0);
@@ -794,7 +794,7 @@ cchar_t toCChar(dchar c, uint attr, NCURSES_PAIRS_T color = 0)
 }
 
 /// Decode UTF-8 string `str`, passing resulting `cchar_t`s to the provided sink.
-void toCChars(const(char)[] str, scope void delegate(cchar_t) sink, uint attr, NCURSES_PAIRS_T color = 0)
+void toCChars(const(char)[] str, scope void delegate(cchar_t, int) sink, uint attr, NCURSES_PAIRS_T color = 0)
 {
 	import std.utf : byDchar;
 	auto dchars = str.byDchar(); // This will also replace bad UTF-8 with replacementDchar.
@@ -806,7 +806,8 @@ void toCChars(const(char)[] str, scope void delegate(cchar_t) sink, uint attr, N
 		// Copy one spacing and up to CCHARW_MAX-1 nonspacing characters
 		if (dchars.empty)
 			break;
-		assert(wcwidth(dchars.front) > 0);
+		auto width = wcwidth(dchars.front);
+		assert(width > 0);
 		wchar_t[CCHARW_MAX + /*nul-terminator*/ 1] wchars;
 		size_t i = 0;
 		wchars[i++] = dchars.front;
@@ -817,6 +818,6 @@ void toCChars(const(char)[] str, scope void delegate(cchar_t) sink, uint attr, N
 			dchars.popFront();
 		}
 		wchars[i] = 0;
-		sink(toCChar(wchars.ptr, attr, color));
+		sink(toCChar(wchars.ptr, attr, color), width);
 	}
 }
