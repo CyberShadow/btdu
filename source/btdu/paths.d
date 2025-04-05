@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020, 2021, 2022, 2023, 2024  Vladimir Panteleev <btdu@cy.md>
+ * Copyright (C) 2020, 2021, 2022, 2023, 2024, 2025  Vladimir Panteleev <btdu@cy.md>
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public
@@ -21,10 +21,15 @@ module btdu.paths;
 
 import std.algorithm.comparison;
 import std.algorithm.iteration;
+import std.algorithm.mutation;
 import std.algorithm.searching;
 import std.array : array;
 import std.bitmanip;
+import std.exception : enforce;
 import std.experimental.allocator : makeArray, make;
+import std.path;
+import std.range;
+import std.range.primitives;
 import std.string;
 import std.traits : Unqual, EnumMembers;
 import std.typecons : Nullable, nullable;
@@ -39,6 +44,20 @@ import ae.utils.meta;
 import btdu.alloc;
 
 public import btdu.proto : Offset;
+
+alias PathPattern = string[];
+
+PathPattern parsePathPattern(string p) {
+	enforce(p.length, "Path pattern cannot be empty");
+	enforce(p.startsWith("/"), "Path pattern must be an absolute path");
+	auto parts = p[1..$].split("/");
+	parts ~= "**"; // Implied prefix match
+	parts.reverse(); // Path nodes are stored as a tree and traversed leaf-to-root
+	return parts;
+}
+
+__gshared PathPattern[] preferredPaths;
+__gshared PathPattern[] ignoredPaths;
 
 /// Common definitions for a deduplicated trie for paths.
 mixin template SimplePath()
@@ -198,6 +217,7 @@ mixin template SimplePath()
 		alias This = typeof(this)*;
 		static struct Range
 		{
+		@nogc:
 			This p;
 			bool empty() const { return !p; }
 			string front() { return p.name[]; }
@@ -395,12 +415,54 @@ struct GlobalPath
 	{
 		static struct Range
 		{
+		@nogc:
 			const(GlobalPath)* p;
 			bool empty() const { return !p; }
 			const(SubPath)* front() { return p.subPath; }
 			void popFront() { p = p.parent; }
 		}
 		return Range(&this);
+	}
+
+	bool matches(PathPattern pattern) const @nogc
+	{
+		auto r = this.range
+			.map!(g => g.range)
+			.joiner;
+		alias R = typeof(r);
+
+		bool pathMatches(R r, PathPattern pattern) @nogc
+		{
+			bool impl(R r, PathPattern pattern)
+			{
+				if (pattern.empty && r.empty)
+					return true;
+				if (r.empty)
+					return false;
+				if (r.front.length == 0 || r.front.startsWith("\0"))
+					return pathMatches(r.dropOne, pattern); // Skip special nodes
+				if (pattern.empty)
+					return false;
+				if (pattern.front == "**")
+				{
+					pattern.popFront();
+					while (!r.empty)
+					{
+						if (pathMatches(r, pattern))
+							return true;
+						r.popFront();
+					}
+					return false;
+				}
+				// if (globMatch(r.front, pattern.front)) // not @nogc
+				if (pattern.front == "*" || pattern.front == r.front)
+					return pathMatches(r.dropOne, pattern.dropOne);
+				return false;
+			}
+			auto result = impl(r, pattern);
+			return result;
+		}
+		return pathMatches(r, pattern);
 	}
 
 	mixin PathCommon;
@@ -780,6 +842,16 @@ struct BrowserPath
 GlobalPath selectRepresentativePath(GlobalPath[] paths)
 {
 	return paths.fold!((a, b) {
+		// Prefer preferred paths
+		bool aPreferred = preferredPaths.any!(p => a.matches(p));
+		bool bPreferred = preferredPaths.any!(p => b.matches(p));
+		if (aPreferred != bPreferred)
+			return aPreferred ? a : b;
+		// Prefer non-ignored paths
+		bool aIgnored = ignoredPaths.any!(p => a.matches(p));
+		bool bIgnored = ignoredPaths.any!(p => b.matches(p));
+		if (aIgnored != bIgnored)
+			return aIgnored ? b : a;
 		// Prefer paths with resolved roots
 		auto aResolved = a.isResolved();
 		auto bResolved = b.isResolved();

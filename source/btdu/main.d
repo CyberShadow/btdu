@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020, 2021, 2022, 2023  Vladimir Panteleev <btdu@cy.md>
+ * Copyright (C) 2020, 2021, 2022, 2023, 2025  Vladimir Panteleev <btdu@cy.md>
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public
@@ -66,6 +66,8 @@ void program(
 	Option!(string, `Stop after achieving this resolution (e.g. "1MB" or "1%").`, "SIZE") minResolution = null,
 	Switch!hiddenOption exitOnLimit = false,
 	Option!(string, "On exit, export the collected results to the given file.", "PATH", 'o', "export") exportPath = null,
+	Option!(string[], "Prioritize allocating representative samples in the given path.", "PATH") prefer = null,
+	Option!(string[], "Deprioritize allocating representative samples in the given path.", "PATH") ignore = null,
 	Switch!("On exit, export represented size estimates in 'du' format to standard output.") du = false,
 	Switch!("Instead of analyzing a btrfs filesystem, read previously collected results saved with --export from PATH.", 'f', "import") doImport = false,
 )
@@ -107,6 +109,8 @@ Please report defects and enhancement requests to the GitHub issue tracker:
 
 	.expert = expert;
 	.physical = physical;
+	.preferredPaths = prefer.map!parsePathPattern.array;
+	.ignoredPaths = ignore.map!parsePathPattern.array;
 
 	if (!doImport)
 	{

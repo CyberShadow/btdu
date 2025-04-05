@@ -39,13 +39,16 @@ Representative location
 After picking a logical offset to sample, btdu asks btrfs what is located at that offset. btrfs replies with zero or more locations.
 Out of these locations, btdu picks one location where it should place the sample within its tree, to *represent* the space occupied by this data. We call this location the *representative* location.
 
-The way in which btdu selects the representative location aims to prefer better visualization of what the data is used for, i.e., the simplest explanation for what is using this disk space. For instance, if one location's filesystem path is longer than the other, then the shorter is chosen, as the longer is more likely to point at a snapshot or other redundant clone of the shorter one.
+The way in which btdu selects the representative location aims to prefer better visualization of what the data is used for, i.e., the simplest explanation for what is using this disk space.
+For instance, if one location's filesystem path is longer than the other, then the shorter is chosen, as the longer is more likely to point at a snapshot or other redundant clone of the shorter one.
 
 Examples:
 
 - For data which is used exactly once, the representative location will be the path to the file which references that data.
 - For data which is used in `/@root/file.txt` and `/@root-20210203/file.txt`, the representative location will be `/@root/file.txt`, because it is shorter.
 - For data which is used in `/@root/file1.txt` and `/@root/file2.txt`, the representative location will be `/@root/file1.txt`, because it is lexicographically smaller.
+
+The "shorter / lexicographically smaller path wins" rule can be overridden using the `--prefer` and `--ignore` options.
 
 Size metrics
 ------------
