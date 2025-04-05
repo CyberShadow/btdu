@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020, 2021, 2022, 2023, 2024  Vladimir Panteleev <btdu@cy.md>
+ * Copyright (C) 2020, 2021, 2022, 2023, 2024, 2025  Vladimir Panteleev <btdu@cy.md>
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public
@@ -761,7 +761,7 @@ struct Browser
 									if (column == 1) // size
 									{
 										auto samples = p.I!getSamples(metric);
-										auto totalSamples = (&browserRoot).I!getSamples(metric);
+										auto totalSamples = getTotalUniqueSamplesFor(p);
 										auto showError = !!metric.among(SizeMetric.represented, SizeMetric.exclusive);
 										writeSamples(samples, totalSamples, showError);
 									}
@@ -1029,7 +1029,8 @@ struct Browser
 
 			void drawItems()
 			{
-				auto totalSamples = (&browserRoot).I!getSamples();
+				auto totalUniqueSamples = getTotalUniqueSamplesFor(currentPath);
+				auto totalRootSamples = (&browserRoot).I!getSamples(); // in the current mode
 
 				struct UnitValue
 				{
@@ -1043,11 +1044,11 @@ struct Browser
 						case SortMode.name:
 						case SortMode.size:
 							auto samples = path.I!getSamples();
-							auto error = estimateError(totalSamples, samples) * totalSamples;
+							auto error = estimateError(totalRootSamples, samples) * totalRootSamples;
 							return UnitValue(
 								samples,
 								max(samples - error, 0),
-								min(samples + error, totalSamples),
+								min(samples + error, totalRootSamples),
 							);
 						case SortMode.time:
 							auto duration = getAverageDuration(path);
@@ -1062,9 +1063,9 @@ struct Browser
 						case SortMode.name:
 						case SortMode.size:
 							auto samples = units;
-							if (!totalSamples)
+							if (!totalUniqueSamples)
 								return write("?");
-							return write("~", humanSize(samples * real(totalSize) / totalSamples, true));
+							return write("~", humanSize(samples * real(totalSize) / totalUniqueSamples, true));
 
 						case SortMode.time:
 							auto hnsecs = units;
