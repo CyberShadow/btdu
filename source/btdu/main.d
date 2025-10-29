@@ -106,9 +106,12 @@ Please report defects and enhancement requests to the GitHub issue tracker:
 		stderr.writeln("Loading results from file...");
 		importData(path);
 	}
+	else
+	{
+		.expert = expert;
+		.physical = physical;
+	}
 
-	.expert = expert;
-	.physical = physical;
 	.preferredPaths = prefer.map!parsePathPattern.array;
 	.ignoredPaths = ignore.map!parsePathPattern.array;
 
