@@ -1,4 +1,4 @@
-FROM debian:buster-20210902
+FROM debian:bookworm-20251020
 
 ARG BTDU_ARCH
 
