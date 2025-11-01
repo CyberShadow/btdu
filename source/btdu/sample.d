@@ -321,42 +321,44 @@ Root[u64] roots;
 /// Performs memoized resolution of the path for a btrfs root object.
 Root getRoot(int fd, __u64 rootID)
 {
-	return roots.require(rootID, {
-		Root result;
-		findRootBackRef(
-			fd,
-			rootID,
-			(
-				__u64 parentRootID,
-				__u64 dirID,
-				__u64 sequence,
-				char[] name,
-			) {
-				cast(void) sequence; // unused
+	if (auto existing = rootID in roots)
+		return *existing;
 
-				inoLookup(
-					fd,
-					parentRootID,
-					dirID,
-					(char[] dirPath)
-					{
-						if (result !is Root.init)
-							throw new Exception("Multiple root locations");
-						result.path = cast(string)(dirPath ~ name);
-						result.parent = parentRootID;
-					}
-				);
-			}
-		);
+	Root result;
+	findRootBackRef(
+		fd,
+		rootID,
+		(
+			__u64 parentRootID,
+			__u64 dirID,
+			__u64 sequence,
+			char[] name,
+		) {
+			cast(void) sequence; // unused
 
-		// Ensure parents are written first
-		if (result !is Root.init)
-			cast(void)getRoot(fd, result.parent);
+			inoLookup(
+				fd,
+				parentRootID,
+				dirID,
+				(char[] dirPath)
+				{
+					if (result !is Root.init)
+						throw new Exception("Multiple root locations");
+					result.path = cast(string)(dirPath ~ name);
+					result.parent = parentRootID;
+				}
+			);
+		}
+	);
 
-		send(NewRootMessage(rootID, result.parent, result.path));
+	// Ensure parents are written first
+	if (result !is Root.init)
+		cast(void)getRoot(fd, result.parent);
 
-		return result;
-	}());
+	send(NewRootMessage(rootID, result.parent, result.path));
+
+	roots[rootID] = result;
+	return result;
 }
 
 btdu.proto.Error toError(Exception e)
