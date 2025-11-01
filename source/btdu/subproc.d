@@ -127,21 +127,25 @@ struct Subprocess
 
 	void handleMessage(NewRootMessage m)
 	{
-		globalRoots.require(m.rootID, {
-			if (m.parentRootID || m.name.length)
-				return new GlobalPath(
-					*(m.parentRootID in globalRoots).enforce("Unknown parent root"),
-					subPathRoot.appendPath(m.name),
-				);
-			else
-			if (m.rootID == BTRFS_FS_TREE_OBJECTID)
-				return new GlobalPath(null, &subPathRoot);
-			else
-			if (m.rootID == BTRFS_ROOT_TREE_OBJECTID)
-				return new GlobalPath(null, subPathRoot.appendName("\0ROOT_TREE"));
-			else
-				return new GlobalPath(null, subPathRoot.appendName(format!"\0TREE_%d"(m.rootID)));
-		}());
+		if (m.rootID in globalRoots)
+			return;
+
+		GlobalPath* path;
+		if (m.parentRootID || m.name.length)
+			path = new GlobalPath(
+				*(m.parentRootID in globalRoots).enforce("Unknown parent root"),
+				subPathRoot.appendPath(m.name),
+			);
+		else
+		if (m.rootID == BTRFS_FS_TREE_OBJECTID)
+			path = new GlobalPath(null, &subPathRoot);
+		else
+		if (m.rootID == BTRFS_ROOT_TREE_OBJECTID)
+			path = new GlobalPath(null, subPathRoot.appendName("\0ROOT_TREE"));
+		else
+			path = new GlobalPath(null, subPathRoot.appendName(format!"\0TREE_%d"(m.rootID)));
+
+		globalRoots[m.rootID] = path;
 	}
 
 	private struct Result
