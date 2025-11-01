@@ -48,7 +48,7 @@ Examples:
 - For data which is used in `/@root/file.txt` and `/@root-20210203/file.txt`, the representative location will be `/@root/file.txt`, because it is shorter.
 - For data which is used in `/@root/file1.txt` and `/@root/file2.txt`, the representative location will be `/@root/file1.txt`, because it is lexicographically smaller.
 
-The "shorter / lexicographically smaller path wins" rule can be overridden using the `--prefer` and `--ignore` options.
+The "shorter / lexicographically smaller path wins" rule can be overridden using the `--prefer` and `--ignore` options, which accept a shell-like pattern (understanding `?`, `*`, `**`, `[a-z]`, `{this,that}` syntax).
 
 Size metrics
 ------------

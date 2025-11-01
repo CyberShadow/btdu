@@ -66,8 +66,8 @@ void program(
 	Option!(string, `Stop after achieving this resolution (e.g. "1MB" or "1%").`, "SIZE") minResolution = null,
 	Switch!hiddenOption exitOnLimit = false,
 	Option!(string, "On exit, export the collected results to the given file.", "PATH", 'o', "export") exportPath = null,
-	Option!(string[], "Prioritize allocating representative samples in the given path.", "PATH") prefer = null,
-	Option!(string[], "Deprioritize allocating representative samples in the given path.", "PATH") ignore = null,
+	Option!(string[], "Prioritize allocating representative samples in the given path.", "PATTERN") prefer = null,
+	Option!(string[], "Deprioritize allocating representative samples in the given path.", "PATTERN") ignore = null,
 	Switch!("On exit, export represented size estimates in 'du' format to standard output.") du = false,
 	Switch!("Instead of analyzing a btrfs filesystem, read previously collected results saved with --export from PATH.", 'f', "import") doImport = false,
 )

@@ -27,7 +27,6 @@ import std.array : array;
 import std.bitmanip;
 import std.exception : enforce;
 import std.experimental.allocator : makeArray, make;
-import std.path;
 import std.range;
 import std.range.primitives;
 import std.string;
@@ -40,18 +39,21 @@ import containers.internal.hash : generateHash;
 import ae.utils.appender;
 import ae.utils.json : JSONName, JSONOptional, JSONFragment;
 import ae.utils.meta;
+import ae.utils.path.glob;
 
 import btdu.alloc;
 
 public import btdu.proto : Offset;
 
-alias PathPattern = string[];
+alias PathPattern = CompiledGlob!char[];
+
+private static doubleGlob = compileGlob("**");
 
 PathPattern parsePathPattern(string p) {
 	enforce(p.length, "Path pattern cannot be empty");
 	enforce(p.startsWith("/"), "Path pattern must be an absolute path");
-	auto parts = p[1..$].split("/");
-	parts ~= "**"; // Implied prefix match
+	auto parts = p[1..$].split("/").map!compileGlob.array;
+	parts ~= doubleGlob; // Implied prefix match
 	parts.reverse(); // Path nodes are stored as a tree and traversed leaf-to-root
 	return parts;
 }
@@ -443,7 +445,7 @@ struct GlobalPath
 					return pathMatches(r.dropOne, pattern); // Skip special nodes
 				if (pattern.empty)
 					return false;
-				if (pattern.front == "**")
+				if (pattern.front == doubleGlob)
 				{
 					pattern.popFront();
 					while (!r.empty)
@@ -454,8 +456,7 @@ struct GlobalPath
 					}
 					return false;
 				}
-				// if (globMatch(r.front, pattern.front)) // not @nogc
-				if (pattern.front == "*" || pattern.front == r.front)
+				if (pattern.front.match(r.front))
 					return pathMatches(r.dropOne, pattern.dropOne);
 				return false;
 			}
