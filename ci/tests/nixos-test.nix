@@ -14,9 +14,9 @@ pkgs.testers.nixosTest {
     # Install btdu
     environment.systemPackages = [ btdu ];
 
-    # Create a virtual disk for btrfs
+    # Create virtual disks for btrfs and ext4 testing
     virtualisation = {
-      emptyDiskImages = [ 4096 ]; # 4GB disk
+      emptyDiskImages = [ 1024 1024 ]; # 1GB for btrfs/ext4, 1GB for multi-device/RAID
       memorySize = 2048;
     };
   };
