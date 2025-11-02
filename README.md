@@ -91,7 +91,15 @@ You can start browsing the results instantly; btdu will keep collecting samples 
 
 Run `btdu --help` for more usage information.
 
-See [CONCEPTS.md](CONCEPTS.md) for information about some btdu / btrfs concepts, such as represented / exclusive / shared size.
+### Sampling options
+
+`--expert` collects additional metrics; `--physical` switches the addressing mode from logical to physical, causing btdu to measure physical disk space.
+
+Use `--prefer=PATTERN` and `--ignore=PATTERN` to control which path represents shared extents. Patterns use glob syntax (`*`, `**`, etc.) as absolute paths from the filesystem root. Example: `--prefer=/data/.snapshots`
+
+`--max-samples`, `--max-time`, and `--min-resolution` control when btdu stops sampling (and, in headless mode, exits).
+
+See [CONCEPTS.md](CONCEPTS.md) for more information about btdu / btrfs concepts, such as represented / exclusive / shared size.
 
 ### Headless mode
 
@@ -118,7 +126,15 @@ Press <kbd>*</kbd> to invert marks on the current screen.
 
 In [`--expert` mode](CONCEPTS.md#size-metrics), btdu will show the total exclusive size of (i.e. how much would be freed by deleting) the marked items it the top status bar.
 
-Marks are saved in exported `.json` files; a boolean field named `"mark"` will be present on marked nodes. Press <kbd>⇧ Shift</kbd><kbd>O</kbd> to save an export file during an interactive session.
+Marks are saved in exported `.json` files; a boolean field named `"mark"` will be present on marked nodes.
+
+### Import and export
+
+Press <kbd>⇧ Shift</kbd><kbd>O</kbd> to save an export file during an interactive session; alternatively, pass `--export=FILENAME` to do so automatically on exit.
+
+Exports can be loaded with `--import`. Then, specify a file name instead of the filesystem path to sample.
+
+For a more portable (but less detailed) export, use `--du`; the resulting file should then be loadable by any disk usage analyzer which supports loading `du` output.
 
 License
 -------
