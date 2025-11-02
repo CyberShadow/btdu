@@ -29,7 +29,7 @@
         # Build btdu from local source
         btdu = pkgs.buildDubPackage {
           pname = "btdu";
-          version = "0.6.0-dev";
+          version = "0.6.1";
 
           src = btduSrc;
 
