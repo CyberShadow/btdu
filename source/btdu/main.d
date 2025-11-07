@@ -244,6 +244,7 @@ Please report defects and enhancement requests to the GitHub issue tracker:
 				if (!paused)
 				{
 					browser.togglePause();
+					browser.curses.beep();
 					browser.update();
 				}
 				// Only pause once

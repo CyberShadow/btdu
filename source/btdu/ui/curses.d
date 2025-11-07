@@ -760,6 +760,11 @@ struct Curses
 		fn(inputFile, outputFile);
 	}
 
+	void beep()
+	{
+		.beep();
+	}
+
 private:
 	int ttyFD = -1;
 	File inputFile, outputFile;
