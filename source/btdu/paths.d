@@ -898,31 +898,39 @@ bool pathMatches(R)(R r, PathPattern pattern) @nogc
 	return false;
 }
 
-GlobalPath selectRepresentativePath(GlobalPath[] paths)
+/// Returns true if path 'a' is more representative than path 'b'
+/// This is the full comparison logic for representativeness ordering
+/// Works with both GlobalPath and BrowserPath
+bool isMoreRepresentative(A, B)(ref A a, ref B b)
+{
+	// Prefer preferred paths
+	bool aPreferred = preferredPaths.any!(p => a.matches(p));
+	bool bPreferred = preferredPaths.any!(p => b.matches(p));
+	if (aPreferred != bPreferred)
+		return aPreferred;
+	// Prefer non-ignored paths
+	bool aIgnored = ignoredPaths.any!(p => a.matches(p));
+	bool bIgnored = ignoredPaths.any!(p => b.matches(p));
+	if (aIgnored != bIgnored)
+		return bIgnored; // Return true if b is ignored (so a is preferred)
+	// Prefer paths with resolved roots
+	auto aResolved = a.isResolved();
+	auto bResolved = b.isResolved();
+	if (aResolved != bResolved)
+		return aResolved;
+	// Shortest path always wins
+	auto aLength = a.length;
+	auto bLength = b.length;
+	if (aLength != bLength)
+		return aLength < bLength;
+	// If the length is the same, pick the lexicographically smallest one
+	return a < b;
+}
+
+Path selectRepresentativePath(Path)(Path[] paths)
 {
 	return paths.fold!((a, b) {
-		// Prefer preferred paths
-		bool aPreferred = preferredPaths.any!(p => a.matches(p));
-		bool bPreferred = preferredPaths.any!(p => b.matches(p));
-		if (aPreferred != bPreferred)
-			return aPreferred ? a : b;
-		// Prefer non-ignored paths
-		bool aIgnored = ignoredPaths.any!(p => a.matches(p));
-		bool bIgnored = ignoredPaths.any!(p => b.matches(p));
-		if (aIgnored != bIgnored)
-			return aIgnored ? b : a;
-		// Prefer paths with resolved roots
-		auto aResolved = a.isResolved();
-		auto bResolved = b.isResolved();
-		if (aResolved != bResolved)
-			return aResolved ? a : b;
-		// Shortest path always wins
-		auto aLength = a.length;
-		auto bLength = b.length;
-		if (aLength != bLength)
-			return aLength < bLength ? a : b;
-		// If the length is the same, pick the lexicographically smallest one
-		return a < b ? a : b;
+		return isMoreRepresentative(a, b) ? a : b;
 	})();
 }
 
