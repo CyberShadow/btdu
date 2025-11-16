@@ -340,6 +340,13 @@ mixin template PathCommon()
 	{
 		return pathMatches(this.elementRange, pattern);
 	}
+
+	/// Check if this path has resolved roots (no TREE_ markers)
+	private bool isResolved() const
+	{
+		import std.algorithm.searching : canFind, startsWith;
+		return !this.elementRange.canFind!(n => n.startsWith("\0TREE_"));
+	}
 }
 
 /// Implements comparison for linked-list-like path structures.
@@ -917,14 +924,6 @@ GlobalPath selectRepresentativePath(GlobalPath[] paths)
 		// If the length is the same, pick the lexicographically smallest one
 		return a < b ? a : b;
 	})();
-}
-
-private bool isResolved(ref GlobalPath p)
-{
-	return !p.range
-		.map!(g => g.range)
-		.joiner
-		.canFind!(n => n.startsWith("\0TREE_"));
 }
 
 // We prefix "special" names with one NUL character to
