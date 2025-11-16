@@ -100,7 +100,7 @@ Please report defects and enhancement requests to the GitHub issue tracker:
 
 	if (doImport)
 	{
-		if (procs || seed || subprocess || expert || physical || maxSamples || maxTime || minResolution || exportPath)
+		if (procs || seed || subprocess || expert || physical || maxSamples || maxTime || minResolution || exportPath || prefer || ignore)
 			throw new Exception("Conflicting command-line options");
 
 		stderr.writeln("Loading results from file...");
@@ -108,17 +108,13 @@ Please report defects and enhancement requests to the GitHub issue tracker:
 	}
 	else
 	{
-		.expert = expert;
-		.physical = physical;
-	}
-
-	.preferredPaths = prefer.map!parsePathPattern.array;
-	.ignoredPaths = ignore.map!parsePathPattern.array;
-
-	if (!doImport)
-	{
 		rndGen = Random(seed);
 		fsPath = path.buildNormalizedPath;
+
+		.expert = expert;
+		.physical = physical;
+		.preferredPaths = prefer.map!(p => parsePathPattern(p, fsPath)).array;
+		.ignoredPaths = ignore.map!(p => parsePathPattern(p, fsPath)).array;
 
 		if (subprocess)
 			return subprocessMain(path, physical);
