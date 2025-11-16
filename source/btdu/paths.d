@@ -326,6 +326,14 @@ mixin template PathCommon()
 		// All paths now point at the same thing.
 		return paths[0];
 	}
+
+	/// Get the path length in characters
+	size_t length() const
+	{
+		size_t len = 0;
+		toString((const(char)[] s) { len += s.length; });
+		return len;
+	}
 }
 
 /// Implements comparison for linked-list-like path structures.
