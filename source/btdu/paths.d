@@ -253,6 +253,10 @@ mixin template SimplePath()
 		return Range(&this);
 	}
 
+	/// Return an iterator for path element strings.
+	/// For SimplePath types, this is the same as range().
+	auto elementRange() const { return this.range; }
+
 	void toString(scope void delegate(const(char)[]) sink) const
 	{
 		if (parent)
@@ -449,6 +453,19 @@ struct GlobalPath
 			void popFront() { p = p.parent; }
 		}
 		return Range(&this);
+	}
+
+	/// Return an iterator for path element strings (flattened).
+	/// Iterates from inner-most to top level.
+	auto elementRange() const
+	{
+		import std.algorithm.iteration : map, joiner;
+		return this.range
+			.map!(g => g
+				.range
+				.filter!(s => s.length)
+			)
+			.joiner;
 	}
 
 	bool matches(PathPattern pattern) const @nogc
