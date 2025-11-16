@@ -36,6 +36,7 @@ __gshared: // btdu is single-threaded
 bool imported;
 bool expert;
 bool physical;
+bool exportSeenAs;
 string fsPath;
 ulong totalSize;
 btrfs_ioctl_dev_info_args[] devices;

@@ -603,12 +603,16 @@ struct BrowserPath
 		}
 		SampleData data;
 		@JSONOptional Nullable!bool mark;
+		@JSONOptional size_t[string] seenAs; // Map: path -> sample count
 
 		BrowserPath*[] children;
 	}
 
 	SerializedForm toJSON()
 	{
+		import std.conv : to;
+		import btdu.state : exportSeenAs;
+
 		SerializedForm s;
 		s.name = this.name[];
 		for (auto p = firstChild; p; p = p.nextSibling)
@@ -623,6 +627,9 @@ struct BrowserPath
 			this.mark == Mark.parent ? Nullable!bool.init :
 			this.mark == Mark.marked ? true.nullable :
 			false.nullable;
+		if (exportSeenAs)
+			foreach (path; seenAs.byKey)
+				s.seenAs[path.to!string] = seenAs[path];
 		return s;
 	}
 

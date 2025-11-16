@@ -66,6 +66,7 @@ void program(
 	Option!(string, `Stop after achieving this resolution (e.g. "1MB" or "1%").`, "SIZE") minResolution = null,
 	Switch!hiddenOption exitOnLimit = false,
 	Option!(string, "On exit, export the collected results to the given file.", "PATH", 'o', "export") exportPath = null,
+	Switch!("When exporting, include 'seenAs' data showing shared paths.") exportSeenAs = false,
 	Option!(string[], "Prioritize allocating representative samples in the given path.", "PATTERN") prefer = null,
 	Option!(string[], "Deprioritize allocating representative samples in the given path.", "PATTERN") ignore = null,
 	Switch!("On exit, export represented size estimates in 'du' format to standard output.") du = false,
@@ -113,6 +114,7 @@ Please report defects and enhancement requests to the GitHub issue tracker:
 
 		.expert = expert;
 		.physical = physical;
+		.exportSeenAs = exportSeenAs;
 		.preferredPaths = prefer.map!(p => parsePathPattern(p, fsPath)).array;
 		.ignoredPaths = ignore.map!(p => parsePathPattern(p, fsPath)).array;
 
