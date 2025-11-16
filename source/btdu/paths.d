@@ -334,6 +334,12 @@ mixin template PathCommon()
 		toString((const(char)[] s) { len += s.length; });
 		return len;
 	}
+
+	/// Check if this path matches a pattern (for preferred/ignored paths)
+	bool matches(PathPattern pattern) const @nogc
+	{
+		return pathMatches(this.elementRange, pattern);
+	}
 }
 
 /// Implements comparison for linked-list-like path structures.
@@ -474,46 +480,6 @@ struct GlobalPath
 				.filter!(s => s.length)
 			)
 			.joiner;
-	}
-
-	bool matches(PathPattern pattern) const @nogc
-	{
-		auto r = this.range
-			.map!(g => g.range)
-			.joiner;
-		alias R = typeof(r);
-
-		bool pathMatches(R r, PathPattern pattern) @nogc
-		{
-			bool impl(R r, PathPattern pattern)
-			{
-				if (pattern.empty && r.empty)
-					return true;
-				if (r.empty)
-					return false;
-				if (r.front.length == 0 || r.front.startsWith("\0"))
-					return pathMatches(r.dropOne, pattern); // Skip special nodes
-				if (pattern.empty)
-					return false;
-				if (pattern.front == doubleGlob)
-				{
-					pattern.popFront();
-					while (!r.empty)
-					{
-						if (pathMatches(r, pattern))
-							return true;
-						r.popFront();
-					}
-					return false;
-				}
-				if (pattern.front.match(r.front))
-					return pathMatches(r.dropOne, pattern.dropOne);
-				return false;
-			}
-			auto result = impl(r, pattern);
-			return result;
-		}
-		return pathMatches(r, pattern);
 	}
 
 	mixin PathCommon;
@@ -895,6 +861,34 @@ struct BrowserPath
 	{
 		enumerateMarks((BrowserPath* path, bool marked, scope void delegate() recurse) { callback(path, marked); recurse(); });
 	}
+}
+
+/// Core pattern matching logic for path ranges
+/// Works with any range of strings representing path components
+bool pathMatches(R)(R r, PathPattern pattern) @nogc
+{
+	if (pattern.empty && r.empty)
+		return true;
+	if (r.empty)
+		return false;
+	if (r.front.length == 0 || r.front.startsWith("\0"))
+		return pathMatches(r.dropOne, pattern); // Skip special nodes
+	if (pattern.empty)
+		return false;
+	if (pattern.front == doubleGlob)
+	{
+		pattern.popFront();
+		while (!r.empty)
+		{
+			if (pathMatches(r, pattern))
+				return true;
+			r.popFront();
+		}
+		return false;
+	}
+	if (pattern.front.match(r.front))
+		return pathMatches(r.dropOne, pattern.dropOne);
+	return false;
 }
 
 GlobalPath selectRepresentativePath(GlobalPath[] paths)
