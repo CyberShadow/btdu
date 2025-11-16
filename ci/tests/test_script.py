@@ -609,6 +609,13 @@ def test_version_display():
 def test_prefer_ignore_options():
     """Test --prefer and --ignore options affect path selection."""
     setup_btrfs_basic()
+
+    # Test old-style pattern (relative path) - should work with a warning
+    result = machine.succeed("btdu --headless --prefer='/zzz_ignored' --max-samples=100 /mnt/btrfs 2>&1")
+    assert "warning" in result.lower() and "assuming you meant" in result.lower(), \
+        f"Expected backward compatibility warning, got: {result}"
+    print("  ✓ Old-style pattern works with warning")
+
     machine.succeed("mkdir -p /mnt/btrfs/aaa_preferred /mnt/btrfs/zzz_ignored")
 
     # Create reflinked files (these will test --prefer/--ignore behavior)
@@ -624,7 +631,7 @@ def test_prefer_ignore_options():
 
     # Test --prefer: shared.bin should appear in zzz_ignored (preferred), not in aaa_preferred
     # Increased samples from 3000 to 10000 for reliable detection
-    run_btdu("--headless --prefer='/zzz_ignored/**' --export=/tmp/prefer.json --max-samples=10000 /mnt/btrfs", timeout=180)
+    run_btdu("--headless --prefer='/mnt/btrfs/zzz_ignored/**' --export=/tmp/prefer.json --max-samples=10000 /mnt/btrfs", timeout=180)
     data = verify_json_export("/tmp/prefer.json")
 
     # Find directories (they will both exist due to unique files)
@@ -642,7 +649,7 @@ def test_prefer_ignore_options():
 
     # Test --ignore: shared.bin should appear in aaa_preferred (zzz_ignored is deprioritized)
     # Increased samples from 3000 to 10000 for reliable detection
-    run_btdu("--headless --ignore='/zzz_ignored/**' --export=/tmp/ignore.json --max-samples=10000 /mnt/btrfs", timeout=180)
+    run_btdu("--headless --ignore='/mnt/btrfs/zzz_ignored/**' --export=/tmp/ignore.json --max-samples=10000 /mnt/btrfs", timeout=180)
     data = verify_json_export("/tmp/ignore.json")
 
     aaa_dir = get_node(data['root'], [SINGLE, DATA, 'aaa_preferred'])

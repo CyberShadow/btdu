@@ -49,10 +49,35 @@ alias PathPattern = CompiledGlob!char[];
 
 private static doubleGlob = compileGlob("**");
 
-PathPattern parsePathPattern(string p) {
-	enforce(p.length, "Path pattern cannot be empty");
-	enforce(p.startsWith("/"), "Path pattern must be an absolute path");
-	auto parts = p[1..$].split("/").map!compileGlob.array;
+PathPattern parsePathPattern(string p, string fsPath) {
+	import std.path : buildNormalizedPath, absolutePath, pathSplitter;
+
+	// Normalize both paths for comparison
+	auto normalizedPattern = p.absolutePath.buildNormalizedPath;
+	auto normalizedFsPath = fsPath.absolutePath.buildNormalizedPath;
+
+	// Split paths into segments for proper comparison
+	string[] patternSegments = normalizedPattern.pathSplitter.array;
+	string[] fsPathSegments = normalizedFsPath.pathSplitter.array;
+
+	enforce(patternSegments.length, "Path pattern cannot be empty");
+	enforce(patternSegments.startsWith("/"), "Path pattern must be an absolute path");
+
+	auto relativePattern = {
+		bool startsWithFsPath = equal(fsPathSegments, patternSegments.take(fsPathSegments.length));
+
+		if (startsWithFsPath)
+			return patternSegments[fsPathSegments.length .. $];
+		else
+		{
+			import std.stdio : stderr;
+			stderr.writefln("Warning: --prefer/--ignore path '%s' does not start with '%s', assuming you meant '%s%s'",
+				normalizedPattern, normalizedFsPath, normalizedFsPath, normalizedPattern);
+			return patternSegments[1 .. $]; // already relative to fsPath
+		}
+	}();
+
+	auto parts = relativePattern.map!compileGlob.array;
 	parts ~= doubleGlob; // Implied prefix match
 	parts.reverse(); // Path nodes are stored as a tree and traversed leaf-to-root
 	return parts;

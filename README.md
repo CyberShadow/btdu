@@ -95,7 +95,7 @@ Run `btdu --help` for more usage information.
 
 `--expert` collects additional metrics; `--physical` switches the addressing mode from logical to physical, causing btdu to measure physical disk space.
 
-Use `--prefer=PATTERN` and `--ignore=PATTERN` to control which path represents shared extents. Patterns use glob syntax (`*`, `**`, etc.) as absolute paths from the filesystem root. Example: `--prefer=/data/.snapshots`
+Use `--prefer=PATTERN` and `--ignore=PATTERN` to control which path represents shared extents. Patterns are absolute filesystem paths (supporting glob syntax: `*`, `**`, etc.) and must be under the sampled filesystem root. Example: `--prefer=/mnt/btrfs/data/.snapshots`
 
 `--max-samples`, `--max-time`, and `--min-resolution` control when btdu stops sampling (and, in headless mode, exits).
 
