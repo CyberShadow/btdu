@@ -1429,6 +1429,63 @@ def test_lexicographic_path_selection():
     print(f"  ✓ Lexicographic path selection verified: aaa.dat={aaa_samples} samples (zzz.dat not in tree)")
 
 
+def test_seenas_for_nonrepresentative_paths():
+    """Test that seenAs data is available for non-representative paths with 0 represented samples.
+
+    Non-representative paths (files with 0 represented samples because another copy is preferred)
+    have seenAs data populated so the UI can show "Shares data with:" information.
+    """
+    setup_btrfs_basic()
+
+    # Create reflinked files in two directories
+    machine.succeed("mkdir -p /mnt/btrfs/aaa_dir /mnt/btrfs/zzz_dir")
+    machine.succeed("dd if=/dev/urandom of=/mnt/btrfs/aaa_dir/shared.dat bs=1M count=10")
+    machine.succeed("cp --reflink=always /mnt/btrfs/aaa_dir/shared.dat /mnt/btrfs/zzz_dir/shared.dat")
+    machine.succeed("sync")
+
+    # Run btdu with --expert and --prefer to make zzz_dir the representative
+    # This means aaa_dir/shared.dat will have 0 represented samples but should still have seenAs data
+    run_btdu("--expert --headless --prefer='/mnt/btrfs/zzz_dir/**' --export=/tmp/seenas_test.json --export-seen-as --max-samples=10000 /mnt/btrfs", timeout=180)
+    data = verify_json_export("/tmp/seenas_test.json")
+
+    # Find both paths in the tree
+    aaa_node = get_node(data['root'], [SINGLE, DATA, 'aaa_dir', 'shared.dat'])
+    zzz_node = get_node(data['root'], [SINGLE, DATA, 'zzz_dir', 'shared.dat'])
+
+    # zzz_dir should be representative (has represented samples)
+    assert zzz_node is not None, "zzz_dir/shared.dat not found (should be representative due to --prefer)"
+    zzz_repr = zzz_node['data']['represented']['samples']
+    assert zzz_repr > 0, "zzz_dir/shared.dat should have represented samples (is representative)"
+
+    # Verify zzz_node has seenAs data (it's the representative, so this should work)
+    assert 'seenAs' in zzz_node, "zzz_dir/shared.dat (representative) should have seenAs data"
+    zzz_seenas = zzz_node.get('seenAs', {})
+    assert len(zzz_seenas) > 0, "zzz_dir/shared.dat (representative) should have non-empty seenAs"
+
+    # aaa_dir may or may not appear (depends on whether it got any represented samples)
+    # But if it does appear, it should have seenAs data too (this is the bug!)
+    if aaa_node is not None:
+        aaa_repr = aaa_node.get('data', {}).get('represented', {}).get('samples', 0)
+        aaa_shared = aaa_node.get('data', {}).get('shared', {}).get('samples', 0)
+
+        print(f"  aaa_dir/shared.dat found: represented={aaa_repr}, shared={aaa_shared}")
+
+        # Non-representative paths with shared samples have seenAs data
+        if aaa_shared > 0 and aaa_repr == 0:
+            assert 'seenAs' in aaa_node, "Non-representative path with shared samples should have seenAs data"
+            aaa_seenas = aaa_node.get('seenAs', {})
+            assert len(aaa_seenas) > 0, "Non-representative path should have non-empty seenAs"
+            print(f"  ✓ Sharing information available: non-representative path has seenAs={len(aaa_seenas)} entries")
+        else:
+            print("  aaa_dir/shared.dat has represented samples, skipping seenAs check")
+    else:
+        print("  aaa_dir/shared.dat not in export (has 0 samples, not exported)")
+        print("  Note: This is expected behavior - nodes with 0 samples aren't exported to JSON")
+        print("  The bug manifests in the UI when navigating to non-representative paths")
+
+    print(f"  ✓ Test complete: zzz_dir (representative) has {zzz_repr} samples and {len(zzz_seenas)} seenAs entries")
+
+
 # =============================================================================
 # Test Orchestration
 # =============================================================================
@@ -1500,6 +1557,7 @@ def execute_all_tests():
         test_exclusive_size_clones,
         test_shared_size_reflinks,
         test_lexicographic_path_selection,
+        test_seenas_for_nonrepresentative_paths,
     ]
 
     for test_func in tests:

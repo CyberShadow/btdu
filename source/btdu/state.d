@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020, 2021, 2022, 2023  Vladimir Panteleev <btdu@cy.md>
+ * Copyright (C) 2020, 2021, 2022, 2023, 2025  Vladimir Panteleev <btdu@cy.md>
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public
@@ -26,6 +26,10 @@ import ae.utils.meta : enumLength;
 import btrfs.c.ioctl : btrfs_ioctl_dev_info_args;
 import btrfs.c.kerncompat : u64;
 
+import containers.hashmap;
+import containers.internal.hash : generateHash;
+
+import btdu.alloc;
 import btdu.paths;
 import btdu.subproc : Subprocess;
 
@@ -44,6 +48,11 @@ btrfs_ioctl_dev_info_args[] devices;
 SubPath subPathRoot;
 GlobalPath*[u64] globalRoots;
 BrowserPath browserRoot;
+
+/// Maps unique sets of sharing paths to their corresponding SharingGroup.
+/// This deduplicates sharing groups - multiple samples with the same set of paths
+/// will reference the same SharingGroup and just increment its sample count.
+HashMap!(SamplePath[], SharingGroup*, CasualAllocator, generateHash!(SamplePath[]), false, true) sharingGroups;
 
 BrowserPath marked;  /// A fake `BrowserPath` used to represent all marked nodes.
 ulong markTotalSamples; /// Number of seen samples since the mark was invalidated.

@@ -34,6 +34,7 @@ import std.math.rounding : round;
 import std.range;
 import std.string;
 import std.traits;
+import std.typecons : tuple;
 
 import ae.utils.appender;
 import ae.utils.functor.primitives : functor, valueFunctor;
@@ -825,11 +826,12 @@ struct Browser
 						write("-", endl);
 
 					{
+						auto seenAsData = p.collectSeenAs();
 						bool showSeenAs;
-						if (p.seenAs.empty)
+						if (seenAsData.length == 0)
 							showSeenAs = false;
 						else
-						if (fullPath is null && p.seenAs.length == 1)
+						if (fullPath is null && seenAsData.length == 1)
 							showSeenAs = false; // Not a real file
 						else
 							showSeenAs = true;
@@ -838,8 +840,9 @@ struct Browser
 						{
 							auto representedSamples = p.data[SampleType.represented].samples;
 							write(endl, "Shares data with: ", endl, endl);
-							auto seenAs = p.seenAs
+							auto seenAs = seenAsData
 								.byKeyValue
+								.map!(kv => tuple!(q{key}, q{value})(kv.key.to!string, kv.value))
 								.array
 								.sort!((ref a, ref b) => a.key < b.key)
 								.release;

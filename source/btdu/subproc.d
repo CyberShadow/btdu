@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020, 2021, 2022, 2023  Vladimir Panteleev <btdu@cy.md>
+ * Copyright (C) 2020, 2021, 2022, 2023, 2025  Vladimir Panteleev <btdu@cy.md>
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public
@@ -38,6 +38,7 @@ import ae.utils.array;
 
 import btrfs.c.kernel_shared.ctree;
 
+import btdu.alloc;
 import btdu.common;
 import btdu.paths;
 import btdu.proto;
@@ -239,9 +240,10 @@ struct Subprocess
 		if (!result.haveInode)
 			result.browserPath = result.browserPath.appendName("\0NO_INODE");
 		auto representativeBrowserPath = result.browserPath;
+		GlobalPath representativePath;
 		if (allPaths.peek().length)
 		{
-			auto representativePath = selectRepresentativePath(allPaths.peek());
+			representativePath = selectRepresentativePath(allPaths.peek());
 			representativeBrowserPath = result.browserPath.appendPath(&representativePath);
 		}
 		representativeBrowserPath.addSample(SampleType.represented, result.offset, m.duration);
@@ -249,17 +251,85 @@ struct Subprocess
 		bool allMarked = true;
 		if (allPaths.peek().length)
 		{
-			foreach (ref path; allPaths.peek())
-				(*representativeBrowserPath.seenAs.getOrAdd(path, 0UL))++;
+			import std.experimental.allocator : makeArray, make;
+
+			// Check if we've seen this exact set of paths before
+			auto pathsSlice = allPaths.peek();
+
+			// Convert GlobalPath[] to SamplePath[] for lookup
+			static FastAppender!SamplePath samplePaths;
+			samplePaths.clear();
+			foreach (ref globalPath; pathsSlice)
+				samplePaths.put(SamplePath(result.browserPath, globalPath));
+			auto paths = samplePaths.peek();
+
+			auto existingGroup = paths in sharingGroups;
+			SharingGroup* group;
+
+			if (existingGroup)
+			{
+				// Reuse existing group, just increment sample count
+				group = *existingGroup;
+				group.samples++;
+			}
+			else
+			{
+				// New set of paths - allocate and create new group
+				// Need to make a persistent copy since the SharingGroup will hold onto it
+				// TODO: store the GlobalPath[] instead since all SamplePath roots are the same
+				auto persistentPaths = growAllocator.makeArray!SamplePath(paths.length);
+				persistentPaths[] = paths[];
+				auto nextPointers = growAllocator.makeArray!(SharingGroup*)(paths.length);
+				nextPointers[] = null;
+
+				// Create the sharing group
+				group = growAllocator.make!SharingGroup(
+					SharingGroup(1, persistentPaths, nextPointers.ptr)
+				);
+
+				// Add to HashMap for future deduplication
+				sharingGroups[persistentPaths] = group;
+			}
+
+			// Find which path is the representative
+			size_t representativeIndex = {
+				foreach (i, ref path; pathsSlice)
+					if (path is representativePath)
+						return i;
+				assert(false, "Representative path not found");
+			}();
+
+			// Link new sharing groups to BrowserPaths' firstSharingGroup list
+			if (!existingGroup)
+			{
+				// In expert mode, link this group to all BrowserPaths
+				// In non-expert mode, only link to the representative
+				if (expert)
+				{
+					// Link to all BrowserPaths
+					foreach (i, ref path; pathsSlice)
+					{
+						auto pathBrowserPath = result.browserPath.appendPath(&path);
+						group.next[i] = pathBrowserPath.firstSharingGroup;
+						pathBrowserPath.firstSharingGroup = group;
+					}
+				}
+				else
+				{
+					// Only link to representative path
+					group.next[representativeIndex] = representativeBrowserPath.firstSharingGroup;
+					representativeBrowserPath.firstSharingGroup = group;
+				}
+			}
 
 			if (expert)
 			{
-				auto distributedSamples = 1.0 / allPaths.peek().length;
-				auto distributedDuration = double(m.duration) / allPaths.peek().length;
+				auto distributedSamples = 1.0 / pathsSlice.length;
+				auto distributedDuration = double(m.duration) / pathsSlice.length;
 
 				static FastAppender!(BrowserPath*) browserPaths;
 				browserPaths.clear();
-				foreach (ref path; allPaths.peek())
+				foreach (ref path; pathsSlice)
 				{
 					auto browserPath = result.browserPath.appendPath(&path);
 					browserPaths.put(browserPath);
@@ -281,7 +351,7 @@ struct Subprocess
 			else
 			{
 				if (false) // `allMarked` result will not be used in non-expert mode anyway...
-				foreach (ref path; allPaths.peek())
+				foreach (ref path; pathsSlice)
 				{
 					auto browserPath = result.browserPath.appendPath!true(&path);
 					if (browserPath && !browserPath.getEffectiveMark())

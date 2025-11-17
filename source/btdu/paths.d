@@ -86,6 +86,35 @@ PathPattern parsePathPattern(string p, string fsPath) {
 __gshared PathPattern[] preferredPaths;
 __gshared PathPattern[] ignoredPaths;
 
+/// Represents a group of paths that share the same extent
+struct SharingGroup
+{
+	size_t samples;        /// Number of samples seen for this extent
+	SamplePath[] paths;    /// All paths that share this extent
+	SharingGroup** next;   /// Array of pointers to next groups, one per path in this.paths
+
+	/// Find the index of a path matching the given element range
+	/// Returns size_t.max if not found
+	size_t findIndex(R)(R elementRange)
+	{
+		import std.algorithm.comparison : equal;
+		foreach (i, ref path; this.paths)
+		{
+			if (equal(elementRange, path.elementRange))
+				return i;
+		}
+		return size_t.max;
+	}
+
+	/// Find the next group pointer for a given element range
+	/// Returns null if the element range doesn't match any path in this group
+	SharingGroup* getNext(R)(R elementRange)
+	{
+		auto index = findIndex(elementRange);
+		return index != size_t.max ? this.next[index] : null;
+	}
+}
+
 /// Common definitions for a deduplicated trie for paths.
 mixin template SimplePath()
 {
@@ -639,9 +668,28 @@ struct BrowserPath
 		addDistributedSample(-sampleShare, -durationShare);
 	}
 
-	/// Other paths this address is reachable via,
-	/// and samples seen from those addresses
-	HashMap!(GlobalPath, size_t, CasualAllocator, generateHash!GlobalPath, false, false) seenAs;
+	/// Linked list head pointing to the first sharing group containing this path
+	/// Each group represents one extent/sample where multiple paths share data
+	SharingGroup* firstSharingGroup;
+
+	/// Collect seenAs data from all sharing groups
+	/// Returns a map of path string -> sample count
+	size_t[SamplePath] collectSeenAs()
+	{
+		import std.conv : to;
+		size_t[SamplePath] result;
+
+		// Traverse the linked list of sharing groups
+		// Each group represents one extent where multiple paths share data
+		for (auto group = firstSharingGroup; group !is null; group = group.getNext(this.elementRange))
+		{
+			// Add all paths in this group to the result
+			foreach (ref path; group.paths)
+				result[path] += group.samples;
+		}
+
+		return result;
+	}
 
 	/// Serialized representation
 	struct SerializedForm
@@ -685,8 +733,8 @@ struct BrowserPath
 			this.mark == Mark.marked ? true.nullable :
 			false.nullable;
 		if (exportSeenAs)
-			foreach (path; seenAs.byKey)
-				s.seenAs[path.to!string] = seenAs[path];
+			foreach (path, samples; this.collectSeenAs())
+				s.seenAs[path.to!string] = samples;
 		return s;
 	}
 
@@ -785,48 +833,116 @@ struct BrowserPath
 		if (distributedSamples) // avoid quadratic complexity
 			removeDistributedSample(distributedSamples, distributedDuration);
 
-		if (seenAs.empty)
+		if (firstSharingGroup is null)
 			return;  // Directory (non-leaf) node - nothing else to do here.
 
-		// For leaf nodes, some stats can be redistributed to other references.
-		// We need to do some path calculations first,
-		// such as inferring the GlobalPath from the BrowserPath and seenAs.
+		// Determine if we are the representative path (have represented samples)
+		// in at least one situation
+		bool isRepresentative = data[SampleType.represented].samples > 0;
+
+		// Get the root BrowserPath from one of our sharing groups
+		// (This is always the same as `btdu.state.browserRoot`.)
 		BrowserPath* root;
-		foreach (ref otherPath; seenAs.byKey)
-		{
-			root = this.unappendPath(&otherPath);
-			if (root)
-				break;
-		}
+		if (firstSharingGroup.paths.length > 0)
+			root = firstSharingGroup.paths[0].root;
 		debug assert(root);
 		if (!root)
 			return;
 
-		// These paths will inherit the remains.
-		auto remainingPaths = seenAs.byKey
-			.filter!(otherPath => !root.appendPath(&otherPath).deleting)
-			.array;
-
-		// Redistribute to siblings
-		if (!remainingPaths.empty)
+		// Process each sharing group separately
+		for (auto group = firstSharingGroup; group !is null; )
 		{
-			auto newRepresentativePath = selectRepresentativePath(remainingPaths);
-			foreach (ref remainingPath; remainingPaths)
+			// Find our index in this group
+			auto ourIndex = group.findIndex(this.elementRange);
+			assert(ourIndex != size_t.max, "Could not find self in sharing group");
+			if (ourIndex == size_t.max)
+				break;
+
+			// Collect remaining (non-deleted) paths in this group
+			SamplePath[] remainingPathsInGroup;
+			foreach (i, ref path; group.paths)
 			{
-				// Redistribute samples
-				if (remainingPath == newRepresentativePath)
-					root.appendPath(&remainingPath).addSamples(
-						SampleType.represented,
-						data[SampleType.represented].samples,
-						data[SampleType.represented].offsets[],
-						data[SampleType.represented].duration,
-					);
-				if (distributedSamples)
-					root.appendPath(&remainingPath).addDistributedSample(
-						distributedSamples / remainingPaths.length,
-						distributedDuration / remainingPaths.length,
-					);
+				if (i != ourIndex)
+				{
+					auto bp = root.appendPath!true(&path.globalPath);
+					if (bp && !bp.deleting)
+						remainingPathsInGroup ~= path;
+				}
 			}
+
+			// Check if we are the representative for this specific group
+			bool isRepresentativeForThisGroup = {
+				if (!isRepresentative)
+					return false; // We have never been representative.
+
+				// Check if we would be selected as representative from this group's paths
+				auto groupRepresentative = selectRepresentativePath(group.paths);
+				import std.algorithm.comparison : equal;
+				return equal(this.elementRange, groupRepresentative.elementRange);
+			}();
+
+			// Handle all redistributions for this group
+			if (remainingPathsInGroup.length > 0)
+			{
+				// Select the most representative path from this group's remaining members
+				auto newRepresentative = selectRepresentativePath(remainingPathsInGroup);
+				auto newRepBrowserPath = root.appendPath(&newRepresentative.globalPath);
+
+				// Represented samples: if we're representative for this group, transfer to new representative
+				if (isRepresentativeForThisGroup)
+				{
+					// Calculate this group's weighted share of duration from represented samples
+					auto groupDuration = (group.samples * data[SampleType.represented].duration) / data[SampleType.represented].samples;
+
+					// Transfer represented samples (without per-group offsets)
+					newRepBrowserPath.addSamples(
+						SampleType.represented,
+						group.samples,
+						[], // Skip offsets - we don't have them per-group
+						groupDuration,
+					);
+				}
+
+				// Distributed samples: redistribute our share in this group
+				// Our share in this group is: group.samples / group.paths.length
+				// We distribute this among the remaining members
+				auto ourShareSamples = group.samples / group.paths.length;
+				auto perPathSamples = ourShareSamples / remainingPathsInGroup.length;
+
+				// Calculate duration using shared samples as basis (sum of all group.samples = shared samples)
+				auto sharedSamples = data[SampleType.shared_].samples;
+				auto sharedDuration = data[SampleType.shared_].duration;
+				auto groupTotalDuration = sharedSamples > 0
+					? (group.samples * sharedDuration) / sharedSamples
+					: 0;
+				auto ourShareDuration = groupTotalDuration / group.paths.length;
+				auto perPathDuration = ourShareDuration / remainingPathsInGroup.length;
+
+				foreach (ref path; remainingPathsInGroup)
+					root.appendPath(&path.globalPath).addDistributedSample(perPathSamples, perPathDuration);
+
+				// Exclusive samples: if group drops to 1 member, that member becomes exclusive
+				if (remainingPathsInGroup.length == 1)
+				{
+					// Calculate this group's weighted share of duration from shared samples
+					auto groupDuration = sharedSamples > 0
+						? (group.samples * sharedDuration) / sharedSamples
+						: 0;
+
+					// Add exclusive samples (without per-group offsets)
+					newRepBrowserPath.addSamples(
+						SampleType.exclusive,
+						group.samples,
+						[], // Skip offsets - we don't have them per-group
+						groupDuration,
+					);
+				}
+			}
+
+			// Shared samples: no action needed (correct!)
+
+			// Move to next group following our chain
+			group = group.next[ourIndex];
 		}
 	}
 
