@@ -493,6 +493,65 @@ struct GlobalPath
 	mixin PathCmp;
 }
 
+/// Sample path (BrowserPath root + GlobalPath)
+/// Combines a BrowserPath prefix (containing special flags like \0DATA)
+/// with a GlobalPath (filesystem path) to provide the same path semantics
+/// as BrowserPath, but as a non-materialized rvalue.
+struct SamplePath
+{
+	BrowserPath* root;      /// Root BrowserPath containing special flags
+	GlobalPath globalPath;  /// Filesystem path
+
+	void toString(scope void delegate(const(char)[]) sink) const
+	{
+		if (root)
+			root.toString(sink);
+		globalPath.toString(sink);
+	}
+
+	size_t length() const
+	{
+		size_t length = 0;
+		toString((const(char)[] s) { length += s.length; });
+		return length;
+	}
+
+	/// Return an iterator for path element strings (flattened).
+	/// Matches BrowserPath.elementRange semantics by including special flags from root.
+	auto elementRange() const
+	{
+		return chain(globalPath.elementRange, root.elementRange);
+	}
+
+	/// Comparison operator
+	int opCmp(const ref typeof(this) b) const
+	{
+		// First compare roots
+		if (root !is b.root)
+		{
+			if (!root) return -1;
+			if (!b.root) return 1;
+			auto rootCmp = root.opCmp(*b.root);
+			if (rootCmp != 0) return rootCmp;
+		}
+		// Then compare GlobalPaths
+		return globalPath.opCmp(b.globalPath);
+	}
+
+	/// Check if this path matches a pattern (for preferred/ignored paths)
+	bool matches(PathPattern pattern) const @nogc
+	{
+		return pathMatches(this.elementRange, pattern);
+	}
+
+	/// Check if this path has resolved roots (no TREE_ markers)
+	private bool isResolved() const
+	{
+		import std.algorithm.searching : canFind, startsWith;
+		return !this.elementRange.canFind!(n => n.startsWith("\0TREE_"));
+	}
+}
+
 enum SampleType
 {
 	represented,
