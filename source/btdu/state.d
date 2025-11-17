@@ -26,7 +26,7 @@ import ae.utils.meta : enumLength;
 import btrfs.c.ioctl : btrfs_ioctl_dev_info_args;
 import btrfs.c.kerncompat : u64;
 
-import containers.hashmap;
+import containers.hashset;
 import containers.internal.hash : generateHash;
 
 import btdu.alloc;
@@ -49,10 +49,9 @@ SubPath subPathRoot;
 GlobalPath*[u64] globalRoots;
 BrowserPath browserRoot;
 
-/// Maps unique sets of sharing paths to their corresponding SharingGroup.
-/// This deduplicates sharing groups - multiple samples with the same set of paths
+/// Deduplicates sharing groups - multiple samples with the same set of paths
 /// will reference the same SharingGroup and just increment its sample count.
-HashMap!(SamplePath[], SharingGroup*, CasualAllocator, generateHash!(SamplePath[]), false, true) sharingGroups;
+HashSet!(SharingGroup.Paths, CasualAllocator, SharingGroup.Paths.hashOf, false, true) sharingGroups;
 
 BrowserPath marked;  /// A fake `BrowserPath` used to represent all marked nodes.
 ulong markTotalSamples; /// Number of seen samples since the mark was invalidated.

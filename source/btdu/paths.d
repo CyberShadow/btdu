@@ -89,8 +89,9 @@ __gshared PathPattern[] ignoredPaths;
 /// Represents a group of paths that share the same extent
 struct SharingGroup
 {
+	BrowserPath* root;     /// The root BrowserPath for all filesystem paths
+	GlobalPath[] paths;    /// All filesystem paths that share this extent
 	size_t samples;        /// Number of samples seen for this extent
-	SamplePath[] paths;    /// All paths that share this extent
 	SharingGroup** next;   /// Array of pointers to next groups, one per path in this.paths
 
 	/// Find the index of a path matching the given element range
@@ -100,7 +101,7 @@ struct SharingGroup
 		import std.algorithm.comparison : equal;
 		foreach (i, ref path; this.paths)
 		{
-			if (equal(elementRange, path.elementRange))
+			if (equal(elementRange, SamplePath(root, path).elementRange))
 				return i;
 		}
 		return size_t.max;
@@ -112,6 +113,29 @@ struct SharingGroup
 	{
 		auto index = findIndex(elementRange);
 		return index != size_t.max ? this.next[index] : null;
+	}
+
+	/// Wrapper type for hashing/equality based on root and paths
+	/// Used as key in HashSet for deduplication
+	static struct Paths
+	{
+		SharingGroup* group;
+
+		bool opEquals(const ref Paths other) const
+		{
+			import std.algorithm.comparison : equal;
+			return group.root is other.group.root
+				&& equal(group.paths, other.group.paths);
+		}
+
+		static size_t hashOf(const ref Paths key)
+		{
+			import containers.internal.hash : generateHash;
+			// Combine root pointer and paths array hashes
+			size_t h = cast(size_t)key.group.root;
+			h ^= generateHash(key.group.paths);
+			return h;
+		}
 	}
 }
 
@@ -691,7 +715,7 @@ struct BrowserPath
 		{
 			// Add all paths in this group to the result
 			foreach (ref path; group.paths)
-				result.paths[path] += group.samples;
+				result.paths[SamplePath(group.root, path)] += group.samples;
 			result.total += group.samples;
 		}
 
@@ -849,9 +873,7 @@ struct BrowserPath
 
 		// Get the root BrowserPath from one of our sharing groups
 		// (This is always the same as `btdu.state.browserRoot`.)
-		BrowserPath* root;
-		if (firstSharingGroup.paths.length > 0)
-			root = firstSharingGroup.paths[0].root;
+		BrowserPath* root = firstSharingGroup.root;
 		debug assert(root);
 		if (!root)
 			return;
@@ -871,9 +893,9 @@ struct BrowserPath
 			{
 				if (i != ourIndex)
 				{
-					auto bp = root.appendPath!true(&path.globalPath);
+					auto bp = root.appendPath!true(&path);
 					if (bp && !bp.deleting)
-						remainingPathsInGroup ~= path;
+						remainingPathsInGroup ~= SamplePath(group.root, path);
 				}
 			}
 

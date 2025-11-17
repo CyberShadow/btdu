@@ -256,39 +256,36 @@ struct Subprocess
 			// Check if we've seen this exact set of paths before
 			auto pathsSlice = allPaths.peek();
 
-			// Convert GlobalPath[] to SamplePath[] for lookup
-			static FastAppender!SamplePath samplePaths;
-			samplePaths.clear();
-			foreach (ref globalPath; pathsSlice)
-				samplePaths.put(SamplePath(result.browserPath, globalPath));
-			auto paths = samplePaths.peek();
+			// Create a temporary group for lookup
+			SharingGroup lookupGroup;
+			lookupGroup.root = result.browserPath;
+			lookupGroup.paths = pathsSlice;
+			auto groupKey = SharingGroup.Paths(&lookupGroup);
 
-			auto existingGroup = paths in sharingGroups;
+			auto existingGroupPtr = groupKey in sharingGroups;
 			SharingGroup* group;
 
-			if (existingGroup)
+			if (existingGroupPtr)
 			{
 				// Reuse existing group, just increment sample count
-				group = *existingGroup;
+				group = existingGroupPtr.group;
 				group.samples++;
 			}
 			else
 			{
 				// New set of paths - allocate and create new group
-				// Need to make a persistent copy since the SharingGroup will hold onto it
-				// TODO: store the GlobalPath[] instead since all SamplePath roots are the same
-				auto persistentPaths = growAllocator.makeArray!SamplePath(paths.length);
-				persistentPaths[] = paths[];
-				auto nextPointers = growAllocator.makeArray!(SharingGroup*)(paths.length);
+				auto persistentPaths = growAllocator.makeArray!GlobalPath(pathsSlice.length);
+				persistentPaths[] = pathsSlice[];
+				auto nextPointers = growAllocator.makeArray!(SharingGroup*)(pathsSlice.length);
 				nextPointers[] = null;
 
 				// Create the sharing group
 				group = growAllocator.make!SharingGroup(
-					SharingGroup(1, persistentPaths, nextPointers.ptr)
+					SharingGroup(result.browserPath, persistentPaths, 1, nextPointers.ptr)
 				);
 
-				// Add to HashMap for future deduplication
-				sharingGroups[persistentPaths] = group;
+				// Add to HashSet for future deduplication
+				sharingGroups.insert(SharingGroup.Paths(group));
 			}
 
 			// Find which path is the representative
@@ -300,7 +297,7 @@ struct Subprocess
 			}();
 
 			// Link new sharing groups to BrowserPaths' firstSharingGroup list
-			if (!existingGroup)
+			if (!existingGroupPtr)
 			{
 				// In expert mode, link this group to all BrowserPaths
 				// In non-expert mode, only link to the representative
