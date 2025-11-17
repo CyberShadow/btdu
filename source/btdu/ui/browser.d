@@ -828,19 +828,18 @@ struct Browser
 					{
 						auto seenAsData = p.collectSeenAs();
 						bool showSeenAs;
-						if (seenAsData.length == 0)
+						if (seenAsData.paths.length == 0)
 							showSeenAs = false;
 						else
-						if (fullPath is null && seenAsData.length == 1)
+						if (fullPath is null && seenAsData.paths.length == 1)
 							showSeenAs = false; // Not a real file
 						else
 							showSeenAs = true;
 
 						if (showSeenAs)
 						{
-							auto representedSamples = p.data[SampleType.represented].samples;
 							write(endl, "Shares data with: ", endl, endl);
-							auto seenAs = seenAsData
+							auto seenAs = seenAsData.paths
 								.byKeyValue
 								.map!(kv => tuple!(q{key}, q{value})(kv.key.to!string, kv.value))
 								.array
@@ -869,9 +868,9 @@ struct Browser
 												});
 											}
 										case 1:
-											if (!representedSamples)
+											if (!seenAsData.total)
 												return write("- ");
-											return write(pair.value * 100 / representedSamples, "%");
+											return write(pair.value * 100 / seenAsData.total, "%");
 										case 2:
 											auto totalSamples = getTotalUniqueSamplesFor(p);
 											if (!totalSamples)

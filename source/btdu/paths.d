@@ -672,12 +672,18 @@ struct BrowserPath
 	/// Each group represents one extent/sample where multiple paths share data
 	SharingGroup* firstSharingGroup;
 
+	struct SeenAs
+	{
+		size_t[SamplePath] paths;
+		size_t total;
+	}
+
 	/// Collect seenAs data from all sharing groups
 	/// Returns a map of path string -> sample count
-	size_t[SamplePath] collectSeenAs()
+	SeenAs collectSeenAs()
 	{
 		import std.conv : to;
-		size_t[SamplePath] result;
+		SeenAs result;
 
 		// Traverse the linked list of sharing groups
 		// Each group represents one extent where multiple paths share data
@@ -685,7 +691,8 @@ struct BrowserPath
 		{
 			// Add all paths in this group to the result
 			foreach (ref path; group.paths)
-				result[path] += group.samples;
+				result.paths[path] += group.samples;
+			result.total += group.samples;
 		}
 
 		return result;
@@ -733,7 +740,7 @@ struct BrowserPath
 			this.mark == Mark.marked ? true.nullable :
 			false.nullable;
 		if (exportSeenAs)
-			foreach (path, samples; this.collectSeenAs())
+			foreach (path, samples; this.collectSeenAs().paths)
 				s.seenAs[path.to!string] = samples;
 		return s;
 	}
