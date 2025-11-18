@@ -112,6 +112,19 @@ struct SharingGroup
 	SharingGroup* getNext(R)(R elementRange)
 	{
 		auto index = findIndex(elementRange);
+
+		if (index == size_t.max)
+		{
+			throw new Exception("We are looking for:
+
+> %s
+
+We have:
+
+%-(- %s
+%)".format(elementRange, paths.map!(p => p.elementRange.array)));
+		}
+
 		return index != size_t.max ? this.next[index] : null;
 	}
 
