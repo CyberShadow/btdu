@@ -1120,16 +1120,22 @@ bool pathMatches(R)(R r, PathPattern pattern) @nogc
 /// Works with both GlobalPath and BrowserPath
 bool isMoreRepresentative(A, B)(ref A a, ref B b)
 {
-	// Prefer preferred paths
-	bool aPreferred = pathRules.any!(rule => rule.type == PathRule.Type.prefer && a.matches(rule.pattern));
-	bool bPreferred = pathRules.any!(rule => rule.type == PathRule.Type.prefer && b.matches(rule.pattern));
-	if (aPreferred != bPreferred)
-		return aPreferred;
-	// Prefer non-ignored paths
-	bool aIgnored = pathRules.any!(rule => rule.type == PathRule.Type.ignore && a.matches(rule.pattern));
-	bool bIgnored = pathRules.any!(rule => rule.type == PathRule.Type.ignore && b.matches(rule.pattern));
-	if (aIgnored != bIgnored)
-		return bIgnored; // Return true if b is ignored (so a is preferred)
+	// Process path rules sequentially in order
+	foreach (rule; pathRules)
+	{
+		bool aMatches = a.matches(rule.pattern);
+		bool bMatches = b.matches(rule.pattern);
+
+		if (aMatches != bMatches)
+		{
+			// One matches, the other doesn't
+			if (rule.type == PathRule.Type.prefer)
+				return aMatches; // Prefer the matching path
+			else // rule.type == PathRule.Type.ignore
+				return bMatches; // Prefer the non-matching path (i.e., not ignored)
+		}
+		// Both match or neither matches - continue to next rule
+	}
 	// Prefer paths with resolved roots
 	auto aResolved = a.isResolved();
 	auto bResolved = b.isResolved();
