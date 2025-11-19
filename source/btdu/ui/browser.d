@@ -448,6 +448,16 @@ struct Browser
 								write("  Size metric: ", bold(sizeDisplayMode.to!string.chomp("_")));
 
 							write("  Sharing groups: ", bold(numSharingGroups));
+
+							// Good-Turing coverage estimate
+							write("  Coverage: ");
+							if (totalSamples > 0)
+							{
+								auto coverage = 1.0 - (cast(double)numSingleSampleGroups / cast(double)totalSamples);
+								write("~", bold(formatted!"%.1f%%"(coverage * 100)));
+							}
+							else
+								write(bold("-"));
 						}
 						write(endl);
 					});
