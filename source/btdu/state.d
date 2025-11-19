@@ -87,14 +87,14 @@ void updateMark()
 			{
 				static foreach (sampleType; EnumMembers!SampleType)
 					if (sampleType != SampleType.exclusive)
-						marked.addSamples(sampleType, path.getSamples(sampleType), path.data[sampleType].offsets[], path.getDuration(sampleType));
+						marked.addSamples(sampleType, path.getSamples(sampleType), path.getOffsets(sampleType)[], path.getDuration(sampleType));
 				marked.addDistributedSample(path.distributedSamples, path.distributedDuration);
 			}
 			else
 			{
 				static foreach (sampleType; EnumMembers!SampleType)
 					if (sampleType != SampleType.exclusive)
-						marked.removeSamples(sampleType, path.getSamples(sampleType), path.data[sampleType].offsets[], path.getDuration(sampleType));
+						marked.removeSamples(sampleType, path.getSamples(sampleType), path.getOffsets(sampleType)[], path.getDuration(sampleType));
 				marked.removeDistributedSample(path.distributedSamples, path.distributedDuration);
 			}
 		}

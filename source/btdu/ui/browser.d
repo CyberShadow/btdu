@@ -761,7 +761,7 @@ struct Browser
 								case logicalOffsetSlack: sink("<SLACK>"); return;
 								default: sink.formattedWrite!"%s"(offset.logical);
 							}
-						}, Offset);
+						}, const(Offset));
 					alias physicalOffsetStr = offset => formatted!"%d:%d"(offset.devID, offset.physical);
 
 					auto sampleCountWidth = getTextWidth(browserRoot.getSamples(expert ? SampleType.shared_ : SampleType.represented));
@@ -948,7 +948,7 @@ struct Browser
 						write(endl, "Latest offsets (", bold(sizeDisplayMode.to!string.chomp("_")), " samples):", endl, endl);
 						auto sampleType = sizeMetricSampleType(sizeDisplayMode);
 						auto samples = p.getSamples(sampleType);
-						auto data = p.data[sampleType];
+						auto offsets = p.getOffsets(sampleType);
 
 						xOverflowEllipsis({
 							writeTable(3, 1 + min(samples, 4),
@@ -974,9 +974,9 @@ struct Browser
 												case 1:
 													if (!physical)
 														return write("-");
-													return writeOffset(physicalOffsetStr(data.offsets[index]));
+													return writeOffset(physicalOffsetStr(offsets[index]));
 												case 2:
-													return writeOffset(logicalOffsetStr(data.offsets[index]));
+													return writeOffset(logicalOffsetStr(offsets[index]));
 											}
 										case 4: return write(
 											column == 0 ? "" :

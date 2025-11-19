@@ -668,7 +668,7 @@ struct BrowserPath
 	{
 		private ulong samples; /// For non-leaves, sum of leaves
 		private ulong duration; /// Total hnsecs
-		Offset[3] offsets; /// Examples (the last 3 seen) of sample offsets
+		private Offset[3] offsets; /// Examples (the last 3 seen) of sample offsets
 	}
 	Data[enumLength!SampleType] data;
 	double distributedSamples = 0, distributedDuration = 0;
@@ -684,6 +684,12 @@ struct BrowserPath
 	ulong getDuration(SampleType type) const
 	{
 		return data[type].duration;
+	}
+
+	/// Get the offsets for a given sample type
+	const(Offset[3]) getOffsets(SampleType type) const
+	{
+		return data[type].offsets;
 	}
 
 	void addSample(SampleType type, Offset offset, ulong duration)
