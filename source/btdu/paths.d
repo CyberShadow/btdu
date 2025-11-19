@@ -47,6 +47,18 @@ public import btdu.proto : Offset;
 
 alias PathPattern = CompiledGlob!char[];
 
+struct PathRule
+{
+	enum Type
+	{
+		prefer,
+		ignore,
+	}
+
+	Type type;
+	PathPattern pattern;
+}
+
 private static doubleGlob = compileGlob("**");
 
 PathPattern parsePathPattern(string p, string fsPath)
@@ -84,8 +96,8 @@ PathPattern parsePathPattern(string p, string fsPath)
 	return parts;
 }
 
-__gshared PathPattern[] preferredPaths;
-__gshared PathPattern[] ignoredPaths;
+/// Ordered prefer/ignore rules. First match wins.
+__gshared PathRule[] pathRules;
 
 /// Represents a group of paths that share the same extent
 struct SharingGroup
@@ -1109,13 +1121,13 @@ bool pathMatches(R)(R r, PathPattern pattern) @nogc
 bool isMoreRepresentative(A, B)(ref A a, ref B b)
 {
 	// Prefer preferred paths
-	bool aPreferred = preferredPaths.any!(p => a.matches(p));
-	bool bPreferred = preferredPaths.any!(p => b.matches(p));
+	bool aPreferred = pathRules.any!(rule => rule.type == PathRule.Type.prefer && a.matches(rule.pattern));
+	bool bPreferred = pathRules.any!(rule => rule.type == PathRule.Type.prefer && b.matches(rule.pattern));
 	if (aPreferred != bPreferred)
 		return aPreferred;
 	// Prefer non-ignored paths
-	bool aIgnored = ignoredPaths.any!(p => a.matches(p));
-	bool bIgnored = ignoredPaths.any!(p => b.matches(p));
+	bool aIgnored = pathRules.any!(rule => rule.type == PathRule.Type.ignore && a.matches(rule.pattern));
+	bool bIgnored = pathRules.any!(rule => rule.type == PathRule.Type.ignore && b.matches(rule.pattern));
 	if (aIgnored != bIgnored)
 		return bIgnored; // Return true if b is ignored (so a is preferred)
 	// Prefer paths with resolved roots

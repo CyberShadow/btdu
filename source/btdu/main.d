@@ -115,8 +115,12 @@ Please report defects and enhancement requests to the GitHub issue tracker:
 		.expert = expert;
 		.physical = physical;
 		.exportSeenAs = exportSeenAs;
-		.preferredPaths = prefer.map!(p => parsePathPattern(p, fsPath)).array;
-		.ignoredPaths = ignore.map!(p => parsePathPattern(p, fsPath)).array;
+
+		// TODO: respect CLI order (needs std.getopt and ae.utils.funopt changes)
+		PathRule[] rules;
+		rules ~= prefer.map!(p => PathRule(PathRule.Type.prefer, parsePathPattern(p, fsPath))).array;
+		rules ~= ignore.map!(p => PathRule(PathRule.Type.ignore, parsePathPattern(p, fsPath))).array;
+		.pathRules = rules;
 
 		if (subprocess)
 			return subprocessMain(path, physical);
