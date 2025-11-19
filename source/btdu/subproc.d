@@ -374,7 +374,16 @@ struct Subprocess
 		{
 			auto pathsSlice = allPaths.peek();
 
-			// Find which path is the representative
+			// Sort paths for consistent hashing/deduplication
+			{
+				import std.algorithm.sorting : sort;
+				import std.typecons : tuple;
+				pathsSlice.sort!((ref a, ref b) =>
+					tuple(a.parent, a.subPath) < tuple(b.parent, b.subPath)
+				);
+			}
+
+			// Find which path is the representative (after sorting)
 			size_t representativeIndex = {
 				foreach (i, ref path; pathsSlice)
 					if (path is representativePath)
