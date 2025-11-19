@@ -384,10 +384,13 @@ struct Browser
 								if (markTotalSamples == 0)
 									write(" ? in");
 								else
+								{
+									auto estimate = estimateError(markTotalSamples, marked.data[SampleType.exclusive].samples);
 									write(formatted!" ~%s (±%s) in"(
-										humanSize(marked.data[SampleType.exclusive].samples * real(totalSize) / markTotalSamples),
-										humanSize(estimateError(markTotalSamples, marked.data[SampleType.exclusive].samples) * totalSize),
+										humanSize(estimate.center * real(totalSize) / markTotalSamples),
+										humanSize(estimate.halfWidth * totalSize / markTotalSamples),
 									));
+								}
 							}
 							write(" ", numMarked);
 							if (numUnmarked)
@@ -739,9 +742,10 @@ struct Browser
 								write("-");
 							else
 							{
-								write("~", bold(humanSize(numSamples * real(totalSize) / totalSamples, true)));
+								auto estimate = estimateError(totalSamples, numSamples);
+								write("~", bold(humanSize(estimate.center * real(totalSize) / totalSamples, true)));
 								if (showError)
-									write(" ±", humanSize(estimateError(totalSamples, numSamples) * totalSize));
+									write(" ±", humanSize(estimate.halfWidth * totalSize / totalSamples));
 								else
 									write("           ");
 							}
@@ -803,8 +807,9 @@ struct Browser
 						auto totalSamples = getTotalUniqueSamplesFor(p);
 						if (totalSamples > 0)
 						{
-							write("~", bold(humanSize(p.data[type].samples * real(totalSize) / totalSamples)));
-							if (showError) write(" ±", humanSize(estimateError(totalSamples, p.data[type].samples) * totalSize));
+							auto estimate = estimateError(totalSamples, p.data[type].samples);
+							write("~", bold(humanSize(estimate.center * real(totalSize) / totalSamples)));
+							if (showError) write(" ±", humanSize(estimate.halfWidth * totalSize / totalSamples));
 							write(formatted!" (%d sample%s)"(
 								p.data[type].samples,
 								p.data[type].samples == 1 ? "" : "s",
@@ -1046,11 +1051,11 @@ struct Browser
 						case SortMode.name:
 						case SortMode.size:
 							auto samples = path.I!getSamples();
-							auto error = estimateError(totalRootSamples, samples) * totalRootSamples;
+							auto estimate = estimateError(totalRootSamples, samples);
 							return UnitValue(
-								samples,
-								max(samples - error, 0),
-								min(samples + error, totalRootSamples),
+								estimate.center,
+								estimate.lower,
+								estimate.upper,
 							);
 						case SortMode.time:
 							auto duration = getAverageDuration(path);
@@ -1394,9 +1399,10 @@ struct Browser
 										: &marked;
 									auto delTotalSamples = getTotalUniqueSamplesFor(p);
 									auto delExclusiveSamples = p.data[SampleType.exclusive].samples;
+									auto estimate = estimateError(delTotalSamples, delExclusiveSamples);
 									write(
-										"This will free ~", bold(humanSize(delExclusiveSamples * real(totalSize) / delTotalSamples)),
-										" (±", humanSize(estimateError(delTotalSamples, delExclusiveSamples) * totalSize), ").", endl,
+										"This will free ~", bold(humanSize(estimate.center * real(totalSize) / delTotalSamples)),
+										" (±", humanSize(estimate.halfWidth * totalSize / delTotalSamples), ").", endl,
 										endl,
 									);
 								}
@@ -1979,9 +1985,23 @@ private:
 // enum z_975 = normalDistributionInverse(0.975);
 enum z_975 = 1.96;
 
+/// Represents a size estimate with confidence bounds (in sample space)
+struct SizeEstimate
+{
+	/// Lower bound of confidence interval (number of samples)
+	double lower;
+	/// Best estimate / center point (number of samples)
+	double center;
+	/// Upper bound of confidence interval (number of samples)
+	double upper;
+
+	/// Confidence interval half-width (for ± display)
+	double halfWidth() const { return (upper - lower) / 2; }
+}
+
 // https://stackoverflow.com/q/69420422/21501
 // https://stats.stackexchange.com/q/546878/234615
-double estimateError(
+SizeEstimate estimateError(
 	/// Total samples
 	double n,
 	/// Samples within the item
@@ -1992,12 +2012,20 @@ double estimateError(
 )
 {
 	import std.math.algebraic : sqrt;
+	import std.algorithm : max, min;
 
 	auto p = m / n;
 	auto q = 1 - p;
 
 	auto error = sqrt((p * q) / n);
-	return z * error;
+	auto errorMargin = z * error;
+
+	// Return estimate in sample space
+	return SizeEstimate(
+		max(m - errorMargin * n, 0),           // Lower bound
+		m,                                      // Center (current algorithm uses raw samples)
+		min(m + errorMargin * n, n),           // Upper bound
+	);
 }
 
 auto durationAsDecimalString(Duration d) @nogc
