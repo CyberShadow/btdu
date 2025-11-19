@@ -736,13 +736,13 @@ struct Browser
 
 					if (expert)
 					{
-						void writeSamples(double numSamples, double totalSamples, bool showError)
+						void writeSamples(double numSamples, double totalSamples, bool showError, bool isRoot)
 						{
 							if (totalSamples == 0)
 								write("-");
 							else
 							{
-								auto estimate = estimateError(totalSamples, numSamples);
+								auto estimate = estimateError(totalSamples, numSamples, z_975, isRoot);
 								write("~", bold(humanSize(estimate.center * real(totalSize) / totalSamples, true)));
 								if (showError)
 									write(" ±", humanSize(estimate.halfWidth * totalSize / totalSamples));
@@ -768,7 +768,7 @@ struct Browser
 										auto samples = p.I!getSamples(metric);
 										auto totalSamples = getTotalUniqueSamplesFor(p);
 										auto showError = !!metric.among(SizeMetric.represented, SizeMetric.exclusive);
-										writeSamples(samples, totalSamples, showError);
+										writeSamples(samples, totalSamples, showError, p is &browserRoot);
 									}
 									else // samples
 									{
@@ -807,7 +807,7 @@ struct Browser
 						auto totalSamples = getTotalUniqueSamplesFor(p);
 						if (totalSamples > 0)
 						{
-							auto estimate = estimateError(totalSamples, p.data[type].samples);
+							auto estimate = estimateError(totalSamples, p.data[type].samples, z_975, p is &browserRoot);
 							write("~", bold(humanSize(estimate.center * real(totalSize) / totalSamples)));
 							if (showError) write(" ±", humanSize(estimate.halfWidth * totalSize / totalSamples));
 							write(formatted!" (%d sample%s)"(
@@ -1051,7 +1051,7 @@ struct Browser
 						case SortMode.name:
 						case SortMode.size:
 							auto samples = path.I!getSamples();
-							auto estimate = estimateError(totalRootSamples, samples);
+							auto estimate = estimateError(totalRootSamples, samples, z_975, path is &browserRoot);
 							return UnitValue(
 								estimate.center,
 								estimate.lower,
@@ -2011,13 +2011,17 @@ SizeEstimate estimateError(
 	/// Standard score for desired confidence
 	/// (default is for 95% confidence)
 	double z = z_975,
+	/// Whether this is an exact value (not an estimate)
+	/// Use true for root node or other cases where size is known exactly
+	bool isExact = false,
 )
 {
 	import std.math.algebraic : sqrt;
 	import std.algorithm : max, min, clamp;
 
-	if (n == 0)
-		return SizeEstimate(0, 0, 0);
+	// Cases with exact knowledge - no estimation needed
+	if (isExact || n == 0 || m == 0)
+		return SizeEstimate(m, m, m);
 
 	auto p = m / n;
 	auto z2 = z * z;
