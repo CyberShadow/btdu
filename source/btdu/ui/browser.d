@@ -243,7 +243,7 @@ struct Browser
 			case SizeMetric.represented:
 			case SizeMetric.exclusive:
 			case SizeMetric.shared_:
-				return path.data[sizeMetricSampleType(metric)].duration;
+				return path.getDuration(sizeMetricSampleType(metric));
 			case SizeMetric.distributed:
 				return path.distributedDuration;
 		}
@@ -858,7 +858,7 @@ struct Browser
 
 					write("Average query duration: ");
 					if (p.getSamples(SampleType.represented) > 0)
-						write(stdDur(p.data[SampleType.represented].duration / p.getSamples(SampleType.represented)).durationAsDecimalString, endl);
+						write(stdDur(p.getDuration(SampleType.represented) / p.getSamples(SampleType.represented)).durationAsDecimalString, endl);
 					else
 						write("-", endl);
 
