@@ -80,14 +80,14 @@ void exportDu()
 		return 1024;
 	}();
 
-	auto totalSamples = browserRoot.data[SampleType.represented].samples;
+	auto totalSamples = browserRoot.getSamples(SampleType.represented);
 
 	void visit(BrowserPath* path)
 	{
 		for (auto child = path.firstChild; child; child = child.nextSibling)
 			visit(child);
 
-		auto samples = path.data[SampleType.represented].samples;
+		auto samples = path.getSamples(SampleType.represented);
 		auto size = ceil(samples * real(totalSize) / totalSamples / blockSize).to!ulong;
 		stdout.writefln("%d\t%s%s", size, fsPath, path.pointerWriter);
 	}

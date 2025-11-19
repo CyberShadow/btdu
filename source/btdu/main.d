@@ -231,13 +231,13 @@ Please report defects and enhancement requests to the GitHub issue tracker:
 		}
 
 		if ((maxSamples
-				&& browserRoot.data[SampleType.represented].samples >= maxSamples) ||
+				&& browserRoot.getSamples(SampleType.represented) >= maxSamples) ||
 			(maxTime
 				&& now > startTime + parsedMaxTime) ||
 			(minResolution
-				&& browserRoot.data[SampleType.represented].samples
+				&& browserRoot.getSamples(SampleType.represented)
 				&& totalSize
-				&& (totalSize / browserRoot.data[SampleType.represented].samples) <= parsedMinResolution))
+				&& (totalSize / browserRoot.getSamples(SampleType.represented)) <= parsedMinResolution))
 		{
 			if (headless || exitOnLimit)
 				break;
@@ -258,7 +258,7 @@ Please report defects and enhancement requests to the GitHub issue tracker:
 
 	if (headless)
 	{
-		auto totalSamples = browserRoot.data[SampleType.represented].samples;
+		auto totalSamples = browserRoot.getSamples(SampleType.represented);
 		stderr.writefln(
 			"Collected %s samples (achieving a resolution of ~%s) in %s.",
 			totalSamples,

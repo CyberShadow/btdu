@@ -87,14 +87,14 @@ void updateMark()
 			{
 				static foreach (sampleType; EnumMembers!SampleType)
 					if (sampleType != SampleType.exclusive)
-						marked.addSamples(sampleType, path.data[sampleType].samples, path.data[sampleType].offsets[], path.data[sampleType].duration);
+						marked.addSamples(sampleType, path.getSamples(sampleType), path.data[sampleType].offsets[], path.data[sampleType].duration);
 				marked.addDistributedSample(path.distributedSamples, path.distributedDuration);
 			}
 			else
 			{
 				static foreach (sampleType; EnumMembers!SampleType)
 					if (sampleType != SampleType.exclusive)
-						marked.removeSamples(sampleType, path.data[sampleType].samples, path.data[sampleType].offsets[], path.data[sampleType].duration);
+						marked.removeSamples(sampleType, path.getSamples(sampleType), path.data[sampleType].offsets[], path.data[sampleType].duration);
 				marked.removeDistributedSample(path.distributedSamples, path.distributedDuration);
 			}
 		}
@@ -128,7 +128,7 @@ ulong getTotalUniqueSamplesFor(BrowserPath* p)
 		//    of samples collected.
 		enum type = SampleType.represented;
 
-		return reference.data[type].samples;
+		return reference.getSamples(type);
 	}
 }
 

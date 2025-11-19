@@ -228,7 +228,7 @@ struct Browser
 			case SizeMetric.represented:
 			case SizeMetric.exclusive:
 			case SizeMetric.shared_:
-				return path.data[sizeMetricSampleType(metric)].samples;
+				return path.getSamples(sizeMetricSampleType(metric));
 			case SizeMetric.distributed:
 				return path.distributedSamples;
 		}
@@ -405,7 +405,7 @@ struct Browser
 									write(" ? in");
 								else
 								{
-									auto estimate = estimateError(markTotalSamples, marked.data[SampleType.exclusive].samples);
+									auto estimate = estimateError(markTotalSamples, marked.getSamples(SampleType.exclusive));
 									write(formatted!" ~%s (±%s) in"(
 										humanSize(estimate.center * real(totalSize) / markTotalSamples),
 										humanSize(estimate.halfWidth * totalSize / markTotalSamples),
@@ -764,7 +764,7 @@ struct Browser
 						}, Offset);
 					alias physicalOffsetStr = offset => formatted!"%d:%d"(offset.devID, offset.physical);
 
-					auto sampleCountWidth = getTextWidth(browserRoot.data[expert ? SampleType.shared_ : SampleType.represented].samples);
+					auto sampleCountWidth = getTextWidth(browserRoot.getSamples(expert ? SampleType.shared_ : SampleType.represented));
 
 					if (expert)
 					{
@@ -807,7 +807,7 @@ struct Browser
 										if (metric == SizeMetric.distributed)
 											write(formatted!"%*.3f"(sampleCountWidth + 4, p.distributedSamples));
 										else
-											write(formatted!"%*d"(sampleCountWidth, p.data[sizeMetricSampleType(metric)].samples));
+											write(formatted!"%*d"(sampleCountWidth, p.getSamples(sizeMetricSampleType(metric))));
 									}
 									break;
 							}
@@ -839,12 +839,12 @@ struct Browser
 						auto totalSamples = getTotalUniqueSamplesFor(p);
 						if (totalSamples > 0)
 						{
-							auto estimate = estimateError(totalSamples, p.data[type].samples, z_975, p is &browserRoot);
+							auto estimate = estimateError(totalSamples, p.getSamples(type), z_975, p is &browserRoot);
 							write("~", bold(humanSize(estimate.center * real(totalSize) / totalSamples)));
 							if (showError) write(" ±", humanSize(estimate.halfWidth * totalSize / totalSamples));
 							write(formatted!" (%d sample%s)"(
-								p.data[type].samples,
-								p.data[type].samples == 1 ? "" : "s",
+								p.getSamples(type),
+								p.getSamples(type) == 1 ? "" : "s",
 							));
 						}
 						else
@@ -857,8 +857,8 @@ struct Browser
 					if (fullPath) xOverflowChars({ write("Full path: ", fullPath, endl); });
 
 					write("Average query duration: ");
-					if (p.data[SampleType.represented].samples > 0)
-						write(stdDur(p.data[SampleType.represented].duration / p.data[SampleType.represented].samples).durationAsDecimalString, endl);
+					if (p.getSamples(SampleType.represented) > 0)
+						write(stdDur(p.data[SampleType.represented].duration / p.getSamples(SampleType.represented)).durationAsDecimalString, endl);
 					else
 						write("-", endl);
 
@@ -943,13 +943,15 @@ struct Browser
 						}
 					}
 
-					if (sizeDisplayMode != SizeMetric.distributed && p.data[sizeMetricSampleType(sizeDisplayMode)].samples > 0)
+					if (sizeDisplayMode != SizeMetric.distributed && p.getSamples(sizeMetricSampleType(sizeDisplayMode)) > 0)
 					{
 						write(endl, "Latest offsets (", bold(sizeDisplayMode.to!string.chomp("_")), " samples):", endl, endl);
-						auto data = p.data[sizeMetricSampleType(sizeDisplayMode)];
+						auto sampleType = sizeMetricSampleType(sizeDisplayMode);
+						auto samples = p.getSamples(sampleType);
+						auto data = p.data[sampleType];
 
 						xOverflowEllipsis({
-							writeTable(3, 1 + min(data.samples, 4),
+							writeTable(3, 1 + min(samples, 4),
 								(int column, int row)
 								{
 									final switch (row)
@@ -968,7 +970,7 @@ struct Browser
 											final switch (column)
 											{
 												case 0:
-													return write(formatted!"#%*d"(sampleCountWidth, data.samples - row));
+													return write(formatted!"#%*d"(sampleCountWidth, samples - row));
 												case 1:
 													if (!physical)
 														return write("-");
@@ -1445,7 +1447,7 @@ struct Browser
 										// Assume that we are deleting marked items
 										: &marked;
 									auto delTotalSamples = getTotalUniqueSamplesFor(p);
-									auto delExclusiveSamples = p.data[SampleType.exclusive].samples;
+									auto delExclusiveSamples = p.getSamples(SampleType.exclusive);
 									auto estimate = estimateError(delTotalSamples, delExclusiveSamples);
 									write(
 										"This will free ~", bold(humanSize(estimate.center * real(totalSize) / delTotalSamples)),
