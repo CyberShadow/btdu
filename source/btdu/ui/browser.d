@@ -201,6 +201,26 @@ struct Browser
 			return null;
 	}
 
+	/// Returns the display character for path rules: 'P'/'p' for prefer, 'I'/'i' for ignore, ' ' for none
+	/// Uppercase = literal match, lowercase = glob match
+	private static char getRuleChar(BrowserPath* path)
+	{
+		foreach (rule; pathRules)
+		{
+			if (path.matches(rule.pattern))
+			{
+				final switch (rule.type)
+				{
+					case PathRule.Type.prefer:
+						return rule.pattern.isLiteral() ? 'P' : 'p';
+					case PathRule.Type.ignore:
+						return rule.pattern.isLiteral() ? 'I' : 'i';
+				}
+			}
+		}
+		return ' ';
+	}
+
 	private static real getSamples(BrowserPath* path, SizeMetric metric)
 	{
 		final switch (metric)
@@ -1118,7 +1138,8 @@ struct Browser
 						xOverflowEllipsis({
 							write(
 								child.getEffectiveMark() ? '+' :
-								currentPath is &marked ? '-' : ' '
+								currentPath is &marked ? '-' :
+								getRuleChar(child)
 							);
 							auto textWidth = measure({ writeUnits(childUnits.units); })[0];
 							write(formatted!"%*s"(max(0, 11 - textWidth), "")); writeUnits(childUnits.units); write(" ");
