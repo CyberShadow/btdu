@@ -670,7 +670,7 @@ struct BrowserPath
 		private ulong duration; /// Total hnsecs
 		private Offset[3] offsets; /// Examples (the last 3 seen) of sample offsets
 	}
-	Data[enumLength!SampleType] data;
+	private Data[enumLength!SampleType] data;
 	double distributedSamples = 0, distributedDuration = 0;
 	private bool deleting;
 
@@ -1038,6 +1038,12 @@ struct BrowserPath
 		// Reset distributed samples
 		distributedSamples = 0;
 		distributedDuration = 0;
+	}
+
+	/// Reset samples for a specific sample type only
+	void resetSamples(SampleType type)
+	{
+		data[type] = Data.init;
 	}
 
 	@property bool deleted() { return deleting; }
