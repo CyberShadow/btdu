@@ -1006,6 +1006,22 @@ struct BrowserPath
 		}
 	}
 
+	/// Recursively reset all sample data for this path and its children
+	void resetSamples()
+	{
+		// Recursively reset all children first (depth-first traversal)
+		for (auto child = firstChild; child; child = child.nextSibling)
+			child.resetSamples();
+
+		// Reset all sample data for all types
+		static foreach (sampleType; EnumMembers!SampleType)
+			data[sampleType] = Data.init;
+
+		// Reset distributed samples
+		distributedSamples = 0;
+		distributedDuration = 0;
+	}
+
 	@property bool deleted() { return deleting; }
 
 	// Marks
