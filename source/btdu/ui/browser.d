@@ -861,14 +861,16 @@ struct Browser
 									final switch (column)
 									{
 										case 0:
+											auto path = pair.key;
+											path.skipOver("/"); // Not a true absolute path - relative to FS root
 											if (fullScreen)
-												return write(pair.key);
+												return write(path);
 											else
 											{
 												maxX = max(maxX, maxPathWidth);
 												return withWindow(0, 0, maxPathWidth, 1, {
 													middleTruncate({
-														write(pair.key);
+														write(path);
 													});
 												});
 											}

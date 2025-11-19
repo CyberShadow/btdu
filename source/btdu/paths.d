@@ -49,7 +49,8 @@ alias PathPattern = CompiledGlob!char[];
 
 private static doubleGlob = compileGlob("**");
 
-PathPattern parsePathPattern(string p, string fsPath) {
+PathPattern parsePathPattern(string p, string fsPath)
+{
 	import std.path : buildNormalizedPath, absolutePath, pathSplitter;
 
 	// Normalize both paths for comparison
@@ -91,7 +92,7 @@ struct SharingGroup
 {
 	BrowserPath* root;     /// The root BrowserPath for all filesystem paths
 	GlobalPath[] paths;    /// All filesystem paths that share this extent
-	size_t samples;        /// Number of samples seen for this extent
+	ulong samples;         /// Number of samples seen for this extent
 	SharingGroup** next;   /// Array of pointers to next groups, one per path in this.paths
 
 	/// Find the index of a path matching the given element range
@@ -698,7 +699,7 @@ struct BrowserPath
 
 	struct SeenAs
 	{
-		size_t[SamplePath] paths;
+		size_t[GlobalPath] paths;
 		size_t total;
 	}
 
@@ -715,7 +716,7 @@ struct BrowserPath
 		{
 			// Add all paths in this group to the result
 			foreach (ref path; group.paths)
-				result.paths[SamplePath(group.root, path)] += group.samples;
+				result.paths[path] += group.samples;
 			result.total += group.samples;
 		}
 
