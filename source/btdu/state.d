@@ -53,6 +53,9 @@ BrowserPath browserRoot;
 /// will reference the same SharingGroup and just increment its sample count.
 HashSet!(SharingGroup.Paths, CasualAllocator, SharingGroup.Paths.hashOf, false, true) sharingGroups;
 
+/// Total number of created sharing groups
+size_t numSharingGroups;
+
 BrowserPath marked;  /// A fake `BrowserPath` used to represent all marked nodes.
 ulong markTotalSamples; /// Number of seen samples since the mark was invalidated.
 

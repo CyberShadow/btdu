@@ -263,6 +263,9 @@ struct Subprocess
 
 			// Add to HashSet for future deduplication
 			sharingGroups.insert(SharingGroup.Paths(group));
+
+			numSharingGroups++;
+
 			isNew = true;
 		}
 
