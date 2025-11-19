@@ -117,7 +117,7 @@ struct SharingGroup
 	BrowserPath* root;     /// The root BrowserPath for all filesystem paths
 	GlobalPath[] paths;    /// All filesystem paths that share this extent
 	ulong samples;         /// Number of samples seen for this extent
-	SharingGroup** next;   /// Array of pointers to next groups, one per path in this.paths
+	SharingGroup** perPathNext;   /// Array of pointers to next groups, one per path in this.paths
 
 	/// Find the index of a path matching the given element range
 	/// Returns size_t.max if not found
@@ -137,7 +137,7 @@ struct SharingGroup
 	SharingGroup* getNext(R)(R elementRange)
 	{
 		auto index = findIndex(elementRange);
-		return index != size_t.max ? this.next[index] : null;
+		return index != size_t.max ? this.perPathNext[index] : null;
 	}
 
 	/// Wrapper type for hashing/equality based on root and paths
@@ -996,7 +996,7 @@ struct BrowserPath
 			// Shared samples: no action needed (correct!)
 
 			// Move to next group following our chain
-			group = group.next[ourIndex];
+			group = group.perPathNext[ourIndex];
 		}
 	}
 
