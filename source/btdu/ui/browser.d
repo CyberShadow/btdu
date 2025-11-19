@@ -1999,6 +1999,8 @@ struct SizeEstimate
 	double halfWidth() const { return (upper - lower) / 2; }
 }
 
+// Wilson score confidence interval for binomial proportions
+// https://en.wikipedia.org/wiki/Binomial_proportion_confidence_interval#Wilson_score_interval
 // https://stackoverflow.com/q/69420422/21501
 // https://stats.stackexchange.com/q/546878/234615
 SizeEstimate estimateError(
@@ -2012,19 +2014,30 @@ SizeEstimate estimateError(
 )
 {
 	import std.math.algebraic : sqrt;
-	import std.algorithm : max, min;
+	import std.algorithm : max, min, clamp;
+
+	if (n == 0)
+		return SizeEstimate(0, 0, 0);
 
 	auto p = m / n;
-	auto q = 1 - p;
+	auto z2 = z * z;
 
-	auto error = sqrt((p * q) / n);
-	auto errorMargin = z * error;
+	// Wilson score interval
+	auto denominator = 1 + z2 / n;
+	auto centerAdjustment = z2 / (2 * n);
+	auto centerProportion = (p + centerAdjustment) / denominator;
 
-	// Return estimate in sample space
+	auto spreadTerm = z * sqrt(p * (1 - p) / n + z2 / (4 * n * n));
+	auto spread = spreadTerm / denominator;
+
+	// Convert from proportions to sample space, ensuring bounds stay in [0, n]
+	auto lowerProportion = clamp(centerProportion - spread, 0.0, 1.0);
+	auto upperProportion = clamp(centerProportion + spread, 0.0, 1.0);
+
 	return SizeEstimate(
-		max(m - errorMargin * n, 0),           // Lower bound
-		m,                                      // Center (current algorithm uses raw samples)
-		min(m + errorMargin * n, n),           // Upper bound
+		lowerProportion * n,      // Lower bound
+		centerProportion * n,      // Center (Wilson center, not raw samples)
+		upperProportion * n,       // Upper bound
 	);
 }
 
