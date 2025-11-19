@@ -61,6 +61,18 @@ struct PathRule
 
 private static doubleGlob = compileGlob("**");
 
+/// Check if a PathPattern is literal (no wildcards except the trailing **)
+bool isLiteral(PathPattern pattern)
+{
+	// PathPattern has doubleGlob at the beginning (after reverse), so check all but the first
+	if (pattern.length <= 1)
+		return true;
+	foreach (glob; pattern[1 .. $])
+		if (!glob.isLiteral())
+			return false;
+	return true;
+}
+
 PathPattern parsePathPattern(string p, string fsPath)
 {
 	import std.path : buildNormalizedPath, absolutePath, pathSplitter;
