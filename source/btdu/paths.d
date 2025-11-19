@@ -117,6 +117,7 @@ struct SharingGroup
 	BrowserPath* root;     /// The root BrowserPath for all filesystem paths
 	GlobalPath[] paths;    /// All filesystem paths that share this extent
 	ulong samples;         /// Number of samples seen for this extent
+	ulong duration;        /// Total duration (hnsecs) for all samples of this extent
 	/// Additional per-path data - one item per GlobalPath
 	struct PathData
 	{

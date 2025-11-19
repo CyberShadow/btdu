@@ -228,7 +228,7 @@ struct Subprocess
 	}
 
 	/// Get or create a sharing group for the given paths
-	private static SharingGroup* saveSharingGroup(BrowserPath* root, GlobalPath[] paths, out bool isNew)
+	private static SharingGroup* saveSharingGroup(BrowserPath* root, GlobalPath[] paths, ulong duration, out bool isNew)
 	{
 		import std.experimental.allocator : makeArray, make;
 
@@ -275,6 +275,7 @@ struct Subprocess
 		}
 
 		group.samples++;
+		group.duration += duration;
 
 		return group;
 	}
@@ -424,7 +425,7 @@ struct Subprocess
 
 		// Get or create sharing group (even for empty paths - root-only case)
 		bool isNewGroup;
-		auto group = saveSharingGroup(result.browserPath, pathsSlice, isNewGroup);
+		auto group = saveSharingGroup(result.browserPath, pathsSlice, m.duration, isNewGroup);
 
 		// Populate BrowserPath tree from sharing group
 		populateBrowserPathsFromSharingGroup(
