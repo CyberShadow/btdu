@@ -245,6 +245,8 @@ struct Subprocess
 		{
 			// Reuse existing group, just increment sample count
 			group = existingGroupPtr.group;
+			if (group.samples == 1)
+				numSingleSampleGroups--;
 			group.samples++;
 			isNew = false;
 		}
@@ -265,6 +267,7 @@ struct Subprocess
 			sharingGroups.insert(SharingGroup.Paths(group));
 
 			numSharingGroups++;
+			numSingleSampleGroups++;
 
 			isNew = true;
 		}

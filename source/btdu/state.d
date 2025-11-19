@@ -55,6 +55,8 @@ HashSet!(SharingGroup.Paths, CasualAllocator, SharingGroup.Paths.hashOf, false, 
 
 /// Total number of created sharing groups
 size_t numSharingGroups;
+/// Number of sharing groups with exactly 1 sample
+size_t numSingleSampleGroups;
 
 BrowserPath marked;  /// A fake `BrowserPath` used to represent all marked nodes.
 ulong markTotalSamples; /// Number of seen samples since the mark was invalidated.
