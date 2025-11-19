@@ -446,6 +446,8 @@ struct Browser
 
 							if (expert)
 								write("  Size metric: ", bold(sizeDisplayMode.to!string.chomp("_")));
+
+							write("  Sharing groups: ", bold(numSharingGroups));
 						}
 						write(endl);
 					});
