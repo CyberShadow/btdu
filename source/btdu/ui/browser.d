@@ -852,6 +852,18 @@ struct Browser
 					else
 						write("-", endl);
 
+					// Unique sharing groups
+					{
+						size_t count = 0;
+						for (auto group = p.firstSharingGroup; group !is null; group = group.getNext(p.elementRange))
+							count++;
+						if (count > 0)
+						{
+							write("Unique sharing groups: ");
+							write(count, endl);
+						}
+					}
+
 					{
 						auto seenAsData = p.collectSeenAs();
 						bool showSeenAs;
