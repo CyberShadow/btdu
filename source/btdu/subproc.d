@@ -227,6 +227,127 @@ struct Subprocess
 		result.haveInode = true;
 	}
 
+	/// Get or create a sharing group for the given paths
+	private static SharingGroup* saveSharingGroup(BrowserPath* root, GlobalPath[] paths, out bool isNew)
+	{
+		import std.experimental.allocator : makeArray, make;
+
+		// Create a temporary group for lookup
+		SharingGroup lookupGroup;
+		lookupGroup.root = root;
+		lookupGroup.paths = paths;
+		auto groupKey = SharingGroup.Paths(&lookupGroup);
+
+		auto existingGroupPtr = groupKey in sharingGroups;
+		SharingGroup* group;
+
+		if (existingGroupPtr)
+		{
+			// Reuse existing group, just increment sample count
+			group = existingGroupPtr.group;
+			group.samples++;
+			isNew = false;
+		}
+		else
+		{
+			// New set of paths - allocate and create new group
+			auto persistentPaths = growAllocator.makeArray!GlobalPath(paths.length);
+			persistentPaths[] = paths[];
+			auto nextPointers = growAllocator.makeArray!(SharingGroup*)(paths.length);
+			nextPointers[] = null;
+
+			// Create the sharing group
+			group = growAllocator.make!SharingGroup(
+				SharingGroup(root, persistentPaths, 1, nextPointers.ptr)
+			);
+
+			// Add to HashSet for future deduplication
+			sharingGroups.insert(SharingGroup.Paths(group));
+			isNew = true;
+		}
+
+		return group;
+	}
+
+	/// Populate BrowserPath tree from a sharing group
+	private static void populateBrowserPathsFromSharingGroup(
+		SharingGroup* group,
+		bool isNewGroup,
+		size_t representativeIndex,
+		Offset offset,
+		ulong duration,
+		out bool allMarked
+	)
+	{
+		allMarked = true;
+		auto root = group.root;
+		auto paths = group.paths;
+
+		// Link new sharing groups to BrowserPaths' firstSharingGroup list
+		if (isNewGroup)
+		{
+			// In expert mode, link this group to all BrowserPaths
+			// In non-expert mode, only link to the representative
+			if (expert)
+			{
+				// Link to all BrowserPaths
+				foreach (i, ref path; paths)
+				{
+					auto pathBrowserPath = root.appendPath(&path);
+					group.next[i] = pathBrowserPath.firstSharingGroup;
+					pathBrowserPath.firstSharingGroup = group;
+				}
+			}
+			else
+			{
+				// Only link to representative path
+				auto representativeBrowserPath = root.appendPath(&paths[representativeIndex]);
+				group.next[representativeIndex] = representativeBrowserPath.firstSharingGroup;
+				representativeBrowserPath.firstSharingGroup = group;
+			}
+		}
+
+		if (expert)
+		{
+			auto distributedSamples = 1.0 / paths.length;
+			auto distributedDuration = double(duration) / paths.length;
+
+			static FastAppender!(BrowserPath*) browserPaths;
+			browserPaths.clear();
+			foreach (ref path; paths)
+			{
+				auto browserPath = root.appendPath(&path);
+				browserPaths.put(browserPath);
+
+				browserPath.addSample(SampleType.shared_, offset, duration);
+				browserPath.addDistributedSample(distributedSamples, distributedDuration);
+			}
+
+			auto exclusiveBrowserPath = BrowserPath.commonPrefix(browserPaths.peek());
+			exclusiveBrowserPath.addSample(SampleType.exclusive, offset, duration);
+
+			foreach (ref path; browserPaths.get())
+				if (!path.getEffectiveMark())
+				{
+					allMarked = false;
+					break;
+				}
+		}
+		else
+		{
+			if (false) // `allMarked` result will not be used in non-expert mode anyway...
+			foreach (ref path; paths)
+			{
+				auto browserPath = root.appendPath!true(&path);
+				if (browserPath && !browserPath.getEffectiveMark())
+				{
+					allMarked = false;
+					break;
+				}
+			}
+		}
+	}
+
 	void handleMessage(ResultEndMessage m)
 	{
 		if (result.ignoringOffset)
@@ -251,42 +372,7 @@ struct Subprocess
 		bool allMarked = true;
 		if (allPaths.peek().length)
 		{
-			import std.experimental.allocator : makeArray, make;
-
-			// Check if we've seen this exact set of paths before
 			auto pathsSlice = allPaths.peek();
-
-			// Create a temporary group for lookup
-			SharingGroup lookupGroup;
-			lookupGroup.root = result.browserPath;
-			lookupGroup.paths = pathsSlice;
-			auto groupKey = SharingGroup.Paths(&lookupGroup);
-
-			auto existingGroupPtr = groupKey in sharingGroups;
-			SharingGroup* group;
-
-			if (existingGroupPtr)
-			{
-				// Reuse existing group, just increment sample count
-				group = existingGroupPtr.group;
-				group.samples++;
-			}
-			else
-			{
-				// New set of paths - allocate and create new group
-				auto persistentPaths = growAllocator.makeArray!GlobalPath(pathsSlice.length);
-				persistentPaths[] = pathsSlice[];
-				auto nextPointers = growAllocator.makeArray!(SharingGroup*)(pathsSlice.length);
-				nextPointers[] = null;
-
-				// Create the sharing group
-				group = growAllocator.make!SharingGroup(
-					SharingGroup(result.browserPath, persistentPaths, 1, nextPointers.ptr)
-				);
-
-				// Add to HashSet for future deduplication
-				sharingGroups.insert(SharingGroup.Paths(group));
-			}
 
 			// Find which path is the representative
 			size_t representativeIndex = {
@@ -296,68 +382,19 @@ struct Subprocess
 				assert(false, "Representative path not found");
 			}();
 
-			// Link new sharing groups to BrowserPaths' firstSharingGroup list
-			if (!existingGroupPtr)
-			{
-				// In expert mode, link this group to all BrowserPaths
-				// In non-expert mode, only link to the representative
-				if (expert)
-				{
-					// Link to all BrowserPaths
-					foreach (i, ref path; pathsSlice)
-					{
-						auto pathBrowserPath = result.browserPath.appendPath(&path);
-						group.next[i] = pathBrowserPath.firstSharingGroup;
-						pathBrowserPath.firstSharingGroup = group;
-					}
-				}
-				else
-				{
-					// Only link to representative path
-					group.next[representativeIndex] = representativeBrowserPath.firstSharingGroup;
-					representativeBrowserPath.firstSharingGroup = group;
-				}
-			}
+			// Get or create sharing group
+			bool isNewGroup;
+			auto group = saveSharingGroup(result.browserPath, pathsSlice, isNewGroup);
 
-			if (expert)
-			{
-				auto distributedSamples = 1.0 / pathsSlice.length;
-				auto distributedDuration = double(m.duration) / pathsSlice.length;
-
-				static FastAppender!(BrowserPath*) browserPaths;
-				browserPaths.clear();
-				foreach (ref path; pathsSlice)
-				{
-					auto browserPath = result.browserPath.appendPath(&path);
-					browserPaths.put(browserPath);
-
-					browserPath.addSample(SampleType.shared_, result.offset, m.duration);
-					browserPath.addDistributedSample(distributedSamples, distributedDuration);
-				}
-
-				auto exclusiveBrowserPath = BrowserPath.commonPrefix(browserPaths.peek());
-				exclusiveBrowserPath.addSample(SampleType.exclusive, result.offset, m.duration);
-
-				foreach (ref path; browserPaths.get())
-					if (!path.getEffectiveMark())
-					{
-						allMarked = false;
-						break;
-					}
-			}
-			else
-			{
-				if (false) // `allMarked` result will not be used in non-expert mode anyway...
-				foreach (ref path; pathsSlice)
-				{
-					auto browserPath = result.browserPath.appendPath!true(&path);
-					if (browserPath && !browserPath.getEffectiveMark())
-					{
-						allMarked = false;
-						break;
-					}
-				}
-			}
+			// Populate BrowserPath tree from sharing group
+			populateBrowserPathsFromSharingGroup(
+				group,
+				isNewGroup,
+				representativeIndex,
+				result.offset,
+				m.duration,
+				allMarked
+			);
 		}
 		else
 		{
