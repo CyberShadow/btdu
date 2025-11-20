@@ -707,7 +707,7 @@ struct BrowserPath
 	}
 
 	private SampleData[enumLength!SampleType] data;
-	double distributedSamples = 0, distributedDuration = 0;
+	private double distributedSamples = 0, distributedDuration = 0;
 	private bool deleting;
 
 	/// Get the number of samples for a given sample type
@@ -726,6 +726,25 @@ struct BrowserPath
 	const(Offset[3]) getOffsets(SampleType type) const
 	{
 		return data[type].offsets;
+	}
+
+	/// Get the distributed samples
+	double getDistributedSamples() const
+	{
+		return distributedSamples;
+	}
+
+	/// Get the distributed duration
+	double getDistributedDuration() const
+	{
+		return distributedDuration;
+	}
+
+	/// Reset distributed samples and duration
+	void resetDistributedSamples()
+	{
+		distributedSamples = 0;
+		distributedDuration = 0;
 	}
 
 	void addSample(SampleType type, Offset offset, ulong duration)

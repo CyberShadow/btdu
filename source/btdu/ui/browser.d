@@ -230,7 +230,7 @@ struct Browser
 			case SizeMetric.shared_:
 				return path.getSamples(sizeMetricSampleType(metric));
 			case SizeMetric.distributed:
-				return path.distributedSamples;
+				return path.getDistributedSamples();
 		}
 	}
 
@@ -245,7 +245,7 @@ struct Browser
 			case SizeMetric.shared_:
 				return path.getDuration(sizeMetricSampleType(metric));
 			case SizeMetric.distributed:
-				return path.distributedDuration;
+				return path.getDistributedDuration();
 		}
 	}
 
@@ -805,7 +805,7 @@ struct Browser
 									else // samples
 									{
 										if (metric == SizeMetric.distributed)
-											write(formatted!"%*.3f"(sampleCountWidth + 4, p.distributedSamples));
+											write(formatted!"%*.3f"(sampleCountWidth + 4, p.getDistributedSamples()));
 										else
 											write(formatted!"%*d"(sampleCountWidth, p.getSamples(sizeMetricSampleType(metric))));
 									}

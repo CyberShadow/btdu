@@ -78,7 +78,7 @@ void updateMark()
 	static foreach (sampleType; EnumMembers!SampleType)
 		if (sampleType != SampleType.exclusive)
 			marked.resetSamples(sampleType);
-	marked.distributedSamples = marked.distributedDuration = 0;
+	marked.resetDistributedSamples();
 
 	browserRoot.enumerateMarks(
 		(const BrowserPath* path, bool isMarked)
@@ -88,14 +88,14 @@ void updateMark()
 				static foreach (sampleType; EnumMembers!SampleType)
 					if (sampleType != SampleType.exclusive)
 						marked.addSamples(sampleType, path.getSamples(sampleType), path.getOffsets(sampleType)[], path.getDuration(sampleType));
-				marked.addDistributedSample(path.distributedSamples, path.distributedDuration);
+				marked.addDistributedSample(path.getDistributedSamples(), path.getDistributedDuration());
 			}
 			else
 			{
 				static foreach (sampleType; EnumMembers!SampleType)
 					if (sampleType != SampleType.exclusive)
 						marked.removeSamples(sampleType, path.getSamples(sampleType), path.getOffsets(sampleType)[], path.getDuration(sampleType));
-				marked.removeDistributedSample(path.distributedSamples, path.distributedDuration);
+				marked.removeDistributedSample(path.getDistributedSamples(), path.getDistributedDuration());
 			}
 		}
 	);
