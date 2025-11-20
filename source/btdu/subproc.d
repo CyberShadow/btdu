@@ -245,7 +245,7 @@ struct Subprocess
 		{
 			// Reuse existing group
 			group = existingGroupPtr.group;
-			if (group.samples == 1)
+			if (group.data.samples == 1)
 				numSingleSampleGroups--;
 			isNew = false;
 		}
@@ -274,8 +274,7 @@ struct Subprocess
 			isNew = true;
 		}
 
-		group.samples++;
-		group.duration += duration;
+		group.data.add(1, [], duration);
 
 		return group;
 	}

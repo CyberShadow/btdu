@@ -116,8 +116,8 @@ struct SharingGroup
 {
 	BrowserPath* root;     /// The root BrowserPath for all filesystem paths
 	GlobalPath[] paths;    /// All filesystem paths that share this extent
-	ulong samples;         /// Number of samples seen for this extent
-	ulong duration;        /// Total duration (hnsecs) for all samples of this extent
+	SampleData data;       /// Sampling statistics for this extent
+
 	/// Additional per-path data - one item per GlobalPath
 	struct PathData
 	{
@@ -780,8 +780,8 @@ struct BrowserPath
 		{
 			// Add all paths in this group to the result
 			foreach (ref path; group.paths)
-				result.paths[path] += group.samples;
-			result.total += group.samples;
+				result.paths[path] += group.data.samples;
+			result.total += group.data.samples;
 		}
 
 		return result;
@@ -986,28 +986,28 @@ struct BrowserPath
 				if (isRepresentativeForThisGroup)
 				{
 					// Calculate this group's weighted share of duration from represented samples
-					auto groupDuration = (group.samples * data[SampleType.represented].duration) / data[SampleType.represented].samples;
+					auto groupDuration = (group.data.samples * data[SampleType.represented].duration) / data[SampleType.represented].samples;
 
 					// Transfer represented samples (without per-group offsets)
 					newRepBrowserPath.addSamples(
 						SampleType.represented,
-						group.samples,
+						group.data.samples,
 						[], // Skip offsets - we don't have them per-group
 						groupDuration,
 					);
 				}
 
 				// Distributed samples: redistribute our share in this group
-				// Our share in this group is: group.samples / group.paths.length
+				// Our share in this group is: group.data.samples / group.paths.length
 				// We distribute this among the remaining members
-				auto ourShareSamples = group.samples / group.paths.length;
+				auto ourShareSamples = group.data.samples / group.paths.length;
 				auto perPathSamples = ourShareSamples / remainingPathsInGroup.length;
 
-				// Calculate duration using shared samples as basis (sum of all group.samples = shared samples)
+				// Calculate duration using shared samples as basis (sum of all group.data.samples = shared samples)
 				auto sharedSamples = data[SampleType.shared_].samples;
 				auto sharedDuration = data[SampleType.shared_].duration;
 				auto groupTotalDuration = sharedSamples > 0
-					? (group.samples * sharedDuration) / sharedSamples
+					? (group.data.samples * sharedDuration) / sharedSamples
 					: 0;
 				auto ourShareDuration = groupTotalDuration / group.paths.length;
 				auto perPathDuration = ourShareDuration / remainingPathsInGroup.length;
@@ -1020,13 +1020,13 @@ struct BrowserPath
 				{
 					// Calculate this group's weighted share of duration from shared samples
 					auto groupDuration = sharedSamples > 0
-						? (group.samples * sharedDuration) / sharedSamples
+						? (group.data.samples * sharedDuration) / sharedSamples
 						: 0;
 
 					// Add exclusive samples (without per-group offsets)
 					newRepBrowserPath.addSamples(
 						SampleType.exclusive,
-						group.samples,
+						group.data.samples,
 						[], // Skip offsets - we don't have them per-group
 						groupDuration,
 					);
