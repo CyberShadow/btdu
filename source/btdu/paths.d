@@ -671,6 +671,22 @@ struct SampleData
 						? offset
 						: this.offsets[i + 1];
 	}
+
+	/// Remove samples from this data
+	void remove(ulong samples, const(Offset)[] offsets, ulong duration)
+	{
+		import std.algorithm.searching : canFind;
+		assert(samples <= this.samples && duration <= this.duration);
+		this.samples -= samples;
+		this.duration -= duration;
+		foreach (i; 0 .. this.offsets.length)
+			if (this.offsets[i] != Offset.init && offsets.canFind(this.offsets[i]))
+				// Delete matching offsets, pushing existing ones from the start towards the end
+				foreach_reverse (j; 0 .. i + 1)
+					this.offsets[j] = j == 0
+						? Offset.init
+						: this.offsets[j - 1];
+	}
 }
 
 /// Browser path (GUI hierarchy)
@@ -723,16 +739,7 @@ struct BrowserPath
 
 	void removeSamples(SampleType type, ulong samples, const(Offset)[] offsets, ulong duration)
 	{
-		assert(samples <= data[type].samples && duration <= data[type].duration);
-		data[type].samples -= samples;
-		data[type].duration -= duration;
-		foreach (i; 0 .. data[type].offsets.length)
-			if (data[type].offsets[i] != Offset.init && offsets.canFind(data[type].offsets[i]))
-				// Delete matching offsets, pushing existing ones from the start towards the end
-				foreach_reverse (j; 0 .. i + 1)
-					data[type].offsets[j] = j == 0
-						? Offset.init
-						: data[type].offsets[j - 1];
+		data[type].remove(samples, offsets, duration);
 		if (parent)
 			parent.removeSamples(type, samples, offsets, duration);
 	}
