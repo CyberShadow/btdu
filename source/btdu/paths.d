@@ -657,6 +657,20 @@ struct SampleData
 	ulong samples; /// Number of samples
 	ulong duration; /// Total hnsecs
 	Offset[3] offsets; /// Examples (the last 3 seen) of sample offsets
+
+	/// Add samples to this data
+	void add(ulong samples, const(Offset)[] offsets, ulong duration)
+	{
+		this.samples += samples;
+		this.duration += duration;
+		foreach (offset; offsets)
+			if (offset != Offset.init)
+				// Add new offsets at the end, pushing existing ones towards 0
+				foreach (i; 0 .. this.offsets.length)
+					this.offsets[i] = i + 1 == SampleData.offsets.length
+						? offset
+						: this.offsets[i + 1];
+	}
 }
 
 /// Browser path (GUI hierarchy)
@@ -702,15 +716,7 @@ struct BrowserPath
 
 	void addSamples(SampleType type, ulong samples, const(Offset)[] offsets, ulong duration)
 	{
-		data[type].samples += samples;
-		data[type].duration += duration;
-		foreach (offset; offsets)
-			if (offset != Offset.init)
-				// Add new offsets at the end, pushing existing ones towards 0
-				foreach (i; 0 .. data[type].offsets.length)
-					data[type].offsets[i] = i + 1 == SampleData.offsets.length
-						? offset
-						: data[type].offsets[i + 1];
+		data[type].add(samples, offsets, duration);
 		if (parent)
 			parent.addSamples(type, samples, offsets, duration);
 	}
