@@ -651,6 +651,14 @@ enum Mark : ubyte
 	unmarked,  /// Negative mark (cancels out a positive mark in an ancestor)
 }
 
+/// Aggregated sampling statistics for an extent or path
+struct SampleData
+{
+	ulong samples; /// Number of samples
+	ulong duration; /// Total hnsecs
+	Offset[3] offsets; /// Examples (the last 3 seen) of sample offsets
+}
+
 /// Browser path (GUI hierarchy)
 struct BrowserPath
 {
@@ -665,13 +673,7 @@ struct BrowserPath
 		return cmp(name[], b.name[]);
 	}
 
-	struct Data
-	{
-		private ulong samples; /// For non-leaves, sum of leaves
-		private ulong duration; /// Total hnsecs
-		private Offset[3] offsets; /// Examples (the last 3 seen) of sample offsets
-	}
-	private Data[enumLength!SampleType] data;
+	private SampleData[enumLength!SampleType] data;
 	double distributedSamples = 0, distributedDuration = 0;
 	private bool deleting;
 
@@ -706,7 +708,7 @@ struct BrowserPath
 			if (offset != Offset.init)
 				// Add new offsets at the end, pushing existing ones towards 0
 				foreach (i; 0 .. data[type].offsets.length)
-					data[type].offsets[i] = i + 1 == Data.offsets.length
+					data[type].offsets[i] = i + 1 == SampleData.offsets.length
 						? offset
 						: data[type].offsets[i + 1];
 		if (parent)
@@ -777,17 +779,17 @@ struct BrowserPath
 	{
 		string name;
 
-		struct SampleData
+		struct SerializedData
 		{
 			// Same order as SampleType
-			@JSONOptional Data represented;
-			@JSONOptional Data exclusive;
+			@JSONOptional SampleData represented;
+			@JSONOptional SampleData exclusive;
 			@JSONName("shared")
-			@JSONOptional Data shared_;
+			@JSONOptional SampleData shared_;
 			@JSONOptional JSONFragment distributedSamples = JSONFragment("0");
 			@JSONOptional JSONFragment distributedDuration = JSONFragment("0");
 		}
-		SampleData data;
+		SerializedData data;
 		@JSONOptional Nullable!bool mark;
 		@JSONOptional size_t[string] seenAs; // Map: path -> sample count
 
@@ -1034,7 +1036,7 @@ struct BrowserPath
 
 		// Reset all sample data for all types
 		static foreach (sampleType; EnumMembers!SampleType)
-			data[sampleType] = Data.init;
+			data[sampleType] = SampleData.init;
 
 		// Reset distributed samples
 		distributedSamples = 0;
@@ -1044,7 +1046,7 @@ struct BrowserPath
 	/// Reset samples for a specific sample type only
 	void resetSamples(SampleType type)
 	{
-		data[type] = Data.init;
+		data[type] = SampleData.init;
 	}
 
 	@property bool deleted() { return deleting; }
