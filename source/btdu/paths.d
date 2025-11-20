@@ -804,7 +804,7 @@ struct BrowserPath
 		}
 		SerializedData data;
 		@JSONOptional Nullable!bool mark;
-		@JSONOptional size_t[string] seenAs; // Map: path -> sample count
+		@JSONOptional ulong[string] seenAs; // Map: path -> sample count
 
 		BrowserPath*[] children;
 	}
