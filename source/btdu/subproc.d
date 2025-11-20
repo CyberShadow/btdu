@@ -334,6 +334,7 @@ struct Subprocess
 				foreach (i, ref path; paths)
 				{
 					auto pathBrowserPath = root.appendPath(&path);
+					group.pathData[i].path = pathBrowserPath;
 					group.pathData[i].next = pathBrowserPath.firstSharingGroup;
 					pathBrowserPath.firstSharingGroup = group;
 				}
@@ -341,6 +342,7 @@ struct Subprocess
 			else
 			{
 				// Only link to representative path
+				group.pathData[representativeIndex].path = representativeBrowserPath;
 				group.pathData[representativeIndex].next = representativeBrowserPath.firstSharingGroup;
 				representativeBrowserPath.firstSharingGroup = group;
 			}

@@ -121,6 +121,8 @@ struct SharingGroup
 	/// Additional per-path data - one item per GlobalPath
 	struct PathData
 	{
+		/// Direct pointer to the corresponding BrowserPath
+		BrowserPath* path;
 		/// Link to next SharingGroup for a specific BrowserPath
 		SharingGroup* next;
 	}
