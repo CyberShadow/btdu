@@ -284,13 +284,34 @@ struct Subprocess
 		bool isNewGroup,
 		size_t representativeIndex,
 		Offset offset,
-		ulong duration,
-		out bool allMarked
+		ulong duration
 	)
 	{
-		allMarked = true;
+		bool allMarked = true;
 		auto root = group.root;
 		auto paths = group.paths;
+
+		// Handle empty paths case (root-only, no sharing)
+		if (paths.length == 0)
+		{
+			root.addSample(SampleType.represented, offset, duration);
+			if (expert)
+			{
+				root.addSample(SampleType.shared_, offset, duration);
+				root.addSample(SampleType.exclusive, offset, duration);
+				root.addDistributedSample(1, duration);
+			}
+			allMarked = root.getEffectiveMark();
+			// Update global marked state
+			markTotalSamples++;
+			if (allMarked && expert)
+				marked.addSample(SampleType.exclusive, offset, duration);
+			return;
+		}
+
+		// Add represented sample to the representative path
+		auto representativeBrowserPath = root.appendPath(&paths[representativeIndex]);
+		representativeBrowserPath.addSample(SampleType.represented, offset, duration);
 
 		// Link new sharing groups to BrowserPaths' firstSharingGroup list
 		if (isNewGroup)
@@ -310,7 +331,6 @@ struct Subprocess
 			else
 			{
 				// Only link to representative path
-				auto representativeBrowserPath = root.appendPath(&paths[representativeIndex]);
 				group.perPathNext[representativeIndex] = representativeBrowserPath.firstSharingGroup;
 				representativeBrowserPath.firstSharingGroup = group;
 			}
@@ -355,6 +375,11 @@ struct Subprocess
 				}
 			}
 		}
+
+		// Update global marked state
+		markTotalSamples++;
+		if (allMarked && expert)
+			marked.addSample(SampleType.exclusive, offset, duration);
 	}
 
 	void handleMessage(ResultEndMessage m)
@@ -369,19 +394,14 @@ struct Subprocess
 
 		if (!result.haveInode)
 			result.browserPath = result.browserPath.appendName("\0NO_INODE");
-		auto representativeBrowserPath = result.browserPath;
-		GlobalPath representativePath;
-		if (allPaths.peek().length)
-		{
-			representativePath = selectRepresentativePath(allPaths.peek());
-			representativeBrowserPath = result.browserPath.appendPath(&representativePath);
-		}
-		representativeBrowserPath.addSample(SampleType.represented, result.offset, m.duration);
 
-		bool allMarked = true;
-		if (allPaths.peek().length)
+		auto pathsSlice = allPaths.peek();
+		size_t representativeIndex = size_t.max;
+
+		if (pathsSlice.length)
 		{
-			auto pathsSlice = allPaths.peek();
+			// Select the representative path before sorting
+			auto representativePath = selectRepresentativePath(pathsSlice);
 
 			// Sort paths for consistent hashing/deduplication
 			{
@@ -393,44 +413,26 @@ struct Subprocess
 			}
 
 			// Find which path is the representative (after sorting)
-			size_t representativeIndex = {
+			representativeIndex = {
 				foreach (i, ref path; pathsSlice)
 					if (path is representativePath)
 						return i;
 				assert(false, "Representative path not found");
 			}();
-
-			// Get or create sharing group
-			bool isNewGroup;
-			auto group = saveSharingGroup(result.browserPath, pathsSlice, isNewGroup);
-
-			// Populate BrowserPath tree from sharing group
-			populateBrowserPathsFromSharingGroup(
-				group,
-				isNewGroup,
-				representativeIndex,
-				result.offset,
-				m.duration,
-				allMarked
-			);
-		}
-		else
-		{
-			if (expert)
-			{
-				representativeBrowserPath.addSample(SampleType.shared_, result.offset, m.duration);
-				representativeBrowserPath.addSample(SampleType.exclusive, result.offset, m.duration);
-				representativeBrowserPath.addDistributedSample(1, m.duration);
-			}
-			allMarked = representativeBrowserPath.getEffectiveMark();
 		}
 
-		markTotalSamples++;
-		if (allMarked)
-		{
-			if (expert)
-				marked.addSample(SampleType.exclusive, result.offset, m.duration);
-		}
+		// Get or create sharing group (even for empty paths - root-only case)
+		bool isNewGroup;
+		auto group = saveSharingGroup(result.browserPath, pathsSlice, isNewGroup);
+
+		// Populate BrowserPath tree from sharing group
+		populateBrowserPathsFromSharingGroup(
+			group,
+			isNewGroup,
+			representativeIndex,
+			result.offset,
+			m.duration
+		);
 
 		result = Result.init;
 		allPaths.clear();
