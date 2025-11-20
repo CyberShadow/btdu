@@ -243,11 +243,10 @@ struct Subprocess
 
 		if (existingGroupPtr)
 		{
-			// Reuse existing group, just increment sample count
+			// Reuse existing group
 			group = existingGroupPtr.group;
 			if (group.samples == 1)
 				numSingleSampleGroups--;
-			group.samples++;
 			isNew = false;
 		}
 		else
@@ -259,9 +258,11 @@ struct Subprocess
 			nextPointers[] = null;
 
 			// Create the sharing group
-			group = growAllocator.make!SharingGroup(
-				SharingGroup(root, persistentPaths, 1, nextPointers.ptr)
-			);
+			SharingGroup newGroupData;
+			newGroupData.root = root;
+			newGroupData.paths = persistentPaths;
+			newGroupData.perPathNext = nextPointers.ptr;
+			group = growAllocator.make!SharingGroup(newGroupData);
 
 			// Add to HashSet for future deduplication
 			sharingGroups.insert(SharingGroup.Paths(group));
@@ -271,6 +272,8 @@ struct Subprocess
 
 			isNew = true;
 		}
+
+		group.samples++;
 
 		return group;
 	}
