@@ -125,6 +125,7 @@ struct SharingGroup
 		SharingGroup* next;
 	}
 	PathData* pathData;    /// ditto
+	size_t representativeIndex;  /// Index of the representative path in paths array
 
 	/// Find the index of a path matching the given element range
 	/// Returns size_t.max if not found

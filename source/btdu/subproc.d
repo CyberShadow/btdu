@@ -257,11 +257,20 @@ struct Subprocess
 			auto pathData = growAllocator.makeArray!(SharingGroup.PathData)(paths.length);
 			pathData[] = SharingGroup.PathData.init;
 
+			// Find the representative index
+			size_t representativeIndex = size_t.max;
+			if (persistentPaths.length > 0)
+			{
+				auto representativePath = selectRepresentativePath(persistentPaths);
+				representativeIndex = persistentPaths.countUntil!(p => p is representativePath);
+			}
+
 			// Create the sharing group
 			SharingGroup newGroupData;
 			newGroupData.root = root;
 			newGroupData.paths = persistentPaths;
 			newGroupData.pathData = pathData.ptr;
+			newGroupData.representativeIndex = representativeIndex;
 			group = sharingGroupAllocator.allocate();
 			*group = newGroupData;
 
@@ -283,7 +292,6 @@ struct Subprocess
 	private static void populateBrowserPathsFromSharingGroup(
 		SharingGroup* group,
 		bool isNewGroup,
-		size_t representativeIndex,
 		Offset offset,
 		ulong duration
 	)
@@ -311,6 +319,7 @@ struct Subprocess
 		}
 
 		// Add represented sample to the representative path
+		auto representativeIndex = group.representativeIndex;
 		auto representativeBrowserPath = root.appendPath(&paths[representativeIndex]);
 		representativeBrowserPath.addSample(SampleType.represented, offset, duration);
 
@@ -397,29 +406,14 @@ struct Subprocess
 			result.browserPath = result.browserPath.appendName("\0NO_INODE");
 
 		auto pathsSlice = allPaths.peek();
-		size_t representativeIndex = size_t.max;
 
-		if (pathsSlice.length)
+		// Sort paths for consistent hashing/deduplication
 		{
-			// Select the representative path before sorting
-			auto representativePath = selectRepresentativePath(pathsSlice);
-
-			// Sort paths for consistent hashing/deduplication
-			{
-				import std.algorithm.sorting : sort;
-				import std.typecons : tuple;
-				pathsSlice.sort!((ref a, ref b) =>
-					tuple(a.parent, a.subPath) < tuple(b.parent, b.subPath)
-				);
-			}
-
-			// Find which path is the representative (after sorting)
-			representativeIndex = {
-				foreach (i, ref path; pathsSlice)
-					if (path is representativePath)
-						return i;
-				assert(false, "Representative path not found");
-			}();
+			import std.algorithm.sorting : sort;
+			import std.typecons : tuple;
+			pathsSlice.sort!((ref a, ref b) =>
+				tuple(a.parent, a.subPath) < tuple(b.parent, b.subPath)
+			);
 		}
 
 		// Get or create sharing group (even for empty paths - root-only case)
@@ -430,7 +424,6 @@ struct Subprocess
 		populateBrowserPathsFromSharingGroup(
 			group,
 			isNewGroup,
-			representativeIndex,
 			result.offset,
 			m.duration
 		);
