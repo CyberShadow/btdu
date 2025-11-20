@@ -254,14 +254,14 @@ struct Subprocess
 			// New set of paths - allocate and create new group
 			auto persistentPaths = growAllocator.makeArray!GlobalPath(paths.length);
 			persistentPaths[] = paths[];
-			auto nextPointers = growAllocator.makeArray!(SharingGroup*)(paths.length);
-			nextPointers[] = null;
+			auto pathData = growAllocator.makeArray!(SharingGroup.PathData)(paths.length);
+			pathData[] = SharingGroup.PathData.init;
 
 			// Create the sharing group
 			SharingGroup newGroupData;
 			newGroupData.root = root;
 			newGroupData.paths = persistentPaths;
-			newGroupData.perPathNext = nextPointers.ptr;
+			newGroupData.pathData = pathData.ptr;
 			group = growAllocator.make!SharingGroup(newGroupData);
 
 			// Add to HashSet for future deduplication
@@ -324,14 +324,14 @@ struct Subprocess
 				foreach (i, ref path; paths)
 				{
 					auto pathBrowserPath = root.appendPath(&path);
-					group.perPathNext[i] = pathBrowserPath.firstSharingGroup;
+					group.pathData[i].next = pathBrowserPath.firstSharingGroup;
 					pathBrowserPath.firstSharingGroup = group;
 				}
 			}
 			else
 			{
 				// Only link to representative path
-				group.perPathNext[representativeIndex] = representativeBrowserPath.firstSharingGroup;
+				group.pathData[representativeIndex].next = representativeBrowserPath.firstSharingGroup;
 				representativeBrowserPath.firstSharingGroup = group;
 			}
 		}
