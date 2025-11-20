@@ -1062,26 +1062,29 @@ struct BrowserPath
 		}
 	}
 
+	/// Reset samples for a specific sample type on this node only
+	void resetNodeSamples(SampleType type)
+	{
+		data[type] = SampleData.init;
+	}
+
+	/// Reset all sample data on this node only
+	void resetNodeSamples()
+	{
+		static foreach (sampleType; EnumMembers!SampleType)
+			resetNodeSamples(sampleType);
+		resetDistributedSamples();
+	}
+
 	/// Recursively reset all sample data for this path and its children
-	void resetSamples()
+	void resetTreeSamples()
 	{
 		// Recursively reset all children first (depth-first traversal)
 		for (auto child = firstChild; child; child = child.nextSibling)
-			child.resetSamples();
+			child.resetTreeSamples();
 
-		// Reset all sample data for all types
-		static foreach (sampleType; EnumMembers!SampleType)
-			data[sampleType] = SampleData.init;
-
-		// Reset distributed samples
-		distributedSamples = 0;
-		distributedDuration = 0;
-	}
-
-	/// Reset samples for a specific sample type only
-	void resetSamples(SampleType type)
-	{
-		data[type] = SampleData.init;
+		// Reset this node
+		resetNodeSamples();
 	}
 
 	@property bool deleted() { return deleting; }

@@ -69,7 +69,7 @@ void invalidateMark()
 {
 	markTotalSamples = 0;
 	if (expert)
-		marked.resetSamples(SampleType.exclusive);
+		marked.resetNodeSamples(SampleType.exclusive);
 }
 
 /// Update stats in `marked` for a redisplay.
@@ -77,7 +77,7 @@ void updateMark()
 {
 	static foreach (sampleType; EnumMembers!SampleType)
 		if (sampleType != SampleType.exclusive)
-			marked.resetSamples(sampleType);
+			marked.resetNodeSamples(sampleType);
 	marked.resetDistributedSamples();
 
 	browserRoot.enumerateMarks(
