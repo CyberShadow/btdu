@@ -318,12 +318,8 @@ struct Subprocess
 			return;
 		}
 
-		// Add represented sample to the representative path
-		auto representativeIndex = group.representativeIndex;
-		auto representativeBrowserPath = root.appendPath(&paths[representativeIndex]);
-		representativeBrowserPath.addSample(SampleType.represented, offset, duration);
-
 		// Link new sharing groups to BrowserPaths' firstSharingGroup list
+		auto representativeIndex = group.representativeIndex;
 		if (isNewGroup)
 		{
 			// In expert mode, link this group to all BrowserPaths
@@ -342,11 +338,15 @@ struct Subprocess
 			else
 			{
 				// Only link to representative path
+				auto representativeBrowserPath = root.appendPath(&paths[representativeIndex]);
 				group.pathData[representativeIndex].path = representativeBrowserPath;
 				group.pathData[representativeIndex].next = representativeBrowserPath.firstSharingGroup;
 				representativeBrowserPath.firstSharingGroup = group;
 			}
 		}
+
+		// Add represented sample to the representative path (using cached path)
+		group.pathData[representativeIndex].path.addSample(SampleType.represented, offset, duration);
 
 		if (expert)
 		{
@@ -355,9 +355,9 @@ struct Subprocess
 
 			static FastAppender!(BrowserPath*) browserPaths;
 			browserPaths.clear();
-			foreach (ref path; paths)
+			foreach (i, ref path; paths)
 			{
-				auto browserPath = root.appendPath(&path);
+				auto browserPath = group.pathData[i].path;
 				browserPaths.put(browserPath);
 
 				browserPath.addSample(SampleType.shared_, offset, duration);
