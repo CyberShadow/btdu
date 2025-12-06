@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020, 2021, 2023  Vladimir Panteleev <btdu@cy.md>
+ * Copyright (C) 2020, 2021, 2023, 2025  Vladimir Panteleev <btdu@cy.md>
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public
@@ -87,4 +87,71 @@ if (!hasIndirections!T)
 {
 	import ae.utils.appender : FastAppender;
 	alias StaticAppender = FastAppender!(T, Mallocator);
+}
+
+/// Typed slab allocator for objects that need efficient iteration.
+/// Allocates objects in large contiguous slabs linked together.
+/// Overhead: one pointer per slab (~4MB), plus fixed global state.
+struct SlabAllocator(T, size_t slabSize = 4 * 1024 * 1024)
+{
+	enum itemsPerSlab = (slabSize - (Slab*).sizeof) / T.sizeof;
+	static assert(itemsPerSlab > 0, "Type too large for slab allocator");
+
+	struct Slab
+	{
+		T[itemsPerSlab] items;
+		Slab* next;
+	}
+
+	static assert(Slab.sizeof <= slabSize);
+
+	Slab* firstSlab;
+	Slab* currentSlab;
+	size_t currentIndex;
+
+	/// Allocate a new item, returns a pointer to uninitialized memory.
+	T* allocate()
+	{
+		if (!currentSlab || currentIndex >= itemsPerSlab)
+		{
+			auto mem = MmapAllocator.instance.allocate(Slab.sizeof);
+			if (!mem)
+				onOutOfMemoryError();
+			auto newSlab = cast(Slab*) mem.ptr;
+			newSlab.next = null;
+			if (currentSlab)
+				currentSlab.next = newSlab;
+			else
+				firstSlab = newSlab;
+			currentSlab = newSlab;
+			currentIndex = 0;
+		}
+		return &currentSlab.items[currentIndex++];
+	}
+
+	/// Iterate over all allocated items.
+	int opApply(scope int delegate(ref T) dg)
+	{
+		auto lastSlab = currentSlab;
+		auto lastIndex = currentIndex;
+		for (auto slab = firstSlab; slab; slab = slab.next)
+		{
+			auto count = (slab is lastSlab) ? lastIndex : itemsPerSlab;
+			foreach (ref item; slab.items[0 .. count])
+				if (auto r = dg(item))
+					return r;
+		}
+		return 0;
+	}
+
+	/// Number of allocated items.
+	size_t length() const
+	{
+		if (!firstSlab)
+			return 0;
+		size_t count = currentIndex;
+		for (const(Slab)* slab = firstSlab; slab !is currentSlab; slab = slab.next)
+			count += itemsPerSlab;
+		return count;
+	}
 }

@@ -53,6 +53,9 @@ BrowserPath browserRoot;
 /// will reference the same SharingGroup and just increment its sample count.
 HashSet!(SharingGroup.Paths, CasualAllocator, SharingGroup.Paths.hashOf, false, true) sharingGroups;
 
+/// Slab allocator instance for SharingGroups - enables efficient iteration over all groups.
+SlabAllocator!SharingGroup sharingGroupAllocator;
+
 /// Total number of created sharing groups
 size_t numSharingGroups;
 /// Number of sharing groups with exactly 1 sample

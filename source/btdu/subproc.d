@@ -262,7 +262,8 @@ struct Subprocess
 			newGroupData.root = root;
 			newGroupData.paths = persistentPaths;
 			newGroupData.pathData = pathData.ptr;
-			group = growAllocator.make!SharingGroup(newGroupData);
+			group = sharingGroupAllocator.allocate();
+			*group = newGroupData;
 
 			// Add to HashSet for future deduplication
 			sharingGroups.insert(SharingGroup.Paths(group));
