@@ -62,7 +62,7 @@ struct PathRule
 private static doubleGlob = compileGlob("**");
 
 /// Check if a PathPattern is literal (no wildcards except the trailing **)
-bool isLiteral(PathPattern pattern)
+bool isLiteral(PathPattern pattern) @nogc
 {
 	// PathPattern has doubleGlob at the beginning (after reverse), so check all but the first
 	if (pattern.length <= 1)
@@ -429,6 +429,15 @@ mixin template PathCommon()
 	bool matches(PathPattern pattern) const @nogc
 	{
 		return pathMatches(this.elementRange, pattern);
+	}
+
+	/// Check if a path exactly matches a pattern (not just a prefix match via **).
+	/// Patterns always start with ** followed by path segment compiled globs.
+	/// Slicing off the ** and matching checks for exact path match.
+	bool matchesExactly(PathPattern pattern) const @nogc
+	{
+		assert(pattern.length > 0 && pattern[0] is doubleGlob);
+		return pattern.isLiteral() && this.matches(pattern[1 .. $]);
 	}
 
 	/// Check if this path has resolved roots (no TREE_ markers)
