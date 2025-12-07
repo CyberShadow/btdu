@@ -21,6 +21,7 @@ module btdu.state;
 
 import std.traits : EnumMembers;
 
+import ae.utils.appender : FastAppender;
 import ae.utils.meta : enumLength;
 
 import btrfs.c.ioctl : btrfs_ioctl_dev_info_args;
@@ -175,4 +176,118 @@ auto toFilesystemPath(BrowserPath* path)
 	return path
 		.functor!((path, writer) => path.toFilesystemPath(writer))
 		.stringifiable;
+}
+
+/// Populate BrowserPath tree from a sharing group.
+/// Params:
+///   group = The sharing group to process
+///   needsLinking = Whether to link the group to BrowserPaths' firstSharingGroup lists
+///                  (true for new groups and for rebuild after reset)
+///   samples = Number of samples to add
+///   offsets = Sample offsets to record
+///   duration = Total duration for these samples
+void populateBrowserPathsFromSharingGroup(
+	SharingGroup* group,
+	bool needsLinking,
+	ulong samples,
+	const(Offset)[] offsets,
+	ulong duration
+)
+{
+	bool allMarked = true;
+	auto root = group.root;
+	auto paths = group.paths;
+
+	// Handle empty paths case (root-only, no sharing)
+	if (paths.length == 0)
+	{
+		root.addSamples(SampleType.represented, samples, offsets, duration);
+		if (expert)
+		{
+			root.addSamples(SampleType.shared_, samples, offsets, duration);
+			root.addSamples(SampleType.exclusive, samples, offsets, duration);
+			root.addDistributedSample(samples, duration);
+		}
+		allMarked = root.getEffectiveMark();
+		// Update global marked state
+		markTotalSamples += samples;
+		if (allMarked && expert)
+			marked.addSamples(SampleType.exclusive, samples, offsets, duration);
+		return;
+	}
+
+	// Link sharing groups to BrowserPaths' firstSharingGroup list
+	auto representativeIndex = group.representativeIndex;
+	if (needsLinking)
+	{
+		// In expert mode, link this group to all BrowserPaths
+		// In non-expert mode, only link to the representative
+		if (expert)
+		{
+			// Link to all BrowserPaths
+			foreach (i, ref path; paths)
+			{
+				auto pathBrowserPath = root.appendPath(&path);
+				group.pathData[i].path = pathBrowserPath;
+				group.pathData[i].next = pathBrowserPath.firstSharingGroup;
+				pathBrowserPath.firstSharingGroup = group;
+			}
+		}
+		else
+		{
+			// Only link to representative path
+			auto representativeBrowserPath = root.appendPath(&paths[representativeIndex]);
+			group.pathData[representativeIndex].path = representativeBrowserPath;
+			group.pathData[representativeIndex].next = representativeBrowserPath.firstSharingGroup;
+			representativeBrowserPath.firstSharingGroup = group;
+		}
+	}
+
+	// Add represented samples to the representative path (using cached path)
+	group.pathData[representativeIndex].path.addSamples(SampleType.represented, samples, offsets, duration);
+
+	if (expert)
+	{
+		auto distributedSamples = double(samples) / paths.length;
+		auto distributedDuration = double(duration) / paths.length;
+
+		static FastAppender!(BrowserPath*) browserPaths;
+		browserPaths.clear();
+		foreach (i, ref path; paths)
+		{
+			auto browserPath = group.pathData[i].path;
+			browserPaths.put(browserPath);
+
+			browserPath.addSamples(SampleType.shared_, samples, offsets, duration);
+			browserPath.addDistributedSample(distributedSamples, distributedDuration);
+		}
+
+		auto exclusiveBrowserPath = BrowserPath.commonPrefix(browserPaths.peek());
+		exclusiveBrowserPath.addSamples(SampleType.exclusive, samples, offsets, duration);
+
+		foreach (ref path; browserPaths.get())
+			if (!path.getEffectiveMark())
+			{
+				allMarked = false;
+				break;
+			}
+	}
+	else
+	{
+		if (false) // `allMarked` result will not be used in non-expert mode anyway...
+		foreach (ref path; paths)
+		{
+			auto browserPath = root.appendPath!true(&path);
+			if (browserPath && !browserPath.getEffectiveMark())
+			{
+				allMarked = false;
+				break;
+			}
+		}
+	}
+
+	// Update global marked state
+	markTotalSamples += samples;
+	if (allMarked && expert)
+		marked.addSamples(SampleType.exclusive, samples, offsets, duration);
 }

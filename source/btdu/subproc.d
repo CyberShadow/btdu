@@ -295,112 +295,6 @@ struct Subprocess
 		return group;
 	}
 
-	/// Populate BrowserPath tree from a sharing group
-	private static void populateBrowserPathsFromSharingGroup(
-		SharingGroup* group,
-		bool isNewGroup,
-		Offset offset,
-		ulong duration
-	)
-	{
-		bool allMarked = true;
-		auto root = group.root;
-		auto paths = group.paths;
-
-		// Handle empty paths case (root-only, no sharing)
-		if (paths.length == 0)
-		{
-			root.addSample(SampleType.represented, offset, duration);
-			if (expert)
-			{
-				root.addSample(SampleType.shared_, offset, duration);
-				root.addSample(SampleType.exclusive, offset, duration);
-				root.addDistributedSample(1, duration);
-			}
-			allMarked = root.getEffectiveMark();
-			// Update global marked state
-			markTotalSamples++;
-			if (allMarked && expert)
-				marked.addSample(SampleType.exclusive, offset, duration);
-			return;
-		}
-
-		// Link new sharing groups to BrowserPaths' firstSharingGroup list
-		auto representativeIndex = group.representativeIndex;
-		if (isNewGroup)
-		{
-			// In expert mode, link this group to all BrowserPaths
-			// In non-expert mode, only link to the representative
-			if (expert)
-			{
-				// Link to all BrowserPaths
-				foreach (i, ref path; paths)
-				{
-					auto pathBrowserPath = root.appendPath(&path);
-					group.pathData[i].path = pathBrowserPath;
-					group.pathData[i].next = pathBrowserPath.firstSharingGroup;
-					pathBrowserPath.firstSharingGroup = group;
-				}
-			}
-			else
-			{
-				// Only link to representative path
-				auto representativeBrowserPath = root.appendPath(&paths[representativeIndex]);
-				group.pathData[representativeIndex].path = representativeBrowserPath;
-				group.pathData[representativeIndex].next = representativeBrowserPath.firstSharingGroup;
-				representativeBrowserPath.firstSharingGroup = group;
-			}
-		}
-
-		// Add represented sample to the representative path (using cached path)
-		group.pathData[representativeIndex].path.addSample(SampleType.represented, offset, duration);
-
-		if (expert)
-		{
-			auto distributedSamples = 1.0 / paths.length;
-			auto distributedDuration = double(duration) / paths.length;
-
-			static FastAppender!(BrowserPath*) browserPaths;
-			browserPaths.clear();
-			foreach (i, ref path; paths)
-			{
-				auto browserPath = group.pathData[i].path;
-				browserPaths.put(browserPath);
-
-				browserPath.addSample(SampleType.shared_, offset, duration);
-				browserPath.addDistributedSample(distributedSamples, distributedDuration);
-			}
-
-			auto exclusiveBrowserPath = BrowserPath.commonPrefix(browserPaths.peek());
-			exclusiveBrowserPath.addSample(SampleType.exclusive, offset, duration);
-
-			foreach (ref path; browserPaths.get())
-				if (!path.getEffectiveMark())
-				{
-					allMarked = false;
-					break;
-				}
-		}
-		else
-		{
-			if (false) // `allMarked` result will not be used in non-expert mode anyway...
-			foreach (ref path; paths)
-			{
-				auto browserPath = root.appendPath!true(&path);
-				if (browserPath && !browserPath.getEffectiveMark())
-				{
-					allMarked = false;
-					break;
-				}
-			}
-		}
-
-		// Update global marked state
-		markTotalSamples++;
-		if (allMarked && expert)
-			marked.addSample(SampleType.exclusive, offset, duration);
-	}
-
 	void handleMessage(ResultEndMessage m)
 	{
 		if (result.ignoringOffset)
@@ -433,7 +327,8 @@ struct Subprocess
 		populateBrowserPathsFromSharingGroup(
 			group,
 			isNewGroup,
-			result.offset,
+			1,  // Adding 1 sample
+			(&result.offset)[0..1],
 			m.duration
 		);
 
