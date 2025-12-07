@@ -1452,6 +1452,20 @@ Path selectRepresentativePath(Path)(Path[] paths)
 	})();
 }
 
+/// Find the index of the most representative path in an array.
+/// Returns size_t.max if the array is empty.
+size_t selectRepresentativeIndex(Path)(Path[] paths)
+{
+	if (paths.length == 0)
+		return size_t.max;
+
+	size_t bestIndex = 0;
+	foreach (i; 1 .. paths.length)
+		if (isMoreRepresentative(paths[i], paths[bestIndex]))
+			bestIndex = i;
+	return bestIndex;
+}
+
 // We prefix "special" names with one NUL character to
 // distinguish them from filesystem entries.
 bool skipOverNul(C)(ref C[] str)
