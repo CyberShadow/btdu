@@ -692,6 +692,14 @@ struct SampleData
 	}
 }
 
+/// Aggregate sampling data for a BrowserPath
+struct AggregateData
+{
+	SampleData[enumLength!SampleType] data;
+	double distributedSamples = 0;
+	double distributedDuration = 0;
+}
+
 /// Browser path (GUI hierarchy)
 struct BrowserPath
 {
@@ -706,45 +714,62 @@ struct BrowserPath
 		return cmp(name[], b.name[]);
 	}
 
-	private SampleData[enumLength!SampleType] data;
-	private double distributedSamples = 0, distributedDuration = 0;
+	private AggregateData* aggregateData;
 	private bool deleting;
+
+	/// Ensure aggregateData is allocated, allocating if needed
+	private AggregateData* ensureAggregateData()
+	{
+		if (!aggregateData)
+			aggregateData = growAllocator.make!AggregateData();
+		return aggregateData;
+	}
 
 	/// Get the number of samples for a given sample type
 	ulong getSamples(SampleType type) const
 	{
-		return data[type].samples;
+		return aggregateData ? aggregateData.data[type].samples : 0;
 	}
 
 	/// Get the duration for a given sample type
 	ulong getDuration(SampleType type) const
 	{
-		return data[type].duration;
+		return aggregateData ? aggregateData.data[type].duration : 0;
 	}
 
 	/// Get the offsets for a given sample type
 	const(Offset[3]) getOffsets(SampleType type) const
 	{
-		return data[type].offsets;
+		static immutable Offset[3] emptyOffsets;
+		return aggregateData ? aggregateData.data[type].offsets : emptyOffsets;
+	}
+
+	/// Get the full sample data for a given sample type
+	SampleData getSampleData(SampleType type) const
+	{
+		return aggregateData ? aggregateData.data[type] : SampleData.init;
 	}
 
 	/// Get the distributed samples
 	double getDistributedSamples() const
 	{
-		return distributedSamples;
+		return aggregateData ? aggregateData.distributedSamples : 0;
 	}
 
 	/// Get the distributed duration
 	double getDistributedDuration() const
 	{
-		return distributedDuration;
+		return aggregateData ? aggregateData.distributedDuration : 0;
 	}
 
 	/// Reset distributed samples and duration
 	void resetDistributedSamples()
 	{
-		distributedSamples = 0;
-		distributedDuration = 0;
+		if (aggregateData)
+		{
+			aggregateData.distributedSamples = 0;
+			aggregateData.distributedDuration = 0;
+		}
 	}
 
 	void addSample(SampleType type, Offset offset, ulong duration)
@@ -754,22 +779,24 @@ struct BrowserPath
 
 	void addSamples(SampleType type, ulong samples, const(Offset)[] offsets, ulong duration)
 	{
-		data[type].add(samples, offsets, duration);
+		ensureAggregateData().data[type].add(samples, offsets, duration);
 		if (parent)
 			parent.addSamples(type, samples, offsets, duration);
 	}
 
 	void removeSamples(SampleType type, ulong samples, const(Offset)[] offsets, ulong duration)
 	{
-		data[type].remove(samples, offsets, duration);
+		if (aggregateData)
+			aggregateData.data[type].remove(samples, offsets, duration);
 		if (parent)
 			parent.removeSamples(type, samples, offsets, duration);
 	}
 
 	void addDistributedSample(double sampleShare, double durationShare)
 	{
-		distributedSamples += sampleShare;
-		distributedDuration += durationShare;
+		auto data = ensureAggregateData();
+		data.distributedSamples += sampleShare;
+		data.distributedDuration += durationShare;
 		if (parent)
 			parent.addDistributedSample(sampleShare, durationShare);
 	}
@@ -866,10 +893,11 @@ struct BrowserPath
 			child.nextSibling = p.firstChild;
 			p.firstChild = child;
 		}
+		auto aggData = p.ensureAggregateData();
 		static foreach (sampleType; EnumMembers!SampleType)
-			p.data[sampleType] = s.data.tupleof[sampleType];
-		p.distributedSamples = s.data.distributedSamples.json.strip.to!double;
-		p.distributedDuration = s.data.distributedDuration.json.strip.to!double;
+			aggData.data[sampleType] = s.data.tupleof[sampleType];
+		aggData.distributedSamples = s.data.distributedSamples.json.strip.to!double;
+		aggData.distributedDuration = s.data.distributedDuration.json.strip.to!double;
 		p.mark =
 			s.mark.isNull() ? Mark.parent :
 			s.mark.get() ? Mark.marked :
@@ -939,24 +967,22 @@ struct BrowserPath
 		assert(parent);
 
 		// Save this node's remaining stats before we remove them.
-		auto data = this.data;
-		auto distributedSamples = this.distributedSamples;
-		auto distributedDuration = this.distributedDuration;
+		auto aggData = aggregateData ? *aggregateData : AggregateData.init;
 
 		// Remove sample data from this node and its parents.
 		// After recursion, for non-leaf nodes, most of these should now be at zero (as far as we can estimate).
 		static foreach (sampleType; EnumMembers!SampleType)
-			if (data[sampleType].samples) // avoid quadratic complexity
-				removeSamples(sampleType, data[sampleType].samples, data[sampleType].offsets[], data[sampleType].duration);
-		if (distributedSamples) // avoid quadratic complexity
-			removeDistributedSample(distributedSamples, distributedDuration);
+			if (aggData.data[sampleType].samples) // avoid quadratic complexity
+				removeSamples(sampleType, aggData.data[sampleType].samples, aggData.data[sampleType].offsets[], aggData.data[sampleType].duration);
+		if (aggData.distributedSamples) // avoid quadratic complexity
+			removeDistributedSample(aggData.distributedSamples, aggData.distributedDuration);
 
 		if (firstSharingGroup is null)
 			return;  // Directory (non-leaf) node - nothing else to do here.
 
 		// Determine if we are the representative path (have represented samples)
 		// in at least one situation
-		bool isRepresentative = data[SampleType.represented].samples > 0;
+		bool isRepresentative = aggData.data[SampleType.represented].samples > 0;
 
 		// Get the root BrowserPath from one of our sharing groups
 		// (This is always the same as `btdu.state.browserRoot`.)
@@ -1008,7 +1034,7 @@ struct BrowserPath
 				if (isRepresentativeForThisGroup)
 				{
 					// Calculate this group's weighted share of duration from represented samples
-					auto groupDuration = (group.data.samples * data[SampleType.represented].duration) / data[SampleType.represented].samples;
+					auto groupDuration = (group.data.samples * aggData.data[SampleType.represented].duration) / aggData.data[SampleType.represented].samples;
 
 					// Transfer represented samples (without per-group offsets)
 					newRepBrowserPath.addSamples(
@@ -1026,8 +1052,8 @@ struct BrowserPath
 				auto perPathSamples = ourShareSamples / remainingPathsInGroup.length;
 
 				// Calculate duration using shared samples as basis (sum of all group.data.samples = shared samples)
-				auto sharedSamples = data[SampleType.shared_].samples;
-				auto sharedDuration = data[SampleType.shared_].duration;
+				auto sharedSamples = aggData.data[SampleType.shared_].samples;
+				auto sharedDuration = aggData.data[SampleType.shared_].duration;
 				auto groupTotalDuration = sharedSamples > 0
 					? (group.data.samples * sharedDuration) / sharedSamples
 					: 0;
@@ -1065,7 +1091,8 @@ struct BrowserPath
 	/// Reset samples for a specific sample type on this node only
 	void resetNodeSamples(SampleType type)
 	{
-		data[type] = SampleData.init;
+		if (aggregateData)
+			aggregateData.data[type] = SampleData.init;
 	}
 
 	/// Reset all sample data on this node only
