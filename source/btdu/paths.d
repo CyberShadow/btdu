@@ -772,6 +772,10 @@ struct BrowserPath
 		if (aggregateData)
 			return aggregateData.data[type].samples;
 
+		// Fallback: delegate to single child
+		if (firstChild && !firstChild.nextSibling)
+			return firstChild.getSamples(type);
+
 		// Fallback: compute from sharing groups for leaf nodes
 		if (!firstSharingGroup)
 			return 0;
@@ -789,6 +793,10 @@ struct BrowserPath
 		if (aggregateData)
 			return aggregateData.data[type].duration;
 
+		// Fallback: delegate to single child
+		if (firstChild && !firstChild.nextSibling)
+			return firstChild.getDuration(type);
+
 		// Fallback: compute from sharing groups for leaf nodes
 		if (!firstSharingGroup)
 			return 0;
@@ -805,6 +813,10 @@ struct BrowserPath
 	{
 		if (aggregateData)
 			return aggregateData.data[type].offsets;
+
+		// Fallback: delegate to single child
+		if (firstChild && !firstChild.nextSibling)
+			return firstChild.getOffsets(type);
 
 		// Fallback: collect most recent offsets from sharing groups for leaf nodes
 		static immutable Offset[historySize] emptyOffsets;
@@ -858,6 +870,10 @@ struct BrowserPath
 		if (aggregateData)
 			return aggregateData.distributedSamples;
 
+		// Fallback: delegate to single child
+		if (firstChild && !firstChild.nextSibling)
+			return firstChild.getDistributedSamples();
+
 		// Fallback: compute from sharing groups for leaf nodes
 		if (!firstSharingGroup)
 			return 0;
@@ -873,6 +889,10 @@ struct BrowserPath
 	{
 		if (aggregateData)
 			return aggregateData.distributedDuration;
+
+		// Fallback: delegate to single child
+		if (firstChild && !firstChild.nextSibling)
+			return firstChild.getDistributedDuration();
 
 		// Fallback: compute from sharing groups for leaf nodes
 		if (!firstSharingGroup)
@@ -901,8 +921,9 @@ struct BrowserPath
 
 	void addSamples(SampleType type, ulong samples, const(Offset)[] offsets, ulong duration)
 	{
-		// Only allocate aggregateData for non-leaf nodes; leaves compute from sharing groups
-		if (!firstSharingGroup)
+		// Only allocate aggregateData for nodes with multiple children;
+		// leaves compute from sharing groups, single-child nodes delegate
+		if (!firstSharingGroup && firstChild && firstChild.nextSibling)
 			ensureAggregateData().data[type].add(samples, offsets, duration);
 		if (parent)
 			parent.addSamples(type, samples, offsets, duration);
@@ -918,8 +939,9 @@ struct BrowserPath
 
 	void addDistributedSample(double sampleShare, double durationShare)
 	{
-		// Only allocate aggregateData for non-leaf nodes; leaves compute from sharing groups
-		if (!firstSharingGroup)
+		// Only allocate aggregateData for nodes with multiple children;
+		// leaves compute from sharing groups, single-child nodes delegate
+		if (!firstSharingGroup && firstChild && firstChild.nextSibling)
 		{
 			auto data = ensureAggregateData();
 			data.distributedSamples += sampleShare;
