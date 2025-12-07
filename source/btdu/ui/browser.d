@@ -166,6 +166,8 @@ struct Browser
 	}
 	RatioDisplayMode ratioDisplayMode = RatioDisplayMode.graph;
 
+	bool infoPanelsVisible = true;
+
 	Deleter deleter;
 
 	void start()
@@ -1336,9 +1338,9 @@ struct Browser
 					case Mode.browser:
 
 						// Items
-						auto infoWidth = min(60, (width - 1) / 2);
-						auto itemsWidth = width - infoWidth - 1;
-						withWindow(infoWidth + 1, 0, itemsWidth, height, {
+						auto infoWidth = infoPanelsVisible ? min(60, (width - 1) / 2) : 0;
+						auto itemsWidth = infoPanelsVisible ? width - infoWidth - 1 : width;
+						withWindow(infoPanelsVisible ? infoWidth + 1 : 0, 0, itemsWidth, height, {
 							itemScrollContext.y.contentSize = items.length;
 							itemScrollContext.y.contentAreaSize = height - 1;
 							itemScrollContext.y.cursor = selection && items ? items.countUntil(selection) : 0;
@@ -1358,40 +1360,44 @@ struct Browser
 							assert(itemScrollContext.y.contentSize == items.length);
 						});
 
-						// "Viewing:"
-						auto currentInfoHeight = selection ? height / 2 : height;
-						withWindow(0, 0, infoWidth, currentInfoHeight, {
-							if (currentPath is &marked)
-							{
-								updateMark();
-								drawInfoPanel("Summary", button("i"), false, ScrollContext.init, &marked);
-							}
-							else
-								drawInfoPanel("Viewing: ", button("i"), false, ScrollContext.init, currentPath);
-						});
-
-						// "Selected:"
-						if (selection)
-							withWindow(0, currentInfoHeight, infoWidth, height - currentInfoHeight, {
-								auto moreButton = fmtIf(
-									selection.firstChild !is null,
-									fmtSeq(button("→"), " ", button("i")).valueFunctor,
-									       button("→")                   .valueFunctor,
-								);
-								drawInfoPanel("Selected: ", moreButton, false, ScrollContext.init, selection);
+						if (infoPanelsVisible)
+						{
+							// "Viewing:"
+							auto currentInfoHeight = selection ? height / 2 : height;
+							withWindow(0, 0, infoWidth, currentInfoHeight, {
+								if (currentPath is &marked)
+								{
+									updateMark();
+									drawInfoPanel("Summary", button("i"), false, ScrollContext.init, &marked);
+								}
+								else
+									drawInfoPanel("Viewing: ", button("i"), false, ScrollContext.init, currentPath);
 							});
 
-						// Vertical separator
-						foreach (y; 0 .. height)
-							at(infoWidth, y, {
-								write(
-									y == 0                 ? '╦' :
-									y == currentInfoHeight ? '╣' :
-									                         '║'
-								);
-							});
+							// "Selected:"
+							if (selection)
+								withWindow(0, currentInfoHeight, infoWidth, height - currentInfoHeight, {
+									auto moreButton = fmtIf(
+										selection.firstChild !is null,
+										fmtSeq(button("→"), " ", button("i")).valueFunctor,
+										       button("→")                   .valueFunctor,
+									);
+									drawInfoPanel("Selected: ", moreButton, false, ScrollContext.init, selection);
+								});
+
+							// Vertical separator
+							foreach (y; 0 .. height)
+								at(infoWidth, y, {
+									write(
+										y == 0                 ? '╦' :
+										y == currentInfoHeight ? '╣' :
+										                         '║'
+									);
+								});
+						}
 
 						break;
+
 
 					case Mode.info:
 						drawInfoPanel("Details: ", null, true, textScrollContext, currentPath);
@@ -1435,6 +1441,7 @@ struct Browser
 									printKey("Toggle dirs before files when sorting", button("t"));
 									printKey("Show percentage and/or graph", button("g"));
 									printKey("Expand/collapse information panel", button("i"));
+									printKey("Toggle information panels", button("Tab ↹"));
 									printKey("Delete the selected file or directory", button("d"));
 									printKey("Prefer selected path (toggle)", button("⇧ Shift"), "+", button("P"));
 									printKey("Ignore selected path (toggle)", button("⇧ Shift"), "+", button("I"));
@@ -1817,6 +1824,9 @@ struct Browser
 					case 'i':
 						mode = Mode.info;
 						textScrollContext = ScrollContext.init;
+						break;
+					case '\t':
+						infoPanelsVisible = !infoPanelsVisible;
 						break;
 					case 'q':
 						if (previousPath)
