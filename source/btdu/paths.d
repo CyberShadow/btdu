@@ -1268,6 +1268,21 @@ struct BrowserPath
 		resetNodeSamples();
 	}
 
+	/// Recursively clear all sharing group links for this path and its children
+	private void clearSharingGroupLinks()
+	{
+		firstSharingGroup = null;
+		for (auto child = firstChild; child; child = child.nextSibling)
+			child.clearSharingGroupLinks();
+	}
+
+	/// Reset this path tree for rebuild: clears all sample data and sharing group links
+	void reset()
+	{
+		resetTreeSamples();
+		clearSharingGroupLinks();
+	}
+
 	@property bool deleted() { return deleting; }
 
 	// Marks
