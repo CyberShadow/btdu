@@ -117,6 +117,7 @@ struct SharingGroup
 	BrowserPath* root;     /// The root BrowserPath for all filesystem paths
 	GlobalPath[] paths;    /// All filesystem paths that share this extent
 	SampleData data;       /// Sampling statistics for this extent
+	ulong[historySize] lastSeen; /// Counter snapshots of the last 3 times we've seen this extent
 
 	/// Additional per-path data - one item per GlobalPath
 	struct PathData

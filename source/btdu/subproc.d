@@ -285,6 +285,13 @@ struct Subprocess
 
 		group.data.add(1, (&offset)[0..1], duration);
 
+		// Track when this extent was last seen (shift existing values, add new at end)
+		auto currentCounter = browserRoot.getSamples(SampleType.represented);
+		foreach (i; 0 .. group.lastSeen.length)
+			group.lastSeen[i] = i + 1 == group.lastSeen.length
+				? currentCounter
+				: group.lastSeen[i + 1];
+
 		return group;
 	}
 
