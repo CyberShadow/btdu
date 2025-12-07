@@ -722,11 +722,29 @@ struct BrowserPath
 	private AggregateData* aggregateData;
 	private bool deleting;
 
-	/// Ensure aggregateData is allocated, allocating if needed
+	/// Ensure aggregateData is allocated, allocating if needed.
+	/// When first allocated, migrates dynamically-computed values into it.
 	private AggregateData* ensureAggregateData()
 	{
 		if (!aggregateData)
+		{
+			// Capture current dynamically-computed values before allocation
+			SampleData[enumLength!SampleType] currentData;
+			static foreach (type; EnumMembers!SampleType)
+			{
+				currentData[type].samples = getSamples(type);
+				currentData[type].duration = getDuration(type);
+				currentData[type].offsets = getOffsets(type);
+			}
+			auto currentDistributedSamples = getDistributedSamples();
+			auto currentDistributedDuration = getDistributedDuration();
+
+			// Allocate and initialize with captured values
 			aggregateData = growAllocator.make!AggregateData();
+			aggregateData.data = currentData;
+			aggregateData.distributedSamples = currentDistributedSamples;
+			aggregateData.distributedDuration = currentDistributedDuration;
+		}
 		return aggregateData;
 	}
 
