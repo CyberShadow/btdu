@@ -131,12 +131,13 @@ struct SharingGroup
 
 	/// Find the index of a path matching the given element range
 	/// Returns size_t.max if not found
-	size_t findIndex(R)(R elementRange)
+	size_t findIndex(R)(R elementRange) const
 	{
 		import std.algorithm.comparison : equal;
 		foreach (i, ref path; this.paths)
 		{
-			if (equal(elementRange, SamplePath(root, path).elementRange))
+			auto sp = const SamplePath(root, path);
+			if (equal(elementRange, sp.elementRange))
 				return i;
 		}
 		return size_t.max;
@@ -144,7 +145,7 @@ struct SharingGroup
 
 	/// Find the next group pointer for a given element range
 	/// Returns null if the element range doesn't match any path in this group
-	SharingGroup* getNext(R)(R elementRange)
+	inout(SharingGroup)* getNext(R)(R elementRange) inout
 	{
 		auto index = findIndex(elementRange);
 		return index != size_t.max ? this.pathData[index].next : null;
