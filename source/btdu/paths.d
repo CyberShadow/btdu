@@ -749,12 +749,6 @@ struct BrowserPath
 		return aggregateData ? aggregateData.data[type].offsets : emptyOffsets;
 	}
 
-	/// Get the full sample data for a given sample type
-	SampleData getSampleData(SampleType type) const
-	{
-		return aggregateData ? aggregateData.data[type] : SampleData.init;
-	}
-
 	/// Get the distributed samples
 	double getDistributedSamples() const
 	{
@@ -873,7 +867,11 @@ struct BrowserPath
 		for (auto p = firstChild; p; p = p.nextSibling)
 			s.children ~= p;
 		static foreach (sampleType; EnumMembers!SampleType)
-			s.data.tupleof[sampleType] = getSampleData(sampleType);
+		{
+			s.data.tupleof[sampleType].samples = getSamples(sampleType);
+			s.data.tupleof[sampleType].duration = getDuration(sampleType);
+			s.data.tupleof[sampleType].offsets = getOffsets(sampleType);
+		}
 		if (getDistributedSamples() !is 0.)
 			s.data.distributedSamples.json = getDistributedSamples().format!"%17e";
 		if (getDistributedDuration() !is 0.)
