@@ -1602,7 +1602,7 @@ struct Browser
 								) : '║'
 							); });
 					if (width - 6 > title.length)
-						at((width - title.length).to!int / 2, 0, {
+						at((width - title.length.to!int - 2) / 2, 0, {
 							write(reversed(" ", title, " "));
 						});
 
