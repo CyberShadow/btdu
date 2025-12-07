@@ -124,6 +124,7 @@ struct Browser
 		none,
 		deleteConfirm,
 		deleteProgress,
+		rebuild,
 	}
 	Popup popup;
 
@@ -264,14 +265,24 @@ struct Browser
 					// Opposite type: flip it
 					rule.type = ruleType;
 				}
-				rebuildFromSharingGroups();
+				doRebuild();
 				return;
 			}
 		}
 
 		// Prepend new rule so it takes precedence
 		pathRules = PathRule(ruleType, parsePathPattern(fullPath.idup, fsPath)) ~ pathRules;
+		doRebuild();
+	}
+
+	/// Show a progress dialog and rebuild the BrowserPath tree from SharingGroups.
+	private void doRebuild()
+	{
+		assert(popup == Popup.none);
+		popup = Popup.rebuild;
+		update();
 		rebuildFromSharingGroups();
+		popup = Popup.none;
 	}
 
 	private static real getSamples(BrowserPath* path, SizeMetric metric)
@@ -1555,6 +1566,11 @@ struct Browser
 										break;
 								}
 								break;
+
+							case Popup.rebuild:
+								title = "Recalculating";
+								write("Please wait... working...", endl);
+								break;
 						}
 					});
 				}
@@ -1742,6 +1758,10 @@ struct Browser
 						}
 						break;
 				}
+				return true;
+
+			case Popup.rebuild:
+				// No input handling during rebuild - it's a blocking operation
 				return true;
 		}
 
