@@ -841,11 +841,11 @@ struct BrowserPath
 		for (auto p = firstChild; p; p = p.nextSibling)
 			s.children ~= p;
 		static foreach (sampleType; EnumMembers!SampleType)
-			s.data.tupleof[sampleType] = data[sampleType];
-		if (this.distributedSamples !is 0.)
-			s.data.distributedSamples.json = this.distributedSamples.format!"%17e";
-		if (this.distributedDuration !is 0.)
-			s.data.distributedDuration.json = this.distributedDuration.format!"%17e";
+			s.data.tupleof[sampleType] = getSampleData(sampleType);
+		if (getDistributedSamples() !is 0.)
+			s.data.distributedSamples.json = getDistributedSamples().format!"%17e";
+		if (getDistributedDuration() !is 0.)
+			s.data.distributedDuration.json = getDistributedDuration().format!"%17e";
 		s.mark =
 			this.mark == Mark.parent ? Nullable!bool.init :
 			this.mark == Mark.marked ? true.nullable :
