@@ -901,7 +901,9 @@ struct BrowserPath
 
 	void addSamples(SampleType type, ulong samples, const(Offset)[] offsets, ulong duration)
 	{
-		ensureAggregateData().data[type].add(samples, offsets, duration);
+		// Only allocate aggregateData for non-leaf nodes; leaves compute from sharing groups
+		if (!firstSharingGroup)
+			ensureAggregateData().data[type].add(samples, offsets, duration);
 		if (parent)
 			parent.addSamples(type, samples, offsets, duration);
 	}
@@ -916,9 +918,13 @@ struct BrowserPath
 
 	void addDistributedSample(double sampleShare, double durationShare)
 	{
-		auto data = ensureAggregateData();
-		data.distributedSamples += sampleShare;
-		data.distributedDuration += durationShare;
+		// Only allocate aggregateData for non-leaf nodes; leaves compute from sharing groups
+		if (!firstSharingGroup)
+		{
+			auto data = ensureAggregateData();
+			data.distributedSamples += sampleShare;
+			data.distributedDuration += durationShare;
+		}
 		if (parent)
 			parent.addDistributedSample(sampleShare, durationShare);
 	}
