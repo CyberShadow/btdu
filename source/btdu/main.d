@@ -44,7 +44,7 @@ import ae.utils.typecons : require;
 
 import btdu.ui.browser;
 import btdu.common;
-import btdu.impexp;
+import btdu.impexp : importData, exportData, exportDu, exportHuman;
 import btdu.paths;
 import btdu.sample;
 import btdu.subproc;
@@ -265,6 +265,10 @@ Please report defects and enhancement requests to the GitHub issue tracker:
 			totalSamples ? (totalSize / totalSamples).humanSize().to!string : "-",
 			MonoTime.currTime() - startTime,
 		);
+
+		// Print CLI tree output unless --du mode is used
+		if (!du)
+			exportHuman();
 	}
 
 	if (exportPath)

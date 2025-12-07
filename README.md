@@ -87,9 +87,33 @@ Run btdu with root privileges as follows:
 
 Note: The indicated path must be to the top-level subvolume (otherwise btdu will be unable to open other subvolumes for inode resolution). If in doubt, mount the filesystem to a new mountpoint with `-o subvol=/,subvolid=5`.
 
-You can start browsing the results instantly; btdu will keep collecting samples to improve accuracy until it is stopped by quitting or pausing (which you can do by pressing <kbd>p</kbd>).
-
 Run `btdu --help` for more usage information.
+
+### Interactive mode
+
+By default, btdu launches a terminal user interface where you can browse the results interactively. btdu will keep collecting samples to improve accuracy until it is stopped by quitting or pausing (which you can do by pressing <kbd>p</kbd>).
+
+### Headless mode
+
+With the `--headless` switch, btdu runs without the interactive UI and prints a tree of the largest items to stdout:
+
+    # btdu --headless --max-time=30s /mnt/btrfs
+    /mnt/btrfs (~97.56 GiB)
+    ├── @home (~45.23 GiB)
+    │   ├── user (~30.12 GiB)
+    │   └── .cache (~12.34 GiB)
+    └── @root (~35.78 GiB)
+
+This is useful for quickly getting an overview without launching the full UI. Only nodes representing more than 1% of total space are shown.
+
+In `--expert` mode, four size columns are displayed (represented, distributed, exclusive, shared):
+
+    # btdu --headless --expert --max-time=30s /mnt/btrfs
+
+For automated invocations or scripting, combine with `--export` to save results to a file that can later be viewed in the UI:
+
+    # btdu --headless --export=results.json --max-time=10m /mnt/btrfs
+    $ btdu --import results.json
 
 ### Sampling options
 
@@ -100,15 +124,6 @@ Use `--prefer=PATTERN` and `--ignore=PATTERN` to control which path represents s
 `--max-samples`, `--max-time`, and `--min-resolution` control when btdu stops sampling (and, in headless mode, exits).
 
 See [CONCEPTS.md](CONCEPTS.md) for more information about btdu / btrfs concepts, such as represented / exclusive / shared size.
-
-### Headless mode
-
-With the `--headless` switch, btdu will run without the user interface. This is useful together with the `--export` option, which saves results to a file that can later be viewed in the UI using the `--import` option. For automated invocations, don't forget to specify a stop condition such as `--max-time`.
-
-Example:
-
-    # btdu --headless --export=results.json --max-time=10m /path/to/filesystem/root
-    $ btdu --import results.json
 
 ### Deleting
 

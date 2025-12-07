@@ -1,5 +1,9 @@
 module btdu.impexp;
 
+import std.algorithm.comparison : max;
+import std.algorithm.iteration : filter, map;
+import std.algorithm.sorting : sort;
+import std.array : array;
 import std.conv : to;
 import std.math : ceil;
 import std.process : environment;
@@ -11,7 +15,7 @@ import ae.sys.data;
 import ae.sys.datamm;
 import ae.utils.json;
 
-import btdu.common : pointerWriter;
+import btdu.common : humanSize, pointerWriter;
 import btdu.paths;
 import btdu.state;
 
@@ -93,4 +97,96 @@ void exportDu()
 	}
 	if (totalSamples)
 		visit(&browserRoot);
+}
+
+/// Print a pretty tree of the biggest nodes to stdout.
+/// In non-expert mode: size and path columns.
+/// In expert mode: represented, distributed, exclusive, shared size columns.
+void exportHuman()
+{
+	auto totalSamples = browserRoot.getSamples(SampleType.represented);
+	if (totalSamples == 0)
+		return;
+
+	// Threshold: 1% of total size
+	auto threshold = totalSamples / 100;
+	if (threshold == 0)
+		threshold = 1;
+
+	// Calculate size from samples
+	real sizeFromSamples(double samples)
+	{
+		return samples * real(totalSize) / totalSamples;
+	}
+
+	// Collect and print nodes recursively
+	void visit(BrowserPath* path, string indent, bool isLast)
+	{
+		// Get samples for represented size (primary sort/filter)
+		auto samples = path.getSamples(SampleType.represented);
+
+		// Skip nodes below threshold (but always show root)
+		if (path !is &browserRoot && samples < threshold)
+			return;
+
+		string prefix, childIndent, label;
+		if (path is &browserRoot)
+		{
+			prefix = "";
+			childIndent = "";
+			label = fsPath;
+		}
+		else
+		{
+			prefix = indent ~ (isLast ? "└── " : "├── ");
+			childIndent = indent ~ (isLast ? "    " : "│   ");
+			label = path.humanName.to!string;
+		}
+
+		// Format and print the line
+		if (expert)
+		{
+			// Expert mode: four size columns
+			auto represented = sizeFromSamples(samples);
+			auto distributed = sizeFromSamples(path.getDistributedSamples());
+			auto exclusive = sizeFromSamples(path.getSamples(SampleType.exclusive));
+			auto shared_ = sizeFromSamples(path.getSamples(SampleType.shared_));
+
+			stdout.writefln(" ~%s   ~%s   ~%s   ~%s   %s%s",
+				humanSize(represented, true),
+				humanSize(distributed, true),
+				humanSize(exclusive, true),
+				humanSize(shared_, true),
+				prefix,
+				label,
+			);
+		}
+		else
+		{
+			// Non-expert mode: single size column
+			auto size = sizeFromSamples(samples);
+			stdout.writefln("%s%s (~%s)", prefix, label, humanSize(size, false));
+		}
+
+		// Collect children that pass threshold
+		BrowserPath*[] children;
+		for (auto child = path.firstChild; child; child = child.nextSibling)
+			if (child.getSamples(SampleType.represented) >= threshold)
+				children ~= child;
+
+		// Sort children by size (largest first)
+		children.sort!((a, b) => a.getSamples(SampleType.represented) > b.getSamples(SampleType.represented));
+
+		// Visit children
+		foreach (i, child; children)
+			visit(child, childIndent, i + 1 == children.length);
+	}
+
+	// Print header in expert mode
+	if (expert)
+	{
+		stdout.writeln(" Represented  Distributed   Exclusive     Shared     Path");
+	}
+
+	visit(&browserRoot, "", true);
 }
