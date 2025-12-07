@@ -291,3 +291,28 @@ void populateBrowserPathsFromSharingGroup(
 	if (allMarked && expert)
 		marked.addSamples(SampleType.exclusive, samples, offsets, duration);
 }
+
+/// Rebuild the BrowserPath tree from all SharingGroups.
+/// Call this after changing pathRules to recompute representative paths.
+void rebuildFromSharingGroups()
+{
+	// Reset all BrowserPath sample data and sharing group links
+	browserRoot.reset();
+	markTotalSamples = 0;
+
+	// Rebuild from all sharing groups
+	foreach (ref group; sharingGroupAllocator)
+	{
+		// Recalculate which path is the representative under current rules
+		group.representativeIndex = selectRepresentativeIndex(group.paths);
+
+		// Repopulate BrowserPath tree from this group's stored data
+		populateBrowserPathsFromSharingGroup(
+			&group,
+			true,  // needsLinking - always true for rebuild
+			group.data.samples,
+			group.data.offsets[],
+			group.data.duration
+		);
+	}
+}
