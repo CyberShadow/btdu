@@ -914,11 +914,6 @@ struct BrowserPath
 		}
 	}
 
-	void addSample(SampleType type, Offset offset, ulong duration)
-	{
-		addSamples(type, 1, (&offset)[0..1], duration);
-	}
-
 	void addSamples(SampleType type, ulong samples, const(Offset)[] offsets, ulong duration)
 	{
 		// Only allocate aggregateData for nodes with multiple children;
