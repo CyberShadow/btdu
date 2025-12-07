@@ -127,6 +127,7 @@ struct Browser
 		rebuild,
 	}
 	Popup popup;
+	string rebuildProgress; // Progress message for rebuild popup
 
 	enum SortMode
 	{
@@ -280,8 +281,12 @@ struct Browser
 	{
 		assert(popup == Popup.none);
 		popup = Popup.rebuild;
+		rebuildProgress = "Starting...";
 		update();
-		rebuildFromSharingGroups();
+		rebuildFromSharingGroups((msg) {
+			rebuildProgress = msg.idup;
+			update();
+		});
 		popup = Popup.none;
 	}
 
@@ -1569,7 +1574,7 @@ struct Browser
 
 							case Popup.rebuild:
 								title = "Recalculating";
-								write("Please wait... working...", endl);
+								write(rebuildProgress, endl);
 								break;
 						}
 					});

@@ -19,6 +19,7 @@
 /// Global state definitions
 module btdu.state;
 
+import std.format : format;
 import std.traits : EnumMembers;
 
 import ae.utils.appender : FastAppender;
@@ -294,11 +295,27 @@ void populateBrowserPathsFromSharingGroup(
 
 /// Rebuild the BrowserPath tree from all SharingGroups.
 /// Call this after changing pathRules to recompute representative paths.
-void rebuildFromSharingGroups()
+/// Params:
+///   progress = Optional callback called with progress message string
+void rebuildFromSharingGroups(scope void delegate(const(char)[]) progress = null)
 {
+	void report(const(char)[] msg) { if (progress) progress(msg); }
+
 	// Reset all BrowserPath sample data and sharing group links
+	report("Resetting tree...");
 	browserRoot.reset();
 	markTotalSamples = 0;
+
+	auto total = sharingGroupAllocator.length;
+	if (total == 0)
+		return;
+
+	auto step = total / 100;
+	if (step == 0)
+		step = 1;
+
+	size_t processed;
+	int lastPercent = -1;
 
 	// Rebuild from all sharing groups
 	foreach (ref group; sharingGroupAllocator)
@@ -314,5 +331,18 @@ void rebuildFromSharingGroups()
 			group.data.offsets[],
 			group.data.duration
 		);
+
+		processed++;
+		if (progress && processed % step == 0)
+		{
+			auto percent = cast(int)(processed * 100 / total);
+			if (percent != lastPercent)
+			{
+				lastPercent = percent;
+				report(format!"Rebuilding... %d%%"(percent));
+			}
+		}
 	}
+
+	report("Done.");
 }
