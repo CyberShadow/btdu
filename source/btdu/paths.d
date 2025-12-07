@@ -655,12 +655,15 @@ enum Mark : ubyte
 	unmarked,  /// Negative mark (cancels out a positive mark in an ancestor)
 }
 
+/// How many of the most recent samples we track
+enum historySize = 3;
+
 /// Aggregated sampling statistics for an extent or path
 struct SampleData
 {
 	ulong samples; /// Number of samples
 	ulong duration; /// Total hnsecs
-	Offset[3] offsets; /// Examples (the last 3 seen) of sample offsets
+	Offset[historySize] offsets; /// Examples (the last 3 seen) of sample offsets
 
 	/// Add samples to this data
 	void add(ulong samples, const(Offset)[] offsets, ulong duration)
@@ -739,7 +742,7 @@ struct BrowserPath
 	}
 
 	/// Get the offsets for a given sample type
-	const(Offset[3]) getOffsets(SampleType type) const
+	const(Offset[historySize]) getOffsets(SampleType type) const
 	{
 		static immutable Offset[3] emptyOffsets;
 		return aggregateData ? aggregateData.data[type].offsets : emptyOffsets;
