@@ -201,20 +201,29 @@ struct Browser
 			return null;
 	}
 
+	/// Check if a path exactly matches a literal rule (not just a prefix match via **).
+	/// A literal pattern starts with ** followed by literal path segments.
+	/// Slicing off the ** and matching checks for exact path match.
+	private static bool exactlyMatchesLiteralRule(BrowserPath* path, PathPattern pattern)
+	{
+		return pattern.isLiteral() && path.matchesExactly(pattern);
+	}
+
 	/// Returns the display character for path rules: 'P'/'p' for prefer, 'I'/'i' for ignore, ' ' for none
-	/// Uppercase = literal match, lowercase = glob match
+	/// Uppercase = exact literal match, lowercase = glob or prefix match
 	private static char getRuleChar(BrowserPath* path)
 	{
 		foreach (rule; pathRules)
 		{
 			if (path.matches(rule.pattern))
 			{
+				bool exact = exactlyMatchesLiteralRule(path, rule.pattern);
 				final switch (rule.type)
 				{
 					case PathRule.Type.prefer:
-						return rule.pattern.isLiteral() ? 'P' : 'p';
+						return exact ? 'P' : 'p';
 					case PathRule.Type.ignore:
-						return rule.pattern.isLiteral() ? 'I' : 'i';
+						return exact ? 'I' : 'i';
 				}
 			}
 		}
