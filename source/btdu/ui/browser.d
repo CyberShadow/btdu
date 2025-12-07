@@ -230,6 +230,50 @@ struct Browser
 		return ' ';
 	}
 
+	/// Toggle a path rule for the selected path.
+	/// If an exactly-matching literal rule of the same type exists, remove it.
+	/// If an exactly-matching literal rule of the opposite type exists, flip it.
+	/// Otherwise, add a new literal rule for this path.
+	private void togglePathRule(PathRule.Type ruleType)
+	{
+		if (!selection)
+		{
+			showMessage("No item selected");
+			return;
+		}
+
+		auto fullPath = getFullPath(selection);
+		if (!fullPath)
+		{
+			showMessage("Cannot set rule for special path");
+			return;
+		}
+
+		// Check if there's an exactly matching literal rule to remove or flip
+		foreach (i, ref rule; pathRules)
+		{
+			if (exactlyMatchesLiteralRule(selection, rule.pattern))
+			{
+				if (rule.type == ruleType)
+				{
+					// Same type: remove this rule
+					pathRules = pathRules.remove(i);
+				}
+				else
+				{
+					// Opposite type: flip it
+					rule.type = ruleType;
+				}
+				rebuildFromSharingGroups();
+				return;
+			}
+		}
+
+		// Prepend new rule so it takes precedence
+		pathRules = PathRule(ruleType, parsePathPattern(fullPath.idup, fsPath)) ~ pathRules;
+		rebuildFromSharingGroups();
+	}
+
 	private static real getSamples(BrowserPath* path, SizeMetric metric)
 	{
 		final switch (metric)
@@ -1376,6 +1420,8 @@ struct Browser
 									printKey("Show percentage and/or graph", button("g"));
 									printKey("Expand/collapse information panel", button("i"));
 									printKey("Delete the selected file or directory", button("d"));
+									printKey("Prefer selected path (toggle)", button("⇧ Shift"), "+", button("P"));
+									printKey("Ignore selected path (toggle)", button("⇧ Shift"), "+", button("I"));
 									printKey("Mark / unmark selected item", button("    "));
 									printKey("Invert marks", button("*"));
 									printKey("View all marks", button("⇧ Shift"), "+", button("M"));
@@ -1806,6 +1852,12 @@ struct Browser
 						}
 						else
 							showMessage("No marks");
+						break;
+					case 'P':
+						togglePathRule(PathRule.Type.prefer);
+						break;
+					case 'I':
+						togglePathRule(PathRule.Type.ignore);
 						break;
 					default:
 						goto itemScroll;
