@@ -730,35 +730,140 @@ struct BrowserPath
 		return aggregateData;
 	}
 
+	/// Check if a sharing group is relevant for a given sample type
+	private bool groupIsRelevant(const(SharingGroup)* group, SampleType type) const
+	{
+		final switch (type)
+		{
+			case SampleType.shared_:
+				// All samples that touch this path
+				return true;
+			case SampleType.represented:
+				// Samples where this path is the representative
+				auto ourIndex = group.findIndex(this.elementRange);
+				return ourIndex == group.representativeIndex;
+			case SampleType.exclusive:
+				// Samples exclusive to this path (only path in group)
+				return group.paths.length == 1;
+		}
+	}
+
 	/// Get the number of samples for a given sample type
 	ulong getSamples(SampleType type) const
 	{
-		return aggregateData ? aggregateData.data[type].samples : 0;
+		if (aggregateData)
+			return aggregateData.data[type].samples;
+
+		// Fallback: compute from sharing groups for leaf nodes
+		if (!firstSharingGroup)
+			return 0;
+
+		ulong sum = 0;
+		for (const(SharingGroup)* group = firstSharingGroup; group !is null; group = group.getNext(this.elementRange))
+			if (groupIsRelevant(group, type))
+				sum += group.data.samples;
+		return sum;
 	}
 
 	/// Get the duration for a given sample type
 	ulong getDuration(SampleType type) const
 	{
-		return aggregateData ? aggregateData.data[type].duration : 0;
+		if (aggregateData)
+			return aggregateData.data[type].duration;
+
+		// Fallback: compute from sharing groups for leaf nodes
+		if (!firstSharingGroup)
+			return 0;
+
+		ulong sum = 0;
+		for (const(SharingGroup)* group = firstSharingGroup; group !is null; group = group.getNext(this.elementRange))
+			if (groupIsRelevant(group, type))
+				sum += group.data.duration;
+		return sum;
 	}
 
 	/// Get the offsets for a given sample type
 	const(Offset[historySize]) getOffsets(SampleType type) const
 	{
-		static immutable Offset[3] emptyOffsets;
-		return aggregateData ? aggregateData.data[type].offsets : emptyOffsets;
+		if (aggregateData)
+			return aggregateData.data[type].offsets;
+
+		// Fallback: collect most recent offsets from sharing groups for leaf nodes
+		static immutable Offset[historySize] emptyOffsets;
+		if (!firstSharingGroup)
+			return emptyOffsets;
+
+		// Keep track of the most recent offsets (sorted by lastSeen ascending)
+		Offset[historySize] result;
+		ulong[historySize] resultLastSeen;
+
+		for (const(SharingGroup)* group = firstSharingGroup; group !is null; group = group.getNext(this.elementRange))
+		{
+			if (groupIsRelevant(group, type))
+			{
+				foreach (i; 0 .. historySize)
+				{
+					if (group.data.offsets[i] == Offset.init)
+						continue;
+
+					auto lastSeen = group.lastSeen[i];
+					// Check if this is more recent than our oldest (index 0)
+					if (lastSeen > resultLastSeen[0])
+					{
+						// Find insertion point (keep sorted ascending by lastSeen)
+						size_t insertAt = 0;
+						foreach (j; 1 .. historySize)
+							if (lastSeen > resultLastSeen[j])
+								insertAt = j;
+
+						// Shift older entries down
+						foreach_reverse (j; 0 .. insertAt)
+						{
+							result[j] = result[j + 1];
+							resultLastSeen[j] = resultLastSeen[j + 1];
+						}
+
+						// Insert new entry
+						result[insertAt] = group.data.offsets[i];
+						resultLastSeen[insertAt] = lastSeen;
+					}
+				}
+			}
+		}
+
+		return result;
 	}
 
 	/// Get the distributed samples
 	double getDistributedSamples() const
 	{
-		return aggregateData ? aggregateData.distributedSamples : 0;
+		if (aggregateData)
+			return aggregateData.distributedSamples;
+
+		// Fallback: compute from sharing groups for leaf nodes
+		if (!firstSharingGroup)
+			return 0;
+
+		double sum = 0;
+		for (const(SharingGroup)* group = firstSharingGroup; group !is null; group = group.getNext(this.elementRange))
+			sum += cast(double) group.data.samples / group.paths.length;
+		return sum;
 	}
 
 	/// Get the distributed duration
 	double getDistributedDuration() const
 	{
-		return aggregateData ? aggregateData.distributedDuration : 0;
+		if (aggregateData)
+			return aggregateData.distributedDuration;
+
+		// Fallback: compute from sharing groups for leaf nodes
+		if (!firstSharingGroup)
+			return 0;
+
+		double sum = 0;
+		for (const(SharingGroup)* group = firstSharingGroup; group !is null; group = group.getNext(this.elementRange))
+			sum += cast(double) group.data.duration / group.paths.length;
+		return sum;
 	}
 
 	/// Reset distributed samples and duration
