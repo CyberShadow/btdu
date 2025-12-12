@@ -177,6 +177,8 @@ struct Browser
 		currentPath = &browserRoot;
 	}
 
+	/// Returns true when the UI should be refreshed periodically
+	/// even if there are no new samples or user input.
 	@property bool needRefresh()
 	{
 		if (popup == Popup.deleteProgress)
@@ -278,18 +280,13 @@ struct Browser
 		doRebuild();
 	}
 
-	/// Show a progress dialog and rebuild the BrowserPath tree from SharingGroups.
+	/// Start an incremental rebuild of the BrowserPath tree from SharingGroups.
 	private void doRebuild()
 	{
 		assert(popup == Popup.none);
 		popup = Popup.rebuild;
 		rebuildProgress = "Starting...";
-		update();
-		rebuildFromSharingGroups((msg) {
-			rebuildProgress = msg.idup;
-			update();
-		});
-		popup = Popup.none;
+		startRebuild();
 	}
 
 	private static real getSamples(BrowserPath* path, SizeMetric metric)

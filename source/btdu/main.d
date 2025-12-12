@@ -190,14 +190,23 @@ Please report defects and enhancement requests to the GitHub issue tracker:
 			readSet.add(browser.curses.stdinSocket);
 			exceptSet.add(browser.curses.stdinSocket);
 		}
-		if (!paused)
+		if (!paused && !rebuildState.inProgress)
 			foreach (ref subproc; subprocesses)
 				readSet.add(subproc.socket);
 
-		if (!headless && browser.needRefresh())
+		// Need a refresh now?
+		bool busy = rebuildState.inProgress;
+		// Need a refresh periodically?
+		bool idle = !headless && browser.needRefresh();
+
+		if (busy)
+			Socket.select(readSet, null, exceptSet, Duration.zero);
+		else
+		if (idle)
 			Socket.select(readSet, null, exceptSet, refreshInterval);
 		else
 			Socket.select(readSet, null, exceptSet);
+
 		auto now = MonoTime.currTime();
 
 		if (browser.curses.stdinSocket && browser.handleInput())
@@ -224,6 +233,18 @@ Please report defects and enhancement requests to the GitHub issue tracker:
 					numReadable--;
 				}
 		}
+		// Process incremental rebuild if in progress
+		if (rebuildState.inProgress)
+		{
+			browser.rebuildProgress = format!"Rebuilding... %d%%"(rebuildState.progressPercent);
+			if (!processRebuildStep())
+			{
+				// Rebuild complete
+				browser.rebuildProgress = "Done.";
+				browser.popup = Browser.Popup.none;
+			}
+		}
+
 		if (!headless && now > nextRefresh)
 		{
 			browser.update();

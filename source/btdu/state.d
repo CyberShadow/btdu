@@ -293,56 +293,66 @@ void populateBrowserPathsFromSharingGroup(
 		marked.addSamples(SampleType.exclusive, samples, offsets, duration);
 }
 
-/// Rebuild the BrowserPath tree from all SharingGroups.
-/// Call this after changing pathRules to recompute representative paths.
-/// Params:
-///   progress = Optional callback called with progress message string
-void rebuildFromSharingGroups(scope void delegate(const(char)[]) progress = null)
+/// State for incremental rebuild from sharing groups
+struct RebuildState
 {
-	void report(const(char)[] msg) { if (progress) progress(msg); }
+	alias Range = typeof(sharingGroupAllocator).Range;
 
+	Range range;          /// Range over sharing groups to process
+	size_t processed;     /// Number of groups processed so far
+	size_t total;         /// Total number of groups to process
+	size_t step;          /// Number of groups to process per step (1% of total)
+
+	bool inProgress() const { return !range.empty; }
+	int progressPercent() const { return total > 0 ? cast(int)(processed * 100 / total) : 0; }
+}
+RebuildState rebuildState;
+
+/// Start an incremental rebuild of the BrowserPath tree from all SharingGroups.
+/// Call processRebuildStep() repeatedly until rebuildState.inProgress is false.
+void startRebuild()
+{
 	// Reset all BrowserPath sample data and sharing group links
-	report("Resetting tree...");
 	browserRoot.reset();
 	markTotalSamples = 0;
 
-	auto total = sharingGroupAllocator.length;
-	if (total == 0)
-		return;
+	// Initialize rebuild state with a range over all current sharing groups
+	rebuildState.range = sharingGroupAllocator[];
+	rebuildState.total = rebuildState.range.length;
+	rebuildState.processed = 0;
+	rebuildState.step = rebuildState.total / 100;
+	if (rebuildState.step == 0)
+		rebuildState.step = 1;
+}
 
-	auto step = total / 100;
-	if (step == 0)
-		step = 1;
+/// Process one step of the incremental rebuild (1% of total sharing groups).
+/// Returns: true if there is more work to do, false if rebuild is complete.
+bool processRebuildStep()
+{
+	if (rebuildState.range.empty)
+		return false;
 
-	size_t processed;
-	int lastPercent = -1;
-
-	// Rebuild from all sharing groups
-	foreach (ref group; sharingGroupAllocator)
+	size_t count = 0;
+	while (!rebuildState.range.empty && count < rebuildState.step)
 	{
+		SharingGroup* group = &rebuildState.range.front();
+
 		// Recalculate which path is the representative under current rules
 		group.representativeIndex = selectRepresentativeIndex(group.paths);
 
 		// Repopulate BrowserPath tree from this group's stored data
 		populateBrowserPathsFromSharingGroup(
-			&group,
+			group,
 			true,  // needsLinking - always true for rebuild
 			group.data.samples,
 			group.data.offsets[],
 			group.data.duration
 		);
 
-		processed++;
-		if (progress && processed % step == 0)
-		{
-			auto percent = cast(int)(processed * 100 / total);
-			if (percent != lastPercent)
-			{
-				lastPercent = percent;
-				report(format!"Rebuilding... %d%%"(percent));
-			}
-		}
+		rebuildState.range.popFront();
+		rebuildState.processed++;
+		count++;
 	}
 
-	report("Done.");
+	return !rebuildState.range.empty;
 }
