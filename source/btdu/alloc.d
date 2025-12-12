@@ -132,16 +132,57 @@ struct SlabAllocator(T, size_t slabSize = 4 * 1024 * 1024)
 	/// Iterate over all allocated items.
 	int opApply(scope int delegate(ref T) dg)
 	{
-		auto lastSlab = currentSlab;
-		auto lastIndex = currentIndex;
-		for (auto slab = firstSlab; slab; slab = slab.next)
-		{
-			auto count = (slab is lastSlab) ? lastIndex : itemsPerSlab;
-			foreach (ref item; slab.items[0 .. count])
-				if (auto r = dg(item))
-					return r;
-		}
+		foreach (ref item; opSlice())
+			if (auto r = dg(item))
+				return r;
 		return 0;
+	}
+
+	/// Range over allocated items. Captures a snapshot of the current end position,
+	/// so new allocations during iteration won't affect the range.
+	Range opSlice()
+	{
+		return Range(firstSlab, 0, currentSlab, currentIndex);
+	}
+
+	struct Range
+	{
+		Slab* slab;
+		size_t index;
+		Slab* endSlab;
+		size_t endIndex;
+
+		bool empty() const
+		{
+			return slab is null || (slab is endSlab && index >= endIndex);
+		}
+
+		ref T front()
+		{
+			return slab.items[index];
+		}
+
+		void popFront()
+		{
+			index++;
+			if (index >= itemsPerSlab && slab !is endSlab)
+			{
+				slab = slab.next;
+				index = 0;
+			}
+		}
+
+		size_t length() const
+		{
+			if (empty)
+				return 0;
+			size_t count = 0;
+			for (const(Slab)* s = slab; s !is endSlab; s = s.next)
+				count += itemsPerSlab;
+			count += endIndex;
+			count -= index;
+			return count;
+		}
 	}
 
 	/// Number of allocated items.
