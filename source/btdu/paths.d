@@ -37,6 +37,7 @@ import containers.hashmap;
 import containers.internal.hash : generateHash;
 
 import ae.utils.appender;
+import ae.utils.array : nonNull;
 import ae.utils.json : JSONName, JSONOptional, JSONFragment;
 import ae.utils.meta;
 import ae.utils.path.glob;
@@ -1037,7 +1038,7 @@ struct BrowserPath
 			false.nullable;
 		if (exportSeenAs)
 			foreach (path, samples; this.collectSeenAs().paths)
-				s.seenAs[path.to!string] = samples;
+				s.seenAs[path.to!string.nonNull] = samples;
 		return s;
 	}
 
