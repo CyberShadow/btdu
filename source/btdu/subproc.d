@@ -308,6 +308,11 @@ struct Subprocess
 		if (!result.haveInode)
 			result.browserPath = result.browserPath.appendName("\0NO_INODE");
 
+		// For special nodes (METADATA, SYSTEM, etc.) with no filesystem paths,
+		// construct a single artificial GlobalPath to represent the ownership.
+		if (allPaths.peek().length == 0)
+			allPaths ~= GlobalPath(null, &subPathRoot);
+
 		auto pathsSlice = allPaths.peek();
 
 		// Sort paths for consistent hashing/deduplication
@@ -319,7 +324,7 @@ struct Subprocess
 			);
 		}
 
-		// Get or create sharing group (even for empty paths - root-only case)
+		// Get or create sharing group
 		bool isNewGroup;
 		auto group = saveSharingGroup(result.browserPath, pathsSlice, result.offset, m.duration, isNewGroup);
 

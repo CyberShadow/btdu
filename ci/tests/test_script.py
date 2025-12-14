@@ -67,7 +67,10 @@ def create_compressible_data():
 SINGLE = '\x00SINGLE'
 RAID0 = '\x00RAID0'
 RAID1 = '\x00RAID1'
+DUP = '\x00DUP'
 DATA = '\x00DATA'
+METADATA = '\x00METADATA'
+SYSTEM = '\x00SYSTEM'
 UNUSED = '\x00UNUSED'
 
 
@@ -143,6 +146,13 @@ def verify_json_export(export_path):
         print(f"  ✓ Valid JSON export ({len(content)} bytes)")
         return data
     except json.JSONDecodeError as e:
+        # Show context around the error position
+        pos = e.pos
+        start = max(0, pos - 100)
+        end = min(len(content), pos + 100)
+        context = content[start:end]
+        print(f"  JSON error context (around pos {pos}):")
+        print(f"  ...{repr(context)}...")
         raise Exception(f"Invalid JSON in {export_path}: {e}")
 
 
@@ -1014,6 +1024,46 @@ def test_division_by_zero():
     print("  ✓ Division by zero test verified: btdu completed without crashing")
 
 
+def test_special_leaf_size():
+    """Verify special leaves (METADATA, SYSTEM) have non-zero size.
+
+    Regression test for a bug where special leaves (nodes with no filesystem paths,
+    like METADATA and SYSTEM block groups) would show up with 0 size due to
+    inconsistent handling of empty paths in sharing groups.
+    """
+    setup_btrfs_basic()
+    # Create some data to ensure there's meaningful filesystem activity
+    # and metadata blocks are allocated
+    create_test_files()
+
+    # Run btdu with enough samples to hit metadata blocks
+    run_btdu("--headless --export=/tmp/special_leaf.json --max-samples=10000 /mnt/btrfs", timeout=180)
+    data = verify_json_export("/tmp/special_leaf.json")
+
+    # On a single-device filesystem, metadata typically uses DUP profile
+    # Look for METADATA under both DUP and SINGLE profiles
+    metadata_node = None
+    metadata_path = None
+    for profile in [DUP, SINGLE]:
+        node = get_node(data['root'], [profile, METADATA])
+        if node is not None:
+            metadata_node = node
+            metadata_path = f"{profile}/{METADATA}"
+            break
+
+    assert metadata_node is not None, "METADATA node not found under DUP or SINGLE profiles"
+
+    # The key assertion: METADATA must have properly populated data with samples > 0
+    # Before the fix, this would fail due to empty paths handling bug
+    metadata_data = metadata_node.get('data', {})
+    assert 'represented' in metadata_data, \
+        "METADATA node has no 'represented' field (regression: special leaves not getting sample data)"
+    metadata_samples = metadata_data['represented']['samples']
+    assert metadata_samples > 0, "METADATA node has 0 samples (regression: special leaves must have non-zero size)"
+
+    print(f"  ✓ Special leaf size verified: METADATA has {metadata_samples} samples (path: {metadata_path})")
+
+
 def test_small_files_metadata():
     """Test small files inline with metadata."""
     setup_btrfs_basic()
@@ -1540,6 +1590,7 @@ def execute_all_tests():
         # Regression tests
         test_unicode_filenames,
         test_division_by_zero,
+        test_special_leaf_size,
 
         # Special filesystem scenarios
         test_small_files_metadata,

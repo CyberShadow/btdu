@@ -199,23 +199,7 @@ void populateBrowserPathsFromSharingGroup(
 	auto root = group.root;
 	auto paths = group.paths;
 
-	// Handle empty paths case (root-only, no sharing)
-	if (paths.length == 0)
-	{
-		root.addSamples(SampleType.represented, samples, offsets, duration);
-		if (expert)
-		{
-			root.addSamples(SampleType.shared_, samples, offsets, duration);
-			root.addSamples(SampleType.exclusive, samples, offsets, duration);
-			root.addDistributedSample(samples, duration);
-		}
-		allMarked = root.getEffectiveMark();
-		// Update global marked state
-		markTotalSamples += samples;
-		if (allMarked && expert)
-			marked.addSamples(SampleType.exclusive, samples, offsets, duration);
-		return;
-	}
+	assert(paths.length > 0, "Sharing groups must have at least one path");
 
 	// Link sharing groups to BrowserPaths' firstSharingGroup list
 	auto representativeIndex = group.representativeIndex;
