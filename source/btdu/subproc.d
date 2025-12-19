@@ -85,6 +85,8 @@ struct Subprocess
 	/// Reads one datum; returns `true` if there is more to read.
 	bool handleInput()
 	{
+		assert(!rebuildState.inProgress, "handleInput() called during rebuild");
+
 		auto data = buf[bufStart .. bufEnd];
 		auto bytesNeeded = parse(data, this);
 		bufStart = bufEnd - data.length;
