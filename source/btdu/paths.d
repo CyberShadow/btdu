@@ -738,22 +738,21 @@ struct BrowserPath
 	{
 		if (!aggregateData)
 		{
+			// Allocate to a local first, so getSamples/etc still see this.aggregateData
+			// as null and return values from children/sharing groups.
+			auto aggregateData = growAllocator.make!AggregateData();
+
 			// Capture current dynamically-computed values before allocation
-			SampleData[enumLength!SampleType] currentData;
 			static foreach (type; EnumMembers!SampleType)
 			{
-				currentData[type].samples = getSamples(type);
-				currentData[type].duration = getDuration(type);
-				currentData[type].offsets = getOffsets(type);
+				aggregateData.data[type].samples = getSamples(type);
+				aggregateData.data[type].duration = getDuration(type);
+				aggregateData.data[type].offsets = getOffsets(type);
 			}
-			auto currentDistributedSamples = getDistributedSamples();
-			auto currentDistributedDuration = getDistributedDuration();
+			aggregateData.distributedSamples = getDistributedSamples();
+			aggregateData.distributedDuration = getDistributedDuration();
 
-			// Allocate and initialize with captured values
-			aggregateData = growAllocator.make!AggregateData();
-			aggregateData.data = currentData;
-			aggregateData.distributedSamples = currentDistributedSamples;
-			aggregateData.distributedDuration = currentDistributedDuration;
+			this.aggregateData = aggregateData;
 		}
 		return aggregateData;
 	}
