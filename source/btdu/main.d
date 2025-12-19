@@ -242,6 +242,7 @@ Please report defects and enhancement requests to the GitHub issue tracker:
 				// Rebuild complete
 				browser.rebuildProgress = "Done.";
 				browser.popup = Browser.Popup.none;
+				browser.update();
 			}
 		}
 
