@@ -925,7 +925,7 @@ struct BrowserPath
 	}
 
 	/// Returns true if this node should store samples in aggregateData.
-	private bool needsAggregateData()
+	private bool needsAggregateData() const
 	{
 		// Leaf nodes with sharing groups compute samples on-the-fly from those groups
 		if (firstSharingGroup)
