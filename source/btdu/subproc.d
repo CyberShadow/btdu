@@ -230,7 +230,7 @@ struct Subprocess
 	}
 
 	/// Get or create a sharing group for the given paths
-	private static SharingGroup* saveSharingGroup(BrowserPath* root, GlobalPath[] paths, Offset offset, ulong duration, out bool isNew)
+	private static SharingGroup* saveSharingGroup(BrowserPath* root, GlobalPath[] paths, out bool isNew)
 	{
 		import std.experimental.allocator : makeArray, make;
 
@@ -285,15 +285,6 @@ struct Subprocess
 			isNew = true;
 		}
 
-		group.data.add(1, (&offset)[0..1], duration);
-
-		// Track when this extent was last seen (shift existing values, add new at end)
-		auto currentCounter = browserRoot.getSamples(SampleType.represented);
-		foreach (i; 0 .. group.lastSeen.length)
-			group.lastSeen[i] = i + 1 == group.lastSeen.length
-				? currentCounter
-				: group.lastSeen[i + 1];
-
 		return group;
 	}
 
@@ -328,7 +319,7 @@ struct Subprocess
 
 		// Get or create sharing group
 		bool isNewGroup;
-		auto group = saveSharingGroup(result.browserPath, pathsSlice, result.offset, m.duration, isNewGroup);
+		auto group = saveSharingGroup(result.browserPath, pathsSlice, isNewGroup);
 
 		// Populate BrowserPath tree from sharing group
 		populateBrowserPathsFromSharingGroup(
@@ -338,6 +329,18 @@ struct Subprocess
 			(&result.offset)[0..1],
 			m.duration
 		);
+
+		// Update sharing group's own sample counter.
+		// This happens after populateBrowserPathsFromSharingGroup so that
+		// group.data reflects the final state when the function returns.
+		group.data.add(1, (&result.offset)[0..1], m.duration);
+
+		// Track when this extent was last seen (shift existing values, add new at end)
+		auto currentCounter = browserRoot.getSamples(SampleType.represented);
+		foreach (i; 0 .. group.lastSeen.length)
+			group.lastSeen[i] = i + 1 == group.lastSeen.length
+				? currentCounter
+				: group.lastSeen[i + 1];
 
 		result = Result.init;
 		allPaths.clear();

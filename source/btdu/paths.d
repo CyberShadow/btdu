@@ -973,10 +973,28 @@ struct BrowserPath
 		return true;
 	}
 
-	void addSamples(SampleType type, ulong samples, const(Offset)[] offsets, ulong duration)
+	/// Returns true if this node's aggregateData state is consistent with its structure.
+	private bool hasCorrectAggregateDataState() const
+	{
+		return !needsAggregateData || aggregateData;
+	}
+
+	/// Update BrowserPath structure after tree modifications (appendPath, linking sharing groups).
+	/// This ensures aggregateData is allocated where needed, capturing current state from children.
+	/// Must be called before addSamples/addDistributedSample to ensure structure is finalized.
+	void updateStructure()
 	{
 		if (needsAggregateData)
-			ensureAggregateData().data[type].add(samples, offsets, duration);
+			ensureAggregateData();
+		if (parent)
+			parent.updateStructure();
+	}
+
+	void addSamples(SampleType type, ulong samples, const(Offset)[] offsets, ulong duration)
+	{
+		assert(hasCorrectAggregateDataState, "updateStructure must be called before addSamples");
+		if (aggregateData)
+			aggregateData.data[type].add(samples, offsets, duration);
 		if (parent)
 			parent.addSamples(type, samples, offsets, duration);
 	}
@@ -991,11 +1009,11 @@ struct BrowserPath
 
 	void addDistributedSample(double sampleShare, double durationShare)
 	{
-		if (needsAggregateData)
+		assert(hasCorrectAggregateDataState, "updateStructure must be called before addDistributedSample");
+		if (aggregateData)
 		{
-			auto data = ensureAggregateData();
-			data.distributedSamples += sampleShare;
-			data.distributedDuration += durationShare;
+			aggregateData.distributedSamples += sampleShare;
+			aggregateData.distributedDuration += durationShare;
 		}
 		if (parent)
 			parent.addDistributedSample(sampleShare, durationShare);

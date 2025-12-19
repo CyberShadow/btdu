@@ -66,6 +66,13 @@ size_t numSingleSampleGroups;
 BrowserPath marked;  /// A fake `BrowserPath` used to represent all marked nodes.
 ulong markTotalSamples; /// Number of seen samples since the mark was invalidated.
 
+/// Initialize the `marked` BrowserPath structure.
+/// Since it has no children or sharing groups, it needs aggregateData allocated.
+static this()
+{
+	marked.updateStructure();
+}
+
 /// Called when something is marked or unmarked.
 void invalidateMark()
 {
@@ -201,34 +208,78 @@ void populateBrowserPathsFromSharingGroup(
 
 	assert(paths.length > 0, "Sharing groups must have at least one path");
 
-	// Link sharing groups to BrowserPaths' firstSharingGroup list
 	auto representativeIndex = group.representativeIndex;
+
+	// ============================================================
+	// Phase 1: Create BrowserPath nodes (but don't link sharing groups yet)
+	// ============================================================
+
 	if (needsLinking)
 	{
-		// In expert mode, link this group to all BrowserPaths
-		// In non-expert mode, only link to the representative
+		// Create BrowserPath nodes and store path pointers
+		// We don't link sharing groups yet - that happens after updateStructure
 		if (expert)
 		{
-			// Link to all BrowserPaths
 			foreach (i, ref path; paths)
 			{
 				auto pathBrowserPath = root.appendPath(&path);
 				group.pathData[i].path = pathBrowserPath;
-				group.pathData[i].next = pathBrowserPath.firstSharingGroup;
-				pathBrowserPath.firstSharingGroup = group;
 			}
 		}
 		else
 		{
-			// Only link to representative path
 			auto representativeBrowserPath = root.appendPath(&paths[representativeIndex]);
 			group.pathData[representativeIndex].path = representativeBrowserPath;
-			group.pathData[representativeIndex].next = representativeBrowserPath.firstSharingGroup;
-			representativeBrowserPath.firstSharingGroup = group;
 		}
 	}
 
-	// Add represented samples to the representative path (using cached path)
+	// ============================================================
+	// Phase 2: Update structure (before linking sharing groups)
+	// This ensures aggregateData is allocated where needed.
+	// Non-root leaves don't need aggregateData (needsAggregateData returns false for them)
+	// because they'll get sharing groups in Phase 3.
+	// If new aggregateData is allocated, it captures current values from children
+	// (which may already have samples from earlier groups during rebuild).
+	// ============================================================
+	if (expert)
+	{
+		foreach (i, ref path; paths)
+			group.pathData[i].path.updateStructure();
+	}
+	else
+	{
+		group.pathData[representativeIndex].path.updateStructure();
+	}
+
+	// ============================================================
+	// Phase 3: Link sharing groups to BrowserPaths
+	// This must happen AFTER updateStructure so that newly allocated
+	// aggregateData captures 0 from children (not from group.data).
+	// ============================================================
+	if (needsLinking)
+	{
+		if (expert)
+		{
+			foreach (i, ref path; paths)
+			{
+				auto browserPath = group.pathData[i].path;
+				group.pathData[i].next = browserPath.firstSharingGroup;
+				browserPath.firstSharingGroup = group;
+			}
+		}
+		else
+		{
+			auto browserPath = group.pathData[representativeIndex].path;
+			group.pathData[representativeIndex].next = browserPath.firstSharingGroup;
+			browserPath.firstSharingGroup = group;
+		}
+	}
+
+	// ============================================================
+	// Phase 4: Add samples to aggregateData
+	// ============================================================
+
+	// Add represented samples to the representative path
 	group.pathData[representativeIndex].path.addSamples(SampleType.represented, samples, offsets, duration);
 
 	if (expert)
@@ -236,45 +287,38 @@ void populateBrowserPathsFromSharingGroup(
 		auto distributedSamples = double(samples) / paths.length;
 		auto distributedDuration = double(duration) / paths.length;
 
-		static FastAppender!(BrowserPath*) browserPaths;
-		browserPaths.clear();
 		foreach (i, ref path; paths)
 		{
 			auto browserPath = group.pathData[i].path;
-			browserPaths.put(browserPath);
-
 			browserPath.addSamples(SampleType.shared_, samples, offsets, duration);
 			browserPath.addDistributedSample(distributedSamples, distributedDuration);
 		}
 
+		static FastAppender!(BrowserPath*) browserPaths;
+		browserPaths.clear();
+		foreach (i, ref path; paths)
+			browserPaths.put(group.pathData[i].path);
+
 		auto exclusiveBrowserPath = BrowserPath.commonPrefix(browserPaths.peek());
 		exclusiveBrowserPath.addSamples(SampleType.exclusive, samples, offsets, duration);
-
-		foreach (ref path; browserPaths.get())
-			if (!path.getEffectiveMark())
-			{
-				allMarked = false;
-				break;
-			}
-	}
-	else
-	{
-		if (false) // `allMarked` result will not be used in non-expert mode anyway...
-		foreach (ref path; paths)
-		{
-			auto browserPath = root.appendPath!true(&path);
-			if (browserPath && !browserPath.getEffectiveMark())
-			{
-				allMarked = false;
-				break;
-			}
-		}
 	}
 
 	// Update global marked state
 	markTotalSamples += samples;
-	if (allMarked && expert)
-		marked.addSamples(SampleType.exclusive, samples, offsets, duration);
+
+	// Check marks and update marked node
+	if (expert)
+	{
+		foreach (i, ref path; paths)
+			if (!group.pathData[i].path.getEffectiveMark())
+			{
+				allMarked = false;
+				break;
+			}
+
+		if (allMarked)
+			marked.addSamples(SampleType.exclusive, samples, offsets, duration);
+	}
 }
 
 /// State for incremental rebuild from sharing groups
@@ -325,6 +369,9 @@ bool processRebuildStep()
 		group.representativeIndex = selectRepresentativeIndex(group.paths);
 
 		// Repopulate BrowserPath tree from this group's stored data
+		// During rebuild, aggregateData already exists (just zeroed by reset),
+		// so updateStructure won't trigger ensureAggregateData capture.
+		// addSamples simply increments the zeroed values.
 		populateBrowserPathsFromSharingGroup(
 			group,
 			true,  // needsLinking - always true for rebuild
