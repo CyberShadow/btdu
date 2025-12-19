@@ -58,6 +58,7 @@ args=(
 	ldc2
 	-v
 	-mtriple "$target_arch"-linux-"$target_api"
+	--linker=lld
 	-i
 	-i=-deimos  # https://issues.dlang.org/show_bug.cgi?id=23597
 	-of"$fn"
