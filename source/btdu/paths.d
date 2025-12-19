@@ -145,11 +145,28 @@ struct SharingGroup
 		return size_t.max;
 	}
 
+	/// Find the index of a path by BrowserPath pointer (O(n) but no string comparison)
+	/// Returns size_t.max if not found
+	size_t findIndex(const(BrowserPath)* browserPath) const
+	{
+		foreach (i; 0 .. this.paths.length)
+			if (this.pathData[i].path is browserPath)
+				return i;
+		return size_t.max;
+	}
+
 	/// Find the next group pointer for a given element range
 	/// Returns null if the element range doesn't match any path in this group
 	inout(SharingGroup)* getNext(R)(R elementRange) inout
 	{
 		auto index = findIndex(elementRange);
+		return index != size_t.max ? this.pathData[index].next : null;
+	}
+
+	/// Find the next group pointer by BrowserPath pointer (faster than elementRange version)
+	inout(SharingGroup)* getNext(const(BrowserPath)* browserPath) inout
+	{
+		auto index = findIndex(browserPath);
 		return index != size_t.max ? this.pathData[index].next : null;
 	}
 
@@ -851,7 +868,7 @@ struct BrowserPath
 			fromAggregate: () => aggregateData.data[type].samples,
 			fromSharingGroups: {
 				ulong sum = 0;
-				for (const(SharingGroup)* group = firstSharingGroup; group !is null; group = group.getNext(this.elementRange))
+				for (const(SharingGroup)* group = firstSharingGroup; group !is null; group = group.getNext(&this))
 					if (groupIsRelevant(group, type))
 						sum += group.data.samples;
 				return sum;
@@ -872,7 +889,7 @@ struct BrowserPath
 			fromAggregate: () => aggregateData.data[type].duration,
 			fromSharingGroups: {
 				ulong sum = 0;
-				for (const(SharingGroup)* group = firstSharingGroup; group !is null; group = group.getNext(this.elementRange))
+				for (const(SharingGroup)* group = firstSharingGroup; group !is null; group = group.getNext(&this))
 					if (groupIsRelevant(group, type))
 						sum += group.data.duration;
 				return sum;
@@ -896,7 +913,7 @@ struct BrowserPath
 				Offset[historySize] result;
 				ulong[historySize] resultLastSeen;
 
-				for (const(SharingGroup)* group = firstSharingGroup; group !is null; group = group.getNext(this.elementRange))
+				for (const(SharingGroup)* group = firstSharingGroup; group !is null; group = group.getNext(&this))
 				{
 					if (groupIsRelevant(group, type))
 					{
@@ -960,7 +977,7 @@ struct BrowserPath
 			fromAggregate: () => aggregateData.distributedSamples,
 			fromSharingGroups: {
 				double sum = 0;
-				for (const(SharingGroup)* group = firstSharingGroup; group !is null; group = group.getNext(this.elementRange))
+				for (const(SharingGroup)* group = firstSharingGroup; group !is null; group = group.getNext(&this))
 					sum += cast(double) group.data.samples / group.paths.length;
 				return sum;
 			},
@@ -980,7 +997,7 @@ struct BrowserPath
 			fromAggregate: () => aggregateData.distributedDuration,
 			fromSharingGroups: {
 				double sum = 0;
-				for (const(SharingGroup)* group = firstSharingGroup; group !is null; group = group.getNext(this.elementRange))
+				for (const(SharingGroup)* group = firstSharingGroup; group !is null; group = group.getNext(&this))
 					sum += cast(double) group.data.duration / group.paths.length;
 				return sum;
 			},
@@ -1105,7 +1122,7 @@ struct BrowserPath
 
 		// Traverse the linked list of sharing groups
 		// Each group represents one extent where multiple paths share data
-		for (auto group = firstSharingGroup; group !is null; group = group.getNext(this.elementRange))
+		for (auto group = firstSharingGroup; group !is null; group = group.getNext(&this))
 		{
 			// Add all paths in this group to the result
 			foreach (ref path; group.paths)
