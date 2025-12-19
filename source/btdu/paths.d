@@ -931,15 +931,11 @@ struct BrowserPath
 		if (firstSharingGroup)
 			return false;
 
-		// Nodes without children delegate... somewhere? (BUG: this breaks `marked`)
-		if (!firstChild)
-			return false;
-
 		// Single-child nodes delegate to their only child
-		if (!firstChild.nextSibling)
+		if (firstChild && !firstChild.nextSibling)
 			return false;
 
-		// Multiple children: store in aggregateData
+		// All other nodes (no children, or multiple children) store in aggregateData
 		return true;
 	}
 
