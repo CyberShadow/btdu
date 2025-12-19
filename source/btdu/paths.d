@@ -929,7 +929,10 @@ struct BrowserPath
 	{
 		// Leaf nodes with sharing groups compute samples on-the-fly from those groups
 		if (firstSharingGroup)
+		{
+			assert(!firstChild, "Node has both sharing groups and children");
 			return false;
+		}
 
 		// Single-child nodes delegate to their only child
 		if (firstChild && !firstChild.nextSibling)
