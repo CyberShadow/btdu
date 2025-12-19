@@ -1313,13 +1313,13 @@ struct BrowserPath
 	));
 
 	/// Returns the mark as it is inherited from the parent, if any.
-	private bool getParentMark()
+	private bool getParentMark() const
 	{
 		return parent ? parent.getEffectiveMark() : false;
 	}
 
 	/// Returns true for marked, false for unmarked.
-	bool getEffectiveMark()
+	bool getEffectiveMark() const
 	{
 		final switch (mark)
 		{
