@@ -37,14 +37,7 @@ rpath = "/tmp/ldc-build-runtime.tmp/lib";
 };
 EOF
 
-case "$target_arch" in
-	aarch64)
-		# See https://forum.dlang.org/post/ulkljredphpgipqfmlvf@forum.dlang.org
-		static=false
-		;;
-	*)
-		static=true
-esac
+static=true
 
 if $static
 then
