@@ -26,8 +26,8 @@
               (baseName == "dub.sdl");
         };
 
-        # Build btdu from local source
-        btdu = pkgs.buildDubPackage {
+        # Common btdu build configuration
+        btduCommon = {
           pname = "btdu";
           version = "0.6.1";
 
@@ -57,11 +57,25 @@
             mainProgram = "btdu";
           };
         };
+
+        # Build btdu from local source (release build)
+        btdu = pkgs.buildDubPackage btduCommon;
+
+        # Debug build with extra assertions for testing
+        btduDebug = pkgs.buildDubPackage (btduCommon // {
+          # Use debug build type to enable debugMode (required for debug blocks)
+          dubBuildType = "debug";
+          # Pass --d-debug=check to LDC compiler to enable debug(check) blocks
+          preBuild = ''
+            export DFLAGS="--d-debug=check"
+          '';
+        });
       in
       {
         packages = {
           default = btdu;
           btdu = btdu;
+          btdu-debug = btduDebug;
         };
 
         apps.default = {
@@ -79,11 +93,12 @@
         };
 
         # Integration tests as checks (only on Linux systems)
+        # Uses btduDebug build with -debug=check for extra assertions
         checks = pkgs.lib.optionalAttrs pkgs.stdenv.isLinux {
           integration = import ./ci/tests/nixos-test.nix {
             inherit (pkgs) lib;
             inherit pkgs;
-            inherit btdu;
+            btdu = btduDebug;
           };
         };
       }
