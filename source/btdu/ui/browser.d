@@ -1515,6 +1515,12 @@ struct Browser
 									write(endl);
 								});
 
+								if (deleter.items.any!(item => item.browserPath.firstChild !is null))
+								{
+									write(bold("Warning: "), "This will delete all files in the directories above,", endl,
+										"including those not yet discovered by btdu.", endl, endl);
+								}
+
 								if (expert)
 								{
 									auto p = single
