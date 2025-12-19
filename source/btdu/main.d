@@ -217,7 +217,7 @@ Please report defects and enhancement requests to the GitHub issue tracker:
 			browser.update();
 			nextRefresh = now + refreshInterval;
 		}
-		if (!paused)
+		if (!paused && !rebuildState.inProgress) // note, we must check rebuildState.inProgress again here
 		{
 			auto deadline = now + totalMaxDuration;
 			size_t numReadable;
