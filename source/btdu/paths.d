@@ -965,11 +965,15 @@ struct BrowserPath
 			return false;
 		}
 
-		// Single-child nodes delegate to their only child
-		if (firstChild && !firstChild.nextSibling)
+		// Childless nodes (root before first sample, or leaves awaiting sharing groups)
+		if (!firstChild)
 			return false;
 
-		// All other nodes (no children, or multiple children) store in aggregateData
+		// Single-child nodes delegate to their only child
+		if (!firstChild.nextSibling)
+			return false;
+
+		// Nodes with multiple children need aggregateData to aggregate them
 		return true;
 	}
 
