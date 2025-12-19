@@ -67,10 +67,10 @@ BrowserPath marked;  /// A fake `BrowserPath` used to represent all marked nodes
 ulong markTotalSamples; /// Number of seen samples since the mark was invalidated.
 
 /// Initialize the `marked` BrowserPath structure.
-/// Since it has no children or sharing groups, it needs aggregateData allocated.
+/// Since it has no children or sharing groups, we force aggregateData allocation.
 static this()
 {
-	marked.updateStructure();
+	marked.forceAggregateData();
 }
 
 /// Called when something is marked or unmarked.

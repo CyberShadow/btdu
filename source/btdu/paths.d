@@ -978,8 +978,11 @@ struct BrowserPath
 	}
 
 	/// Returns true if this node's aggregateData state is consistent with its structure.
+	/// Allows having aggregateData even when not strictly needed (for special nodes like `marked`).
 	private bool hasCorrectAggregateDataState() const
 	{
+		// If you need aggregateData, you must have it.
+		// Having it when not needed is OK (e.g., `marked`).
 		return !needsAggregateData || aggregateData;
 	}
 
@@ -992,6 +995,13 @@ struct BrowserPath
 			ensureAggregateData();
 		if (parent)
 			parent.updateStructure();
+	}
+
+	/// Force allocation of aggregateData for special nodes like `marked` that need to store
+	/// samples but don't have children or sharing groups.
+	void forceAggregateData()
+	{
+		ensureAggregateData();
 	}
 
 	void addSamples(SampleType type, ulong samples, const(Offset)[] offsets, ulong duration)
