@@ -776,142 +776,173 @@ struct BrowserPath
 		}
 	}
 
-	/// Get the number of samples for a given sample type
-	ulong getSamples(SampleType type) const
-	{
+	private R getData(R)(
+		scope R delegate() fromAggregate,
+		scope R delegate() fromSharingGroups,
+		scope R delegate() fromChildren,
+	) const {
+		// Use aggregate data if available
 		if (aggregateData)
-			return aggregateData.data[type].samples;
+			return fromAggregate();
 
 		// Fallback: delegate to single child
 		if (firstChild && !firstChild.nextSibling)
-			return firstChild.getSamples(type);
+			return fromChildren();
 
 		// Fallback: compute from sharing groups for leaf nodes
 		if (!firstSharingGroup)
-			return 0;
+			return R.init;
 
-		ulong sum = 0;
-		for (const(SharingGroup)* group = firstSharingGroup; group !is null; group = group.getNext(this.elementRange))
-			if (groupIsRelevant(group, type))
-				sum += group.data.samples;
-		return sum;
+		return fromSharingGroups();
+	}
+
+	/// Get the number of samples for a given sample type
+	ulong getSamples(SampleType type) const
+	{
+		return getData!ulong(
+			fromAggregate: () => aggregateData.data[type].samples,
+			fromSharingGroups: {
+				ulong sum = 0;
+				for (const(SharingGroup)* group = firstSharingGroup; group !is null; group = group.getNext(this.elementRange))
+					if (groupIsRelevant(group, type))
+						sum += group.data.samples;
+				return sum;
+			},
+			fromChildren: {
+				ulong sum = 0;
+				for (const(BrowserPath)* child = firstChild; child; child = child.nextSibling)
+					sum += child.getSamples(type);
+				return sum;
+			},
+		);
 	}
 
 	/// Get the duration for a given sample type
 	ulong getDuration(SampleType type) const
 	{
-		if (aggregateData)
-			return aggregateData.data[type].duration;
-
-		// Fallback: delegate to single child
-		if (firstChild && !firstChild.nextSibling)
-			return firstChild.getDuration(type);
-
-		// Fallback: compute from sharing groups for leaf nodes
-		if (!firstSharingGroup)
-			return 0;
-
-		ulong sum = 0;
-		for (const(SharingGroup)* group = firstSharingGroup; group !is null; group = group.getNext(this.elementRange))
-			if (groupIsRelevant(group, type))
-				sum += group.data.duration;
-		return sum;
+		return getData!ulong(
+			fromAggregate: () => aggregateData.data[type].duration,
+			fromSharingGroups: {
+				ulong sum = 0;
+				for (const(SharingGroup)* group = firstSharingGroup; group !is null; group = group.getNext(this.elementRange))
+					if (groupIsRelevant(group, type))
+						sum += group.data.duration;
+				return sum;
+			},
+			fromChildren: {
+				ulong sum = 0;
+				for (const(BrowserPath)* child = firstChild; child; child = child.nextSibling)
+					sum += child.getDuration(type);
+				return sum;
+			},
+		);
 	}
 
 	/// Get the offsets for a given sample type
 	const(Offset[historySize]) getOffsets(SampleType type) const
 	{
-		if (aggregateData)
-			return aggregateData.data[type].offsets;
+		return getData!(Offset[historySize])(
+			fromAggregate: () => aggregateData.data[type].offsets,
+			fromSharingGroups: {
+				// Keep track of the most recent offsets (sorted by lastSeen ascending)
+				Offset[historySize] result;
+				ulong[historySize] resultLastSeen;
 
-		// Fallback: delegate to single child
-		if (firstChild && !firstChild.nextSibling)
-			return firstChild.getOffsets(type);
-
-		// Fallback: collect most recent offsets from sharing groups for leaf nodes
-		static immutable Offset[historySize] emptyOffsets;
-		if (!firstSharingGroup)
-			return emptyOffsets;
-
-		// Keep track of the most recent offsets (sorted by lastSeen ascending)
-		Offset[historySize] result;
-		ulong[historySize] resultLastSeen;
-
-		for (const(SharingGroup)* group = firstSharingGroup; group !is null; group = group.getNext(this.elementRange))
-		{
-			if (groupIsRelevant(group, type))
-			{
-				foreach (i; 0 .. historySize)
+				for (const(SharingGroup)* group = firstSharingGroup; group !is null; group = group.getNext(this.elementRange))
 				{
-					if (group.data.offsets[i] == Offset.init)
-						continue;
-
-					auto lastSeen = group.lastSeen[i];
-					// Check if this is more recent than our oldest (index 0)
-					if (lastSeen > resultLastSeen[0])
+					if (groupIsRelevant(group, type))
 					{
-						// Find insertion point (keep sorted ascending by lastSeen)
-						size_t insertAt = 0;
-						foreach (j; 1 .. historySize)
-							if (lastSeen > resultLastSeen[j])
-								insertAt = j;
-
-						// Shift older entries down
-						foreach_reverse (j; 0 .. insertAt)
+						foreach (i; 0 .. historySize)
 						{
-							result[j] = result[j + 1];
-							resultLastSeen[j] = resultLastSeen[j + 1];
-						}
+							if (group.data.offsets[i] == Offset.init)
+								continue;
 
-						// Insert new entry
-						result[insertAt] = group.data.offsets[i];
-						resultLastSeen[insertAt] = lastSeen;
+							auto lastSeen = group.lastSeen[i];
+							// Check if this is more recent than our oldest (index 0)
+							if (lastSeen > resultLastSeen[0])
+							{
+								// Find insertion point (keep sorted ascending by lastSeen)
+								size_t insertAt = 0;
+								foreach (j; 1 .. historySize)
+									if (lastSeen > resultLastSeen[j])
+										insertAt = j;
+
+								// Shift older entries down
+								foreach_reverse (j; 0 .. insertAt)
+								{
+									result[j] = result[j + 1];
+									resultLastSeen[j] = resultLastSeen[j + 1];
+								}
+
+								// Insert new entry
+								result[insertAt] = group.data.offsets[i];
+								resultLastSeen[insertAt] = lastSeen;
+							}
+						}
 					}
 				}
-			}
-		}
 
-		return result;
+				return result;
+			},
+			fromChildren: {
+				// Merge offsets from all children
+				Offset[historySize] result;
+				foreach (i; 0 .. historySize)
+					result[i] = Offset.init;
+
+				for (const(BrowserPath)* child = firstChild; child; child = child.nextSibling)
+				{
+					auto childOffsets = child.getOffsets(type);
+					foreach (i; 0 .. historySize)
+					{
+						if (childOffsets[i] != Offset.init && result[i] == Offset.init)
+							result[i] = childOffsets[i];
+					}
+				}
+
+				return result;
+			},
+		);
 	}
 
 	/// Get the distributed samples
 	double getDistributedSamples() const
 	{
-		if (aggregateData)
-			return aggregateData.distributedSamples;
-
-		// Fallback: delegate to single child
-		if (firstChild && !firstChild.nextSibling)
-			return firstChild.getDistributedSamples();
-
-		// Fallback: compute from sharing groups for leaf nodes
-		if (!firstSharingGroup)
-			return 0;
-
-		double sum = 0;
-		for (const(SharingGroup)* group = firstSharingGroup; group !is null; group = group.getNext(this.elementRange))
-			sum += cast(double) group.data.samples / group.paths.length;
-		return sum;
+		return getData!double(
+			fromAggregate: () => aggregateData.distributedSamples,
+			fromSharingGroups: {
+				double sum = 0;
+				for (const(SharingGroup)* group = firstSharingGroup; group !is null; group = group.getNext(this.elementRange))
+					sum += cast(double) group.data.samples / group.paths.length;
+				return sum;
+			},
+			fromChildren: {
+				double sum = 0;
+				for (const(BrowserPath)* child = firstChild; child; child = child.nextSibling)
+					sum += child.getDistributedSamples();
+				return sum;
+			},
+		);
 	}
 
 	/// Get the distributed duration
 	double getDistributedDuration() const
 	{
-		if (aggregateData)
-			return aggregateData.distributedDuration;
-
-		// Fallback: delegate to single child
-		if (firstChild && !firstChild.nextSibling)
-			return firstChild.getDistributedDuration();
-
-		// Fallback: compute from sharing groups for leaf nodes
-		if (!firstSharingGroup)
-			return 0;
-
-		double sum = 0;
-		for (const(SharingGroup)* group = firstSharingGroup; group !is null; group = group.getNext(this.elementRange))
-			sum += cast(double) group.data.duration / group.paths.length;
-		return sum;
+		return getData!double(
+			fromAggregate: () => aggregateData.distributedDuration,
+			fromSharingGroups: {
+				double sum = 0;
+				for (const(SharingGroup)* group = firstSharingGroup; group !is null; group = group.getNext(this.elementRange))
+					sum += cast(double) group.data.duration / group.paths.length;
+				return sum;
+			},
+			fromChildren: {
+				double sum = 0;
+				for (const(BrowserPath)* child = firstChild; child; child = child.nextSibling)
+					sum += child.getDistributedDuration();
+				return sum;
+			},
+		);
 	}
 
 	/// Reset distributed samples and duration
