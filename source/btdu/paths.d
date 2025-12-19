@@ -785,15 +785,16 @@ struct BrowserPath
 		if (aggregateData)
 			return fromAggregate();
 
-		// Fallback: delegate to single child
-		if (firstChild && !firstChild.nextSibling)
-			return fromChildren();
+		// Leaf nodes compute from sharing groups
+		if (firstSharingGroup)
+			return fromSharingGroups();
 
-		// Fallback: compute from sharing groups for leaf nodes
-		if (!firstSharingGroup)
-			return R.init;
-
-		return fromSharingGroups();
+		// Sum children when:
+		// - There is only one child (no need to aggregate)
+		// - There are multiple children while we are migrating to aggregateData
+		// - The tree is brand new, so there is only one node,
+		//   and no samples, sharing groups, or children
+		return fromChildren();
 	}
 
 	/// Get the number of samples for a given sample type
