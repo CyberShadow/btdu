@@ -767,8 +767,7 @@ struct BrowserPath
 				return true;
 			case SampleType.represented:
 				// Samples where this path is the representative
-				auto ourIndex = group.findIndex(this.elementRange);
-				return ourIndex == group.representativeIndex;
+				return group.pathData[group.representativeIndex].path is &this;
 			case SampleType.exclusive:
 				// Samples exclusive to this path (only path in group)
 				return group.paths.length == 1;
