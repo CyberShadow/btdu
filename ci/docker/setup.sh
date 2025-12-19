@@ -40,10 +40,12 @@ if [[ "$target_arch" == "$host_arch" ]]
 then
 	packages+=(
 		gcc
+		g++
 	)
 else
 	packages+=(
 		gcc-"${target_arch/_/-}"-linux-"$target_api"
+		g++-"${target_arch/_/-}"-linux-"$target_api"
 	)
 fi
 packages+=(
