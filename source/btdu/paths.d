@@ -1359,24 +1359,6 @@ struct BrowserPath
 		setMarkWithoutChildren(marked);
 	}
 
-	/// Flips all marks, including this node.
-	void invertMarks()
-	{
-		setMarkWithoutChildren(!getEffectiveMark());
-		invertChildMarks();
-	}
-
-	private void invertChildMarks()
-	{
-		for (auto p = firstChild; p; p = p.nextSibling)
-		{
-			if (p.mark)
-				p.mark = p.mark == Mark.marked ? Mark.unmarked : Mark.marked;
-			if (p.childrenHaveMark)
-				p.invertChildMarks();
-		}
-	}
-
 	void enumerateMarks(scope void delegate(BrowserPath*, bool marked, scope void delegate() recurse) callback)
 	{
 		void recurse()

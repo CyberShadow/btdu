@@ -1869,10 +1869,8 @@ struct Browser
 						}
 						break;
 					case '*':
-						auto p = currentPath;
-						if (p is &marked)
-							p = &browserRoot;
-						p.invertMarks();
+						foreach (item; items)
+							item.setMark(!item.getEffectiveMark());
 						invalidateMark();
 						break;
 					case 'M':
