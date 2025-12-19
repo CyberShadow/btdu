@@ -775,6 +775,55 @@ struct BrowserPath
 		}
 	}
 
+	debug(check) void checkState() const
+	{
+		import btdu.state : rebuildState;
+
+		// Check children first (because our validity depends on theirs)
+		for (const(BrowserPath)* p = firstChild; p; p = p.nextSibling)
+			p.checkState();
+
+		// A node cannot have both sharing groups and children
+		assert(!(firstSharingGroup && firstChild),
+			"%s: Node has both sharing groups and children".format(this));
+
+		// The tree is not consistent during rebuild - the structure remains,
+		// but nodes may not have their sharing groups reassigned yet.
+		if (!rebuildState.inProgress)
+		{
+			// Root and special nodes may be temporarily inconsistent
+			// while we are in the middle of processing a message
+			auto isRoot = !parent;
+			auto isSpecial = name[].startsWith("\0");
+			if (!isRoot && !isSpecial)
+			{
+				// Non-root nodes must have either children or sharing groups
+				assert(firstChild || firstSharingGroup,
+					"%s: Non-root non-special node has neither children nor sharing groups".format(this));
+
+				// aggregateData should match needsAggregateData
+				assert(hasCorrectAggregateDataState,
+					"%s: aggregateData state mismatch: needsAggregateData = %s, but aggregateData %s null. Node has %s and %s"
+						.format(
+							this, needsAggregateData, aggregateData ? "is not" : "is",
+							!firstChild ? "no children" : !firstChild.nextSibling ? "one child" : "multiple children",
+							firstSharingGroup ? "sharing groups" : "no sharing groups"
+						));
+			}
+		}
+
+		// For nodes with aggregateData, verify it matches children's samples
+		if (aggregateData)
+		{
+			ulong total = 0;
+			for (const(BrowserPath)* p = firstChild; p; p = p.nextSibling)
+				total += p.getSamples(SampleType.represented);
+			assert(total == aggregateData.data[SampleType.represented].samples,
+				"%s: Represented samples mismatch: aggregate data has %d, but children have %d"
+					.format(this, aggregateData.data[SampleType.represented].samples, total));
+		}
+	}
+
 	private R getData(R)(
 		scope R delegate() fromAggregate,
 		scope R delegate() fromSharingGroups,
