@@ -924,11 +924,28 @@ struct BrowserPath
 		}
 	}
 
+	/// Returns true if this node should store samples in aggregateData.
+	private bool needsAggregateData()
+	{
+		// Leaf nodes with sharing groups compute samples on-the-fly from those groups
+		if (firstSharingGroup)
+			return false;
+
+		// Nodes without children delegate... somewhere? (BUG: this breaks `marked`)
+		if (!firstChild)
+			return false;
+
+		// Single-child nodes delegate to their only child
+		if (!firstChild.nextSibling)
+			return false;
+
+		// Multiple children: store in aggregateData
+		return true;
+	}
+
 	void addSamples(SampleType type, ulong samples, const(Offset)[] offsets, ulong duration)
 	{
-		// Only allocate aggregateData for nodes with multiple children;
-		// leaves compute from sharing groups, single-child nodes delegate
-		if (!firstSharingGroup && firstChild && firstChild.nextSibling)
+		if (needsAggregateData)
 			ensureAggregateData().data[type].add(samples, offsets, duration);
 		if (parent)
 			parent.addSamples(type, samples, offsets, duration);
@@ -944,9 +961,7 @@ struct BrowserPath
 
 	void addDistributedSample(double sampleShare, double durationShare)
 	{
-		// Only allocate aggregateData for nodes with multiple children;
-		// leaves compute from sharing groups, single-child nodes delegate
-		if (!firstSharingGroup && firstChild && firstChild.nextSibling)
+		if (needsAggregateData)
 		{
 			auto data = ensureAggregateData();
 			data.distributedSamples += sampleShare;
