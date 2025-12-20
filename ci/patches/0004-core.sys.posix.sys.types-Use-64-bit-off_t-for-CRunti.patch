@@ -1,0 +1,54 @@
+From 04b9f1d8cfdcf3b8b26978056f5b901da5ac219e Mon Sep 17 00:00:00 2001
+From: Vladimir Panteleev <git@cy.md>
+Date: Sat, 20 Dec 2025 15:22:53 +0000
+Subject: [PATCH] core.sys.posix.sys.types: Use 64-bit off_t for CRuntime_Musl
+
+Musl always uses 64-bit off_t, blkcnt_t, ino_t, fsblkcnt_t, fsfilcnt_t
+on all architectures (LFS by default). Add version(CRuntime_Musl)
+blocks to ensure these types are always 64-bit, regardless of
+__USE_FILE_OFFSET64 setting.
+
+This fixes OutOfMemoryError on 32-bit ARM musl builds caused by
+off_t size mismatch in mmap calls.
+---
+ runtime/druntime/src/core/sys/posix/sys/types.d | 17 +++++++++++++++--
+ 1 file changed, 15 insertions(+), 2 deletions(-)
+
+diff --git a/runtime/druntime/src/core/sys/posix/sys/types.d b/runtime/druntime/src/core/sys/posix/sys/types.d
+index 642b383..e9ad532 100644
+--- a/runtime/druntime/src/core/sys/posix/sys/types.d
++++ b/runtime/druntime/src/core/sys/posix/sys/types.d
+@@ -87,7 +87,14 @@ uid_t
+ 
+ version (linux)
+ {
+-  static if ( __USE_FILE_OFFSET64 )
++  // Musl always uses 64-bit off_t, blkcnt_t, ino_t (LFS by default)
++  version (CRuntime_Musl)
++  {
++    alias long      blkcnt_t;
++    alias ulong     ino_t;
++    alias long      off_t;
++  }
++  else static if ( __USE_FILE_OFFSET64 )
+   {
+     alias long      blkcnt_t;
+     alias ulong     ino_t;
+@@ -299,7 +306,13 @@ useconds_t
+ 
+ version (linux)
+ {
+-  static if ( __USE_FILE_OFFSET64 )
++  // Musl always uses 64-bit fsblkcnt_t, fsfilcnt_t (LFS by default)
++  version (CRuntime_Musl)
++  {
++    alias ulong     fsblkcnt_t;
++    alias ulong     fsfilcnt_t;
++  }
++  else static if ( __USE_FILE_OFFSET64 )
+   {
+     alias ulong     fsblkcnt_t;
+     alias ulong     fsfilcnt_t;
+-- 
+2.49.0
+

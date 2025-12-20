@@ -86,7 +86,9 @@
           fetchSubmodules = true;
         };
 
-        # Apply ARM musl stat_t patch to LDC source
+        # Apply ARM musl patches to LDC source
+        # - stat.d: Add stat_t for musl ARM (correct struct size)
+        # - types.d: Force 64-bit off_t for musl (LFS by default)
         ldcSrc = pkgs.runCommand "ldc-src-patched-${pkgs.ldc.version}" {
           nativeBuildInputs = [ pkgs.patch ];
         } ''
@@ -94,6 +96,7 @@
           chmod -R u+w $out
           cd $out
           patch -p1 < ${./ci/patches/0001-core.sys.posix.sys.stat-Add-stat_t-definition-for-mu.patch}
+          patch -p1 < ${./ci/patches/0004-core.sys.posix.sys.types-Use-64-bit-off_t-for-CRunti.patch}
         '';
 
         # Fetch dub dependencies for static builds
