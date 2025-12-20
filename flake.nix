@@ -22,8 +22,10 @@
             in
               # Include source directory and all its contents
               (relPath == "source" || pkgs.lib.hasPrefix "source/" relPath) ||
-              # Include build configuration
-              (baseName == "dub.sdl");
+              # Include build configuration (all dub files)
+              (baseName == "dub.sdl") ||
+              (baseName == "dub-lock.json") ||
+              (baseName == "dub.selections.json");
         };
 
         # Common btdu build configuration
@@ -70,13 +72,177 @@
             export DFLAGS="--d-debug=check"
           '';
         });
+
+        # ============================================================
+        # Static build infrastructure (musl-based, no runtime deps)
+        # ============================================================
+
+        # LDC source for building runtime (with ARM musl patch applied)
+        ldcSrcUnpatched = pkgs.fetchFromGitHub {
+          owner = "ldc-developers";
+          repo = "ldc";
+          tag = "v${pkgs.ldc.version}";
+          hash = "sha256-6LcpY3LSFK4KgEiGrFp/LONu5Vr+/+vI04wEEpF3s+s=";
+          fetchSubmodules = true;
+        };
+
+        # Apply ARM musl stat_t patch to LDC source
+        ldcSrc = pkgs.runCommand "ldc-src-patched-${pkgs.ldc.version}" {
+          nativeBuildInputs = [ pkgs.patch ];
+        } ''
+          cp -r ${ldcSrcUnpatched} $out
+          chmod -R u+w $out
+          cd $out
+          patch -p1 < ${./ci/patches/0001-core.sys.posix.sys.stat-Add-stat_t-definition-for-mu.patch}
+        '';
+
+        # Fetch dub dependencies for static builds
+        dubDeps = pkgs.importDubLock {
+          pname = "btdu";
+          version = btduCommon.version;
+          lock = ./dub-lock.json;
+        };
+
+        # Build static btdu for a given cross target
+        mkStaticBuild = { crossPkgs, arch }:
+          let
+            # Use pkgsStatic to get static libraries
+            staticPkgs = crossPkgs.pkgsStatic;
+            targetTriple = crossPkgs.stdenv.hostPlatform.config;
+            crossCC = crossPkgs.stdenv.cc;
+
+            # Build LDC runtime for target
+            ldcRuntime = pkgs.runCommand "ldc-runtime-${arch}-${pkgs.ldc.version}" {
+              nativeBuildInputs = [
+                pkgs.ldc
+                pkgs.cmake
+                pkgs.ninja
+                crossCC
+              ];
+            } ''
+              export CC=${crossCC}/bin/${crossCC.targetPrefix}cc
+              export HOME=$TMPDIR
+
+              ${pkgs.ldc}/bin/ldc-build-runtime \
+                --ninja \
+                --ldcSrcDir=${ldcSrc} \
+                --dFlags="-mtriple=${targetTriple};-flto=full;-O;--release" \
+                BUILD_SHARED_LIBS=OFF
+
+              mkdir -p $out/lib
+              cp -r ldc-build-runtime.tmp/lib/* $out/lib/
+            '';
+          in pkgs.stdenv.mkDerivation {
+            pname = "btdu-static-${arch}";
+            version = btduCommon.version;
+
+            src = btduSrc;
+
+            inherit dubDeps;
+
+            nativeBuildInputs = [
+              pkgs.ldc
+              pkgs.dub
+              pkgs.jq
+              pkgs.dubSetupHook
+              crossCC
+              pkgs.lld
+              pkgs.patch
+            ];
+
+            buildInputs = [
+              staticPkgs.ncurses
+              staticPkgs.zlib
+            ];
+
+            dontConfigure = true;
+
+            buildPhase = ''
+              echo "Building btdu static for ${targetTriple}"
+
+              # Patch ae library for 32-bit off_t compatibility
+              # dubSetupHook uses $DUB_HOME which points to /build/.dub
+              ae_dir=$(find "$DUB_HOME/packages/ae" -maxdepth 1 -type d -name '[0-9]*' 2>/dev/null | head -1)
+              if [ -n "$ae_dir" ]; then
+                chmod -R u+w "$ae_dir"
+                patch -d "$ae_dir/ae" -p1 < ${./ci/patches/0001-sys.file-Use-checked-cast-to-off_t-in-allocate.patch}
+              else
+                echo "Warning: ae package not found at $DUB_HOME/packages/ae"
+                ls -la "$DUB_HOME/" || true
+                ls -la "$DUB_HOME/packages/" || true
+              fi
+
+              # Get import paths from dub (now works with fetched packages)
+              importPaths=$(${pkgs.dub}/bin/dub describe | ${pkgs.jq}/bin/jq -r '.targets[] | select(.rootPackage=="btdu") | .buildSettings.importPaths[]')
+
+              importFlags=""
+              for path in $importPaths; do
+                importFlags="$importFlags -I$path"
+              done
+
+              # Use the cross-compiler's gcc wrapper for linking
+              # Note: -I for patched druntime must come first to override host LDC's includes
+              ${pkgs.ldc}/bin/ldc2 \
+                -mtriple ${targetTriple} \
+                --gcc=${crossCC}/bin/${crossCC.targetPrefix}cc \
+                --linker=lld \
+                -i \
+                -i=-deimos \
+                -of btdu \
+                -I${ldcSrc}/runtime/druntime/src \
+                -L-L${ldcRuntime}/lib \
+                -L-L${staticPkgs.ncurses.out}/lib \
+                -L-L${staticPkgs.zlib.out}/lib \
+                -L-L${staticPkgs.stdenv.cc.libc}/lib \
+                -L-l:libncursesw.a \
+                -L-l:libz.a \
+                -flto=full \
+                -O \
+                --release \
+                -static \
+                $importFlags \
+                source/btdu/main
+
+              ${crossCC.targetPrefix}strip btdu
+            '';
+
+            installPhase = ''
+              runHook preInstall
+              install -Dm755 btdu -t $out/bin
+              runHook postInstall
+            '';
+
+            meta = btduCommon.meta // {
+              description = "Sampling disk usage profiler for btrfs (static ${arch} build)";
+            };
+          };
+
+        # Define static builds for supported architectures
+        # ARM musl support requires patched LDC druntime (see ci/patches/)
+        staticBuilds = pkgs.lib.optionalAttrs pkgs.stdenv.isLinux (
+          pkgs.lib.optionalAttrs (system == "x86_64-linux") {
+            btdu-static-x86_64 = mkStaticBuild {
+              crossPkgs = pkgs.pkgsCross.musl64;
+              arch = "x86_64";
+            };
+            btdu-static-aarch64 = mkStaticBuild {
+              crossPkgs = pkgs.pkgsCross.aarch64-multiplatform-musl;
+              arch = "aarch64";
+            };
+            btdu-static-armv6l = mkStaticBuild {
+              crossPkgs = pkgs.pkgsCross.muslpi;
+              arch = "armv6l";
+            };
+          }
+        );
+
       in
       {
         packages = {
           default = btdu;
           btdu = btdu;
           btdu-debug = btduDebug;
-        };
+        } // staticBuilds;
 
         apps.default = {
           type = "app";

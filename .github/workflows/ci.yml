@@ -1,0 +1,53 @@
+name: CI
+on: [push, pull_request]
+
+jobs:
+  test:
+    timeout-minutes: 60
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@v18
+
+      - name: Setup Nix cache
+        uses: DeterminateSystems/magic-nix-cache-action@v11
+
+      - name: Build btdu
+        run: nix build --print-build-logs
+
+      - name: Run flake checks
+        run: nix flake check --print-build-logs
+
+  build:
+    runs-on: ubuntu-24.04
+    strategy:
+      matrix:
+        arch: [x86_64, aarch64, armv6l]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@v18
+
+      - name: Setup Nix cache
+        uses: DeterminateSystems/magic-nix-cache-action@v11
+
+      - name: Build static binary
+        run: |
+          nix build .#btdu-static-${{ matrix.arch }} --print-build-logs
+          cp result/bin/btdu btdu-static-${{ matrix.arch }}
+
+      - name: Generate checksum
+        run: sha256sum btdu-static-${{ matrix.arch }} | tee btdu-static-${{ matrix.arch }}.sha256sum
+
+      - name: Upload binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: btdu-static-${{ matrix.arch }}
+          path: |
+            btdu-static-${{ matrix.arch }}
+            btdu-static-${{ matrix.arch }}.sha256sum

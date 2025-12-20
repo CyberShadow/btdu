@@ -1,0 +1,243 @@
+From a6313ef0dd2dd480a62f6ba70acad02cf2e96e29 Mon Sep 17 00:00:00 2001
+From: Vladimir Panteleev <git@cy.md>
+Date: Sun, 18 Jun 2023 12:15:38 +0000
+Subject: [PATCH] core.sys.posix.sys.stat: Add stat_t definition for musl/ARM
+
+musl always uses 64-bit off_t, ino_t, blkcnt_t on all architectures
+(LFS by default), so use explicit 64-bit types instead of the D aliases
+which may resolve to 32-bit on 32-bit ARM if __USE_FILE_OFFSET64 is not
+set during D runtime compilation.
+
+Also use uint for nlink_t since musl defines it as unsigned int, not
+size_t.
+---
+ .../druntime/src/core/sys/posix/sys/stat.d    | 201 +++++++++++-------
+ 1 file changed, 121 insertions(+), 80 deletions(-)
+
+diff --git a/runtime/druntime/src/core/sys/posix/sys/stat.d b/runtime/druntime/src/core/sys/posix/sys/stat.d
+index b89478fe7d..cf4a8e44eb 100644
+--- a/runtime/druntime/src/core/sys/posix/sys/stat.d
++++ b/runtime/druntime/src/core/sys/posix/sys/stat.d
+@@ -559,67 +559,35 @@ version (linux)
+     }
+     else version (ARM)
+     {
+-        private
+-        {
+-            alias __dev_t = ulong;
+-            alias __ino_t = c_ulong;
+-            alias __ino64_t = ulong;
+-            alias __mode_t = uint;
+-            alias __nlink_t = size_t;
+-            alias __uid_t = uint;
+-            alias __gid_t = uint;
+-            alias __off_t = c_long;
+-            alias __off64_t = long;
+-            alias __blksize_t = c_long;
+-            alias __blkcnt_t = c_long;
+-            alias __blkcnt64_t = long;
+-            alias __timespec = timespec;
+-            alias __time_t = time_t;
+-        }
+-        struct stat_t
++        version (CRuntime_Musl)
+         {
+-            __dev_t st_dev;
+-            ushort __pad1;
+-
+-            static if (!__USE_FILE_OFFSET64)
+-            {
+-                __ino_t st_ino;
+-            }
+-            else
+-            {
+-                __ino_t __st_ino;
+-            }
+-            __mode_t st_mode;
+-            __nlink_t st_nlink;
+-            __uid_t st_uid;
+-            __gid_t st_gid;
+-            __dev_t st_rdev;
+-            ushort __pad2;
+-
+-            static if (!__USE_FILE_OFFSET64)
+-            {
+-                __off_t st_size;
+-            }
+-            else
+-            {
+-                __off64_t st_size;
+-            }
+-            __blksize_t st_blksize;
+-
+-            static if (!__USE_FILE_OFFSET64)
+-            {
+-                __blkcnt_t st_blocks;
+-            }
+-            else
+-            {
+-                __blkcnt64_t st_blocks;
+-            }
+-
+-            static if ( _DEFAULT_SOURCE || _XOPEN_SOURCE >= 700)
+-            {
+-                __timespec st_atim;
+-                __timespec st_mtim;
+-                __timespec st_ctim;
++            // musl always uses 64-bit off_t, ino_t, blkcnt_t on all arches
++            // (LFS by default), so use explicit 64-bit types here regardless
++            // of __USE_FILE_OFFSET64 which may not be set for 32-bit D.
++            struct stat_t
++            {
++                ulong st_dev;
++                int __st_dev_padding;
++                c_long __st_ino_truncated;
++                mode_t st_mode;
++                uint st_nlink;  // musl: unsigned int (not size_t)
++                uid_t st_uid;
++                gid_t st_gid;
++                ulong st_rdev;
++                int __st_rdev_padding;
++                long st_size;   // musl: off_t = 64-bit always
++                c_long st_blksize;
++                long st_blocks; // musl: blkcnt_t = 64-bit always
++                struct __timespec32
++                {
++                    c_long tv_sec;
++                    c_long tv_nsec;
++                }
++                __timespec32 __st_atim32, __st_mtim32, __st_ctim32;
++                ulong st_ino;   // musl: ino_t = 64-bit always
++                timespec st_atim;
++                timespec st_mtim;
++                timespec st_ctim;
+                 extern(D) @safe @property inout pure nothrow
+                 {
+                     ref inout(time_t) st_atime() return { return st_atim.tv_sec; }
+@@ -627,30 +595,103 @@ version (linux)
+                     ref inout(time_t) st_ctime() return { return st_ctim.tv_sec; }
+                 }
+             }
+-            else
+-            {
+-                __time_t st_atime;
+-                c_ulong st_atimensec;
+-                __time_t st_mtime;
+-                c_ulong st_mtimensec;
+-                __time_t st_ctime;
+-                c_ulong st_ctimensec;
+-            }
++            static assert(stat_t.sizeof == 152);
++        }
++        else version (CRuntime_Glibc)
++        {
++            private
++            {
++                alias __dev_t = ulong;
++                alias __ino_t = c_ulong;
++                alias __ino64_t = ulong;
++                alias __mode_t = uint;
++                alias __nlink_t = size_t;
++                alias __uid_t = uint;
++                alias __gid_t = uint;
++                alias __off_t = c_long;
++                alias __off64_t = long;
++                alias __blksize_t = c_long;
++                alias __blkcnt_t = c_long;
++                alias __blkcnt64_t = long;
++                alias __timespec = timespec;
++                alias __time_t = time_t;
++            }
++            struct stat_t
++            {
++                __dev_t st_dev;
++                ushort __pad1;
+ 
+-            static if (!__USE_FILE_OFFSET64)
+-            {
+-                c_ulong __unused4;
+-                c_ulong __unused5;
++                static if (!__USE_FILE_OFFSET64)
++                {
++                    __ino_t st_ino;
++                }
++                else
++                {
++                    __ino_t __st_ino;
++                }
++                __mode_t st_mode;
++                __nlink_t st_nlink;
++                __uid_t st_uid;
++                __gid_t st_gid;
++                __dev_t st_rdev;
++                ushort __pad2;
++
++                static if (!__USE_FILE_OFFSET64)
++                {
++                    __off_t st_size;
++                }
++                else
++                {
++                    __off64_t st_size;
++                }
++                __blksize_t st_blksize;
++
++                static if (!__USE_FILE_OFFSET64)
++                {
++                    __blkcnt_t st_blocks;
++                }
++                else
++                {
++                    __blkcnt64_t st_blocks;
++                }
++
++                static if ( _DEFAULT_SOURCE || _XOPEN_SOURCE >= 700)
++                {
++                    __timespec st_atim;
++                    __timespec st_mtim;
++                    __timespec st_ctim;
++                    extern(D) @safe @property inout pure nothrow
++                    {
++                        ref inout(time_t) st_atime() return { return st_atim.tv_sec; }
++                        ref inout(time_t) st_mtime() return { return st_mtim.tv_sec; }
++                        ref inout(time_t) st_ctime() return { return st_ctim.tv_sec; }
++                    }
++                }
++                else
++                {
++                    __time_t st_atime;
++                    c_ulong st_atimensec;
++                    __time_t st_mtime;
++                    c_ulong st_mtimensec;
++                    __time_t st_ctime;
++                    c_ulong st_ctimensec;
++                }
++
++                static if (!__USE_FILE_OFFSET64)
++                {
++                    c_ulong __unused4;
++                    c_ulong __unused5;
++                }
++                else
++                {
++                    __ino64_t st_ino;
++                }
+             }
++            static if (__USE_FILE_OFFSET64)
++                static assert(stat_t.sizeof == 104);
+             else
+-            {
+-                __ino64_t st_ino;
+-            }
++                static assert(stat_t.sizeof == 88);
+         }
+-        static if (__USE_FILE_OFFSET64)
+-            static assert(stat_t.sizeof == 104);
+-        else
+-            static assert(stat_t.sizeof == 88);
+     }
+     else version (AArch64)
+     {
+-- 
+2.49.0
+
