@@ -765,6 +765,49 @@ struct Curses
 		.beep();
 	}
 
+	/// Copy text to the system clipboard.
+	/// Tries xclip, xsel, wl-copy in order, then falls back to OSC 52.
+	void copyToClipboard(const(char)[] text)
+	{
+		import std.process : pipeProcess, Redirect, wait, environment;
+
+		bool tryCommand(string[] cmd)
+		{
+			try
+			{
+				auto pipes = pipeProcess(cmd, Redirect.stdin);
+				pipes.stdin.write(text);
+				pipes.stdin.close();
+				return wait(pipes.pid) == 0;
+			}
+			catch (Exception)
+				return false;
+		}
+
+		// Try Wayland clipboard tool
+		if ("WAYLAND_DISPLAY" in environment)
+		{
+			if (tryCommand(["wl-copy"]))
+				return;
+		}
+
+		// Try X11 clipboard tools
+		if ("DISPLAY" in environment)
+		{
+			if (tryCommand(["xclip", "-selection", "clipboard"]))
+				return;
+			if (tryCommand(["xsel", "--clipboard", "--input"]))
+				return;
+		}
+
+		// Fall back to OSC 52 escape sequence
+		import std.base64 : Base64;
+		outputFile.write("\033]52;c;");
+		outputFile.write(Base64.encode(cast(const(ubyte)[])text));
+		outputFile.write("\007");
+		outputFile.flush();
+	}
+
 private:
 	int ttyFD = -1;
 	File inputFile, outputFile;

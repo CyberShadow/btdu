@@ -1442,6 +1442,7 @@ struct Browser
 									printKey("Expand/collapse information panel", button("i"));
 									printKey("Toggle information panels", button("Tab ↹"));
 									printKey("Delete the selected file or directory", button("d"));
+									printKey("Copy selected path to clipboard", button("y"));
 									printKey("Prefer selected path (toggle)", button("⇧ Shift"), "+", button("P"));
 									printKey("Ignore selected path (toggle)", button("⇧ Shift"), "+", button("I"));
 									printKey("Mark / unmark selected item", button("    "));
@@ -2077,6 +2078,21 @@ struct Browser
 							else
 								showMessage("Export canceled");
 						});
+						break;
+					case 'y':
+						if (!selection)
+						{
+							showMessage("Nothing selected to copy.");
+							break;
+						}
+						auto fullPath = getFullPath(selection);
+						if (fullPath)
+						{
+							curses.copyToClipboard(fullPath);
+							showMessage("Path copied to clipboard");
+						}
+						else
+							showMessage("Cannot copy special node path");
 						break;
 					default:
 						// TODO: show message
