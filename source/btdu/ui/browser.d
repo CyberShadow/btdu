@@ -499,36 +499,29 @@ struct Browser
 
 					// Bottom bar
 					at(0, height - 1, {
-						if (message && MonoTime.currTime < showMessageUntil)
-							xOverflowEllipsis({
-								write(" ", message);
-							});
+						auto totalSamples = getTotalUniqueSamplesFor(&browserRoot);
+						write(" Samples: ", bold(totalSamples));
+
+						write("  Resolution: ");
+						if (totalSamples)
+							write("~", bold((totalSize / totalSamples).humanSize()));
 						else
+							write(bold("-"));
+
+						if (expert)
+							write("  Size metric: ", bold(sizeDisplayMode.to!string.chomp("_")));
+
+						write("  Sharing groups: ", bold(numSharingGroups));
+
+						// Good-Turing coverage estimate
+						write("  Coverage: ");
+						if (totalSamples > 0)
 						{
-							auto totalSamples = getTotalUniqueSamplesFor(&browserRoot);
-							write(" Samples: ", bold(totalSamples));
-
-							write("  Resolution: ");
-							if (totalSamples)
-								write("~", bold((totalSize / totalSamples).humanSize()));
-							else
-								write(bold("-"));
-
-							if (expert)
-								write("  Size metric: ", bold(sizeDisplayMode.to!string.chomp("_")));
-
-							write("  Sharing groups: ", bold(numSharingGroups));
-
-							// Good-Turing coverage estimate
-							write("  Coverage: ");
-							if (totalSamples > 0)
-							{
-								auto coverage = 1.0 - (cast(double)numSingleSampleGroups / cast(double)totalSamples);
-								write("~", bold(formatted!"%.1f%%"(coverage * 100)));
-							}
-							else
-								write(bold("-"));
+							auto coverage = 1.0 - (cast(double)numSingleSampleGroups / cast(double)totalSamples);
+							write("~", bold(formatted!"%.1f%%"(coverage * 100)));
 						}
+						else
+							write(bold("-"));
 						write(endl);
 					});
 				});
@@ -1629,6 +1622,54 @@ struct Browser
 					});
 				});
 			}();
+
+			// Render toast message popup in bottom-right corner
+			if (message && MonoTime.currTime < showMessageUntil)
+			{
+				void drawToast()
+				{
+					xOverflowWords({
+						write(message);
+					});
+				}
+
+				// Measure content size within max width constraint
+				auto maxContentW = min(60, width - 6);
+				typeof(x)[2] size;
+				withWindow(0, 0, maxContentW, height - 3, {
+					size = measure(&drawToast);
+				});
+
+				auto toastW = min((size[0] + 4).to!int, width - 2);   // content + padding + border, clamped
+				auto toastH = min((size[1] + 2).to!int, height - 2);  // content + border, clamped
+				auto toastX = width - toastW - 1;
+				auto toastY = height - toastH - 1;
+
+				withWindow(toastX, toastY, toastW, toastH, {
+					eraseWindow();
+					// Draw border
+					at(0, 0, { write('╭'); });
+					foreach (i; 1 .. toastW - 1)
+						at(i, 0, { write('─'); });
+					at(toastW - 1, 0, { write('╮'); });
+
+					foreach (row; 1 .. toastH - 1)
+					{
+						at(0, row, { write('│'); });
+						at(toastW - 1, row, { write('│'); });
+					}
+
+					at(0, toastH - 1, { write('╰'); });
+					foreach (i; 1 .. toastW - 1)
+						at(i, toastH - 1, { write('─'); });
+					at(toastW - 1, toastH - 1, { write('╯'); });
+
+					// Draw message with word wrapping
+					withWindow(2, 1, toastW - 4, toastH - 2, {
+						drawToast();
+					});
+				});
+			}
 		}
 	}
 
