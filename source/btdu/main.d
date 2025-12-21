@@ -221,6 +221,32 @@ Please report defects and enhancement requests to the GitHub issue tracker:
 			browser.update();
 			nextRefresh = now + refreshInterval;
 		}
+
+		// Check limits before processing new samples
+		if ((maxSamples
+				&& browserRoot.getSamples(SampleType.represented) >= parsedMaxSamples) ||
+			(maxTime
+				&& now >= startTime + parsedMaxTime) ||
+			(minResolution
+				&& browserRoot.getSamples(SampleType.represented)
+				&& totalSize
+				&& (totalSize / browserRoot.getSamples(SampleType.represented)) <= parsedMinResolution))
+		{
+			if (headless || exitOnLimit)
+				break;
+			else
+			{
+				if (!paused)
+				{
+					browser.togglePause();
+					browser.curses.beep();
+					browser.update();
+				}
+				// Only pause once
+				maxSamples = maxTime = minResolution = null;
+			}
+		}
+
 		if (!paused && !rebuildState.inProgress) // note, we must check rebuildState.inProgress again here
 		{
 			auto deadline = now + totalMaxDuration;
@@ -254,31 +280,6 @@ Please report defects and enhancement requests to the GitHub issue tracker:
 		{
 			browser.update();
 			nextRefresh = now + refreshInterval;
-		}
-
-		// TODO: Check limits before processing new samples
-		if ((maxSamples
-				&& browserRoot.getSamples(SampleType.represented) >= parsedMaxSamples) ||
-			(maxTime
-				&& now >= startTime + parsedMaxTime) ||
-			(minResolution
-				&& browserRoot.getSamples(SampleType.represented)
-				&& totalSize
-				&& (totalSize / browserRoot.getSamples(SampleType.represented)) <= parsedMinResolution))
-		{
-			if (headless || exitOnLimit)
-				break;
-			else
-			{
-				if (!paused)
-				{
-					browser.togglePause();
-					browser.curses.beep();
-					browser.update();
-				}
-				// Only pause once
-				maxSamples = maxTime = minResolution = null;
-			}
 		}
 	}
 
