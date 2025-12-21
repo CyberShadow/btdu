@@ -285,6 +285,7 @@
                 -L-L${staticPkgs.stdenv.cc.libc}/lib \
                 -L-l:libncursesw.a \
                 -L-l:libz.a \
+                -L--Map=btdu.map \
                 -flto=full \
                 -O \
                 --release \
@@ -292,12 +293,16 @@
                 $importFlags \
                 source/btdu/main
 
+              # Save unstripped binary for analysis, then strip for distribution
+              cp btdu btdu.unstripped
               ${crossCC.targetPrefix}strip btdu
             '';
 
             installPhase = ''
               runHook preInstall
               install -Dm755 btdu -t $out/bin
+              install -Dm644 btdu.map -t $out/share
+              install -Dm755 btdu.unstripped -t $out/share
               runHook postInstall
             '';
 
