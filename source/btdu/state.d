@@ -48,7 +48,13 @@ ulong totalSize;
 btrfs_ioctl_dev_info_args[] devices;
 
 SubPath subPathRoot;
-GlobalPath*[u64] globalRoots;
+
+struct RootInfo
+{
+	GlobalPath* path;
+}
+RootInfo[u64] globalRoots;
+
 BrowserPath browserRoot;
 
 /// Deduplicates sharing groups - multiple samples with the same set of paths

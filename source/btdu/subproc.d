@@ -133,29 +133,29 @@ struct Subprocess
 		if (m.rootID in globalRoots)
 			return;
 
-		GlobalPath* path;
+		RootInfo info;
 		if (m.parentRootID || m.name.length)
-			path = new GlobalPath(
-				*(m.parentRootID in globalRoots).enforce("Unknown parent root"),
+			info.path = new GlobalPath(
+				(m.parentRootID in globalRoots).enforce("Unknown parent root").path,
 				subPathRoot.appendPath(m.name),
 			);
 		else
 		if (m.rootID == BTRFS_FS_TREE_OBJECTID)
-			path = new GlobalPath(null, &subPathRoot);
+			info.path = new GlobalPath(null, &subPathRoot);
 		else
 		if (m.rootID == BTRFS_ROOT_TREE_OBJECTID)
-			path = new GlobalPath(null, subPathRoot.appendName("\0ROOT_TREE"));
+			info.path = new GlobalPath(null, subPathRoot.appendName("\0ROOT_TREE"));
 		else
-			path = new GlobalPath(null, subPathRoot.appendName(format!"\0TREE_%d"(m.rootID)));
+			info.path = new GlobalPath(null, subPathRoot.appendName(format!"\0TREE_%d"(m.rootID)));
 
-		globalRoots[m.rootID] = path;
+		globalRoots[m.rootID] = info;
 	}
 
 	private struct Result
 	{
 		Offset offset;
 		BrowserPath* browserPath;
-		GlobalPath* inodeRoot;
+		RootInfo* inodeRoot;
 		bool haveInode, havePath;
 		bool ignoringOffset;
 	}
@@ -202,25 +202,25 @@ struct Subprocess
 	{
 		result.haveInode = true;
 		result.havePath = false;
-		result.inodeRoot = *(m.rootID in globalRoots).enforce("Unknown inode root");
+		result.inodeRoot = (m.rootID in globalRoots).enforce("Unknown inode root");
 	}
 
 	void handleMessage(ResultInodeErrorMessage m)
 	{
-		allPaths ~= GlobalPath(result.inodeRoot, subPathRoot.appendError(m.error));
+		allPaths ~= GlobalPath(result.inodeRoot.path, subPathRoot.appendError(m.error));
 	}
 
 	void handleMessage(ResultMessage m)
 	{
 		result.havePath = true;
-		allPaths ~= GlobalPath(result.inodeRoot, subPathRoot.appendPath(m.path));
+		allPaths ~= GlobalPath(result.inodeRoot.path, subPathRoot.appendPath(m.path));
 	}
 
 	void handleMessage(ResultInodeEndMessage m)
 	{
 		cast(void) m; // empty message
 		if (!result.havePath)
-			allPaths ~= GlobalPath(result.inodeRoot, subPathRoot.appendPath("\0NO_PATH"));
+			allPaths ~= GlobalPath(result.inodeRoot.path, subPathRoot.appendPath("\0NO_PATH"));
 	}
 
 	void handleMessage(ResultErrorMessage m)
