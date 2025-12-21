@@ -114,6 +114,92 @@
             targetTriple = crossPkgs.stdenv.hostPlatform.config;
             crossCC = crossPkgs.stdenv.cc;
 
+            # Musl sysroot for cross-compilation
+            muslLibc = staticPkgs.stdenv.cc.libc;
+
+            # Build zlib with Clang LTO for the target
+            # Use unwrapped clang to avoid cc-wrapper adding incompatible flags for cross-compilation
+            zlibLto = pkgs.stdenv.mkDerivation {
+              pname = "zlib-lto-${arch}";
+              version = pkgs.zlib.version;
+              src = pkgs.zlib.src;
+
+              nativeBuildInputs = [ pkgs.llvmPackages.clang-unwrapped pkgs.lld ];
+
+              configurePhase = ''
+                # Use musl headers and disable glibc's FORTIFY_SOURCE
+                # Note: -w suppresses all warnings, needed because zlib's configure checks for any stderr output
+                export CC="${pkgs.llvmPackages.clang-unwrapped}/bin/clang --target=${targetTriple}"
+                export AR="${pkgs.llvmPackages.bintools-unwrapped}/bin/llvm-ar"
+                export RANLIB="${pkgs.llvmPackages.bintools-unwrapped}/bin/llvm-ranlib"
+                export CFLAGS="-isystem ${muslLibc.dev}/include -flto=thin -O2 -U_FORTIFY_SOURCE -w"
+                export LDFLAGS="-fuse-ld=lld -L${muslLibc}/lib"
+                ./configure --static --prefix=$out
+              '';
+
+              buildPhase = ''
+                make libz.a
+              '';
+
+              installPhase = ''
+                mkdir -p $out/lib $out/include
+                cp libz.a $out/lib/
+                cp zlib.h zconf.h $out/include/
+              '';
+            };
+
+            # Build ncurses with Clang LTO for the target
+            # Use unwrapped clang to avoid cc-wrapper adding incompatible flags for cross-compilation
+            ncursesLto = pkgs.stdenv.mkDerivation {
+              pname = "ncurses-lto-${arch}";
+              version = pkgs.ncurses.version;
+              src = pkgs.ncurses.src;
+
+              nativeBuildInputs = [ pkgs.llvmPackages.clang-unwrapped pkgs.lld ];
+
+              configurePhase = ''
+                # Use musl headers and disable glibc's FORTIFY_SOURCE
+                # Must provide both include and library paths for cross-compilation
+                export CC="${pkgs.llvmPackages.clang-unwrapped}/bin/clang"
+                export CPP="${pkgs.llvmPackages.clang-unwrapped}/bin/clang -E"
+                export AR="${pkgs.llvmPackages.bintools-unwrapped}/bin/llvm-ar"
+                export RANLIB="${pkgs.llvmPackages.bintools-unwrapped}/bin/llvm-ranlib"
+                export CFLAGS="--target=${targetTriple} -isystem ${muslLibc.dev}/include -flto=thin -O2 -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=0"
+                export CPPFLAGS="--target=${targetTriple} -isystem ${muslLibc.dev}/include"
+                export LDFLAGS="-fuse-ld=lld --target=${targetTriple} -L${muslLibc}/lib -nostdlib ${muslLibc}/lib/crt1.o ${muslLibc}/lib/crti.o -lc ${muslLibc}/lib/crtn.o"
+
+                ./configure \
+                  --prefix=$out \
+                  --without-shared \
+                  --without-debug \
+                  --without-ada \
+                  --enable-widec \
+                  --without-cxx-binding \
+                  --without-cxx \
+                  --without-progs \
+                  --without-tests \
+                  --without-manpages \
+                  --host=${targetTriple} \
+                  --build=${pkgs.stdenv.buildPlatform.config}
+              '';
+
+              buildPhase = ''
+                make -C include
+                make -C ncurses
+              '';
+
+              installPhase = ''
+                make -C include install
+                make -C ncurses install
+                # Create libncursesw.a symlink if needed
+                if [ -f $out/lib/libncursesw.a ]; then
+                  true  # already exists
+                elif [ -f $out/lib/libncurses.a ]; then
+                  ln -s libncurses.a $out/lib/libncursesw.a
+                fi
+              '';
+            };
+
             # Build LDC runtime for target
             ldcRuntime = pkgs.runCommand "ldc-runtime-${arch}-${pkgs.ldc.version}" {
               nativeBuildInputs = [
@@ -154,8 +240,8 @@
             ];
 
             buildInputs = [
-              staticPkgs.ncurses
-              staticPkgs.zlib
+              ncursesLto
+              zlibLto
             ];
 
             dontConfigure = true;
@@ -194,8 +280,8 @@
                 -of btdu \
                 -I${ldcSrc}/runtime/druntime/src \
                 -L-L${ldcRuntime}/lib \
-                -L-L${staticPkgs.ncurses.out}/lib \
-                -L-L${staticPkgs.zlib.out}/lib \
+                -L-L${ncursesLto}/lib \
+                -L-L${zlibLto}/lib \
                 -L-L${staticPkgs.stdenv.cc.libc}/lib \
                 -L-l:libncursesw.a \
                 -L-l:libz.a \
