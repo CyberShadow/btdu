@@ -260,7 +260,7 @@ Please report defects and enhancement requests to the GitHub issue tracker:
 		if ((maxSamples
 				&& browserRoot.getSamples(SampleType.represented) >= parsedMaxSamples) ||
 			(maxTime
-				&& now > startTime + parsedMaxTime) ||
+				&& now >= startTime + parsedMaxTime) ||
 			(minResolution
 				&& browserRoot.getSamples(SampleType.represented)
 				&& totalSize
