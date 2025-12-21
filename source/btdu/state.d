@@ -73,7 +73,8 @@ size_t numSingleSampleGroups;
 /// Disk visualization map - tracks statistics per visual sector
 struct DiskMap
 {
-	enum numSectors = 8192;
+	enum sectorBits = 13;
+	enum numSectors = 1 << sectorBits;  // 8192
 
 	enum SectorCategory : ubyte
 	{
@@ -110,8 +111,14 @@ struct DiskMap
 	{
 		// sampleIndex is 0-based in [0, totalSize), map to [0, numSectors)
 		assert(totalSize > 0, "totalSize not initialized");
-		// Use real arithmetic to avoid integer overflow
-		return cast(size_t)((cast(real) sampleIndex / totalSize) * numSectors);
+
+		// Maximum totalSize for fast path: 2^(64 - sectorBits) = 2^51 (~2 petabytes)
+		enum maxFastPathSize = 1UL << (64 - sectorBits);
+
+		if (totalSize < maxFastPathSize)
+			return cast(size_t)((sampleIndex << sectorBits) / totalSize);
+		else
+			return cast(size_t)((cast(real) sampleIndex / totalSize) * numSectors);
 	}
 
 	void recordSample(ulong sampleIndex, SectorCategory category)
