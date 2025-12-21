@@ -61,7 +61,7 @@ void program(
 	Switch!hiddenOption man = false,
 	Option!(string, "Set UI refresh interval.\nSpecify 0 to refresh as fast as possible.", "DURATION", 'i', "interval") refreshIntervalStr = null,
 	Switch!("Run without launching the result browser UI.") headless = false,
-	Option!(ulong, "Stop after collecting N samples.", "N", 'n') maxSamples = 0,
+	Option!(string, "Stop after collecting N samples.", "N", 'n') maxSamples = null,
 	Option!(string, "Stop after running for this duration.", "DURATION") maxTime = null,
 	Option!(string, `Stop after achieving this resolution (e.g. "1MB" or "1%").`, "SIZE") minResolution = null,
 	Switch!hiddenOption exitOnLimit = false,
@@ -138,6 +138,10 @@ Please report defects and enhancement requests to the GitHub issue tracker:
 	Duration parsedMaxTime;
 	if (maxTime)
 		parsedMaxTime = parseDuration(maxTime);
+
+	ulong parsedMaxSamples;
+	if (maxSamples)
+		parsedMaxSamples = maxSamples.to!ulong;
 
 	@property real parsedMinResolution()
 	{
@@ -252,8 +256,9 @@ Please report defects and enhancement requests to the GitHub issue tracker:
 			nextRefresh = now + refreshInterval;
 		}
 
+		// TODO: Check limits before processing new samples
 		if ((maxSamples
-				&& browserRoot.getSamples(SampleType.represented) >= maxSamples) ||
+				&& browserRoot.getSamples(SampleType.represented) >= parsedMaxSamples) ||
 			(maxTime
 				&& now > startTime + parsedMaxTime) ||
 			(minResolution
@@ -272,8 +277,7 @@ Please report defects and enhancement requests to the GitHub issue tracker:
 					browser.update();
 				}
 				// Only pause once
-				maxSamples = 0;
-				maxTime = minResolution = null;
+				maxSamples = maxTime = minResolution = null;
 			}
 		}
 	}
