@@ -52,6 +52,7 @@ SubPath subPathRoot;
 struct RootInfo
 {
 	GlobalPath* path;
+	bool isOrphan;  /// True if this is a TREE_%d (deleted subvolume)
 }
 RootInfo[u64] globalRoots;
 
@@ -68,6 +69,118 @@ SlabAllocator!SharingGroup sharingGroupAllocator;
 size_t numSharingGroups;
 /// Number of sharing groups with exactly 1 sample
 size_t numSingleSampleGroups;
+
+/// Disk visualization map - tracks statistics per visual sector
+struct DiskMap
+{
+	enum numSectors = 8192;
+
+	enum SectorCategory : ubyte
+	{
+		empty,
+		data,
+		unallocated,
+		slack,
+		unused,
+		system,
+		metadata,
+		unreachable,
+		error,
+		orphan,
+	}
+
+	struct SectorStats
+	{
+		uint totalSamples;
+		uint[enumLength!SectorCategory] categoryCounts;
+		uint uniqueGroupCount;
+	}
+
+	/// Return type for getSectorState - separates logic from presentation
+	struct SectorState
+	{
+		bool hasData;           /// true if any samples
+		SectorCategory dominant; /// if special type >50%, that type; else data
+		uint groupDensity;      /// uniqueGroupCount (for adaptive scaling in renderer)
+	}
+
+	SectorStats[numSectors] sectors;
+
+	size_t sampleIndexToSector(ulong sampleIndex) const
+	{
+		// sampleIndex is 0-based in [0, totalSize), map to [0, numSectors)
+		assert(totalSize > 0, "totalSize not initialized");
+		// Use real arithmetic to avoid integer overflow
+		return cast(size_t)((cast(real) sampleIndex / totalSize) * numSectors);
+	}
+
+	void recordSample(ulong sampleIndex, SectorCategory category)
+	{
+		if (totalSize == 0)
+			return;
+		auto sector = sampleIndexToSector(sampleIndex);
+		sectors[sector].totalSamples++;
+		sectors[sector].categoryCounts[category]++;
+	}
+
+	void incrementSectorGroupCount(ulong sampleIndex)
+	{
+		if (totalSize == 0)
+			return;
+		auto sector = sampleIndexToSector(sampleIndex);
+		sectors[sector].uniqueGroupCount++;
+	}
+
+	SectorState getSectorState(size_t startSector, size_t endSector) const
+	{
+		// Aggregate stats across the range
+		uint totalSamples = 0;
+		uint[enumLength!SectorCategory] categoryCounts;
+		uint totalGroupCount = 0;
+
+		foreach (i; startSector .. endSector)
+		{
+			auto stats = sectors[i];
+			totalSamples += stats.totalSamples;
+			totalGroupCount += stats.uniqueGroupCount;
+			static foreach (cat; EnumMembers!SectorCategory)
+				categoryCounts[cat] += stats.categoryCounts[cat];
+		}
+
+		if (totalSamples == 0)
+			return SectorState(false, SectorCategory.empty, 0);
+
+		// Check if >50% of samples are in a special category
+		uint specialCount = 0;
+		SectorCategory dominantSpecial = SectorCategory.data;
+		uint maxSpecialCount = 0;
+
+		static foreach (cat; [
+			SectorCategory.unallocated,
+			SectorCategory.slack,
+			SectorCategory.unused,
+			SectorCategory.system,
+			SectorCategory.metadata,
+			SectorCategory.unreachable,
+			SectorCategory.error,
+			SectorCategory.orphan,
+		])
+		{
+			specialCount += categoryCounts[cat];
+			if (categoryCounts[cat] > maxSpecialCount)
+			{
+				maxSpecialCount = categoryCounts[cat];
+				dominantSpecial = cat;
+			}
+		}
+
+		if (specialCount * 2 > totalSamples)
+			return SectorState(true, dominantSpecial, totalGroupCount);
+
+		return SectorState(true, SectorCategory.data, totalGroupCount);
+	}
+}
+DiskMap diskMap;
 
 BrowserPath marked;  /// A fake `BrowserPath` used to represent all marked nodes.
 ulong markTotalSamples; /// Number of seen samples since the mark was invalidated.

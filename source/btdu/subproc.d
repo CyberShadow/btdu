@@ -146,7 +146,10 @@ struct Subprocess
 		if (m.rootID == BTRFS_ROOT_TREE_OBJECTID)
 			info.path = new GlobalPath(null, subPathRoot.appendName("\0ROOT_TREE"));
 		else
+		{
 			info.path = new GlobalPath(null, subPathRoot.appendName(format!"\0TREE_%d"(m.rootID)));
+			info.isOrphan = true;
+		}
 
 		globalRoots[m.rootID] = info;
 	}
@@ -154,10 +157,13 @@ struct Subprocess
 	private struct Result
 	{
 		Offset offset;
+		ulong sampleIndex;  /// 0-based index in [0, totalSize)
 		BrowserPath* browserPath;
 		RootInfo* inodeRoot;
 		bool haveInode, havePath;
 		bool ignoringOffset;
+		DiskMap.SectorCategory category;
+		bool hasNonOrphanInode;  /// Track if any inode is from a live (non-orphaned) tree
 	}
 	private Result result;
 	private FastAppender!GlobalPath allPaths;
@@ -165,6 +171,7 @@ struct Subprocess
 	void handleMessage(ResultStartMessage m)
 	{
 		result.offset = m.offset;
+		result.sampleIndex = m.sampleIndex;
 		result.browserPath = &browserRoot;
 		static immutable flagNames = [
 			"DATA",
@@ -180,11 +187,27 @@ struct Subprocess
 			"RAID1C4",
 		].amap!(s => "\0" ~ s);
 		if (result.offset.logical == logicalOffsetHole)
+		{
 			result.browserPath = result.browserPath.appendName("\0UNALLOCATED");
+			result.category = DiskMap.SectorCategory.unallocated;
+		}
 		else if (result.offset.logical == logicalOffsetSlack)
+		{
 			result.browserPath = result.browserPath.appendName("\0SLACK");
-		else if ((m.chunkFlags & BTRFS_BLOCK_GROUP_PROFILE_MASK) == 0)
-			result.browserPath = result.browserPath.appendName("\0SINGLE");
+			result.category = DiskMap.SectorCategory.slack;
+		}
+		else
+		{
+			if ((m.chunkFlags & BTRFS_BLOCK_GROUP_PROFILE_MASK) == 0)
+				result.browserPath = result.browserPath.appendName("\0SINGLE");
+			// Determine category from chunk type flags
+			if (m.chunkFlags & BTRFS_BLOCK_GROUP_SYSTEM)
+				result.category = DiskMap.SectorCategory.system;
+			else if (m.chunkFlags & BTRFS_BLOCK_GROUP_METADATA)
+				result.category = DiskMap.SectorCategory.metadata;
+			else
+				result.category = DiskMap.SectorCategory.data;
+		}
 		foreach_reverse (b; 0 .. flagNames.length)
 			if (m.chunkFlags & (1UL << b))
 				result.browserPath = result.browserPath.appendName(flagNames[b]);
@@ -203,11 +226,15 @@ struct Subprocess
 		result.haveInode = true;
 		result.havePath = false;
 		result.inodeRoot = (m.rootID in globalRoots).enforce("Unknown inode root");
+		// Check if this is a live (non-orphaned) tree
+		if (!result.inodeRoot.isOrphan)
+			result.hasNonOrphanInode = true;
 	}
 
 	void handleMessage(ResultInodeErrorMessage m)
 	{
 		allPaths ~= GlobalPath(result.inodeRoot.path, subPathRoot.appendError(m.error));
+		result.category = DiskMap.SectorCategory.error;
 	}
 
 	void handleMessage(ResultMessage m)
@@ -225,8 +252,14 @@ struct Subprocess
 
 	void handleMessage(ResultErrorMessage m)
 	{
+		import core.stdc.errno : ENOENT;
 		allPaths ~= GlobalPath(null, subPathRoot.appendError(m.error));
 		result.haveInode = true;
+		// Detect UNUSED vs general error for disk map category
+		if (m.error.errno == ENOENT && m.error.msg == "logical ino")
+			result.category = DiskMap.SectorCategory.unused;
+		else
+			result.category = DiskMap.SectorCategory.error;
 	}
 
 	/// Get or create a sharing group for the given paths
@@ -297,11 +330,18 @@ struct Subprocess
 			if (!result.haveInode)
 			{} // Same with or without BTRFS_LOGICAL_INO_ARGS_IGNORE_OFFSET
 			else
+			{
 				result.browserPath = result.browserPath.appendName("\0UNREACHABLE");
+				result.category = DiskMap.SectorCategory.unreachable;
+			}
 		}
 
 		if (!result.haveInode)
 			result.browserPath = result.browserPath.appendName("\0NO_INODE");
+
+		// Detect orphaned tree references (all inodes from deleted subvolumes)
+		if (result.haveInode && !result.hasNonOrphanInode && result.category == DiskMap.SectorCategory.data)
+			result.category = DiskMap.SectorCategory.orphan;
 
 		// For special nodes (METADATA, SYSTEM, etc.) with no filesystem paths,
 		// construct a single artificial GlobalPath to represent the ownership.
@@ -323,6 +363,10 @@ struct Subprocess
 		bool isNewGroup;
 		auto group = saveSharingGroup(result.browserPath, pathsSlice, isNewGroup);
 
+		// Increment sector's unique group count for new sharing groups
+		if (isNewGroup)
+			diskMap.incrementSectorGroupCount(result.sampleIndex);
+
 		// Populate BrowserPath tree from sharing group
 		populateBrowserPathsFromSharingGroup(
 			group,
@@ -336,6 +380,9 @@ struct Subprocess
 		// This happens after populateBrowserPathsFromSharingGroup so that
 		// group.data reflects the final state when the function returns.
 		group.data.add(1, (&result.offset)[0..1], m.duration);
+
+		// Record sample in disk map for visualization
+		diskMap.recordSample(result.sampleIndex, result.category);
 
 		// Track when this extent was last seen (shift existing values, add new at end)
 		auto currentCounter = browserRoot.getSamples(SampleType.represented);

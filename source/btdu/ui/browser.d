@@ -793,11 +793,101 @@ struct Browser
 					}
 				}
 
+				void drawDiskVisualization()
+				{
+					enum numSectors = DiskMap.numSectors;
+
+					// Calculate grid dimensions: largest that fits, max 128 wide, height = width/2
+					int availWidth = width - 2;  // Leave margin
+
+					int cols = 128;
+					while (cols > availWidth && cols > 8)
+						cols /= 2;
+					int rows = cols / 2;
+
+					int numCells = cols * rows;
+					int sectorsPerCell = numSectors / numCells;
+
+					// Compute min/max group density for adaptive scaling
+					uint minDensity = uint.max;
+					uint maxDensity = 0;
+					foreach (cell; 0 .. numCells)
+					{
+						auto state = diskMap.getSectorState(cell * sectorsPerCell, (cell + 1) * sectorsPerCell);
+						if (state.hasData && state.dominant == DiskMap.SectorCategory.data && state.groupDensity > 0)
+						{
+							if (state.groupDensity < minDensity)
+								minDensity = state.groupDensity;
+							if (state.groupDensity > maxDensity)
+								maxDensity = state.groupDensity;
+						}
+					}
+					if (minDensity == uint.max)
+						minDensity = 0;
+
+					// Helper to get character for a cell
+					dchar getCellChar(size_t cellIndex)
+					{
+						size_t startSector = cellIndex * sectorsPerCell;
+						size_t endSector = startSector + sectorsPerCell;
+						auto state = diskMap.getSectorState(startSector, endSector);
+
+						if (!state.hasData)
+							return '?';
+
+						final switch (state.dominant) with (DiskMap.SectorCategory)
+						{
+							case empty: return '?';
+							case data:
+								// Use density scale
+								if (maxDensity == 0 || maxDensity == minDensity)
+									return '░';
+								auto normalized = cast(float)(state.groupDensity - minDensity) / (maxDensity - minDensity);
+								if (normalized < 0.25)
+									return '░';
+								else if (normalized < 0.5)
+									return '▒';
+								else if (normalized < 0.75)
+									return '▓';
+								else
+									return '█';
+							case unallocated: return 'U';
+							case slack: return 'S';
+							case metadata: return 'M';
+							case system: return 'Y';
+							case unreachable: return 'R';
+							case unused: return 'X';
+							case error: return 'E';
+							case orphan: return 'O';
+						}
+					}
+
+					write("Disk map:", endl);
+
+					// Draw the grid
+					foreach (row; 0 .. rows)
+					{
+						foreach (col; 0 .. cols)
+						{
+							auto cellIndex = row * cols + col;
+							write(getCellChar(cellIndex));
+						}
+						write(endl);
+					}
+
+					// Draw legend
+					write(endl, "█▓▒░=density ?=unknown U=unallocated S=slack M=metadata Y=system R=unreachable X=unused E=error O=orphan", endl, endl);
+				}
+
 				xOverflowWords({
 					auto topY = y;
 					writeExplanation();
 					if (x != xMargin || y != topY)
 						write(endl, endl);
+
+					// Draw disk visualization for root node (only for live sampling)
+					if (p is &browserRoot && !imported)
+						drawDiskVisualization();
 
 					if (p.deleted)
 						write("(This item was deleted from within btdu.)", endl, endl);
