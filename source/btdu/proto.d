@@ -67,6 +67,7 @@ struct ResultStartMessage
 {
 	ulong chunkFlags;
 	Offset offset;
+	ulong sampleIndex;  /// 0-based index in [0, totalSize), uniformly sampled
 }
 
 // Retrying with BTRFS_LOGICAL_INO_ARGS_IGNORE_OFFSET

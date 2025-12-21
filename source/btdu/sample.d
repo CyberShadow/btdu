@@ -217,7 +217,7 @@ void subprocessMain(string fsPath, bool physical)
 						}
 					}
 
-					send(ResultStartMessage(chunk.type, Offset(logicalOffset, chunk.devID, physicalOffset)));
+					send(ResultStartMessage(chunk.type, Offset(logicalOffset, chunk.devID, physicalOffset), targetPos));
 
 					if (chunk.type & BTRFS_BLOCK_GROUP_DATA)
 					{
