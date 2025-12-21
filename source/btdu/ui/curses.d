@@ -248,7 +248,14 @@ struct Curses
 				assert(lastSpaceX < origX);
 				// There is a space at X coordinate `lastSpaceX`.
 				// Move everything after it to a new line.
-				foreach (j; lastSpaceX + 1 .. origX)
+				xy_t startX = lastSpaceX + 1;
+				// Skip any additional spaces at the start
+				while (startX < origX && inMask(startX, origY) && peek(startX, origY) == space)
+				{
+					poke(startX, origY, space);
+					startX++;
+				}
+				foreach (j; startX .. origX)
 				{
 					// auto ok = prePut();
 					// put(ok ? peek(j, origY) : space);
