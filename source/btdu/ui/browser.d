@@ -62,7 +62,6 @@ struct Browser
 	Curses curses;
 
 	BrowserPath* currentPath;
-	BrowserPath* selection;
 	BrowserPath* previousPath; // when quitting from special BrowserPath pointers
 	BrowserPath*[] items;
 	bool done;
@@ -111,6 +110,17 @@ struct Browser
 		}
 	}
 	ScrollContext itemScrollContext, textScrollContext;
+
+	struct DirectoryState
+	{
+		BrowserPath* selection;
+	}
+	DirectoryState[BrowserPath*] directoryState;
+
+	@property ref BrowserPath* selection()
+	{
+		return directoryState.require(currentPath, DirectoryState.init).selection;
+	}
 
 	enum Mode
 	{
@@ -461,7 +471,7 @@ struct Browser
 				{
 					assert(previousPath);
 					currentPath = previousPath;
-					selection = previousPath = null;
+					previousPath = null;
 					itemScrollContext = ScrollContext.init;
 					showMessage("No more marks");
 					return update();
@@ -2096,8 +2106,9 @@ struct Browser
 							goto exitSpecialPath;
 						if (currentPath.parent)
 						{
-							selection = currentPath;
+							auto child = currentPath;
 							currentPath = currentPath.parent;
+							selection = child;
 							itemScrollContext = ScrollContext.init;
 						}
 						else
@@ -2117,7 +2128,7 @@ struct Browser
 						if (selection)
 						{
 							currentPath = selection;
-							selection = previousPath = null;
+							previousPath = null;
 							itemScrollContext = textScrollContext = ScrollContext.init;
 						}
 						else
@@ -2142,7 +2153,7 @@ struct Browser
 					exitSpecialPath:
 						assert(previousPath);
 						currentPath = previousPath;
-						selection = previousPath = null;
+						previousPath = null;
 						itemScrollContext = ScrollContext.init;
 						break;
 					case ' ':
@@ -2211,8 +2222,9 @@ struct Browser
 						mode = Mode.browser;
 						if (currentPath.parent)
 						{
-							selection = currentPath;
+							auto child = currentPath;
 							currentPath = currentPath.parent;
+							selection = child;
 						}
 						break;
 					case Curses.Key.left:
