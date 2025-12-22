@@ -109,17 +109,23 @@ struct Browser
 			return result;
 		}
 	}
-	ScrollContext itemScrollContext, textScrollContext;
+	ScrollContext textScrollContext;
 
 	struct DirectoryState
 	{
 		BrowserPath* selection;
+		ScrollContext itemScrollContext;
 	}
 	DirectoryState[BrowserPath*] directoryState;
 
 	@property ref BrowserPath* selection()
 	{
 		return directoryState.require(currentPath, DirectoryState.init).selection;
+	}
+
+	@property ref ScrollContext itemScrollContext()
+	{
+		return directoryState.require(currentPath, DirectoryState.init).itemScrollContext;
 	}
 
 	enum Mode
@@ -472,7 +478,6 @@ struct Browser
 					assert(previousPath);
 					currentPath = previousPath;
 					previousPath = null;
-					itemScrollContext = ScrollContext.init;
 					showMessage("No more marks");
 					return update();
 				}
@@ -2109,7 +2114,6 @@ struct Browser
 							auto child = currentPath;
 							currentPath = currentPath.parent;
 							selection = child;
-							itemScrollContext = ScrollContext.init;
 						}
 						else
 							showMessage("Already at top-level");
@@ -2119,7 +2123,6 @@ struct Browser
 						{
 							currentPath = selection.parent;
 							previousPath = null;
-							itemScrollContext = ScrollContext.init;
 							break;
 						}
 						goto case Curses.Key.right;
@@ -2129,7 +2132,7 @@ struct Browser
 						{
 							currentPath = selection;
 							previousPath = null;
-							itemScrollContext = textScrollContext = ScrollContext.init;
+							textScrollContext = ScrollContext.init;
 						}
 						else
 							showMessage("Nowhere to descend into");
@@ -2154,7 +2157,6 @@ struct Browser
 						assert(previousPath);
 						currentPath = previousPath;
 						previousPath = null;
-						itemScrollContext = ScrollContext.init;
 						break;
 					case ' ':
 						if (selection)
@@ -2194,7 +2196,6 @@ struct Browser
 								previousPath = currentPath;
 							currentPath = &marked;
 							selection = null;
-							itemScrollContext = ScrollContext.init;
 						}
 						else
 							showMessage("No marks");
@@ -2359,7 +2360,6 @@ struct Browser
 								previousPath = currentPath;
 							currentPath = &marked;
 							selection = null;
-							itemScrollContext = ScrollContext.init;
 						}
 						Deleter.Item[] items;
 						browserRoot.enumerateMarks((BrowserPath* path, bool isMarked) {
