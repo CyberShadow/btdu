@@ -231,7 +231,7 @@ struct Deleter
 
 	void update()
 	{
-		if (this.state.status == Status.progress && !this.thread.isRunning())
+		if (this.state.status.among(Status.progress, Status.subvolumeProgress) && !this.thread.isRunning())
 		{
 			try
 			{
