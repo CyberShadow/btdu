@@ -47,6 +47,13 @@ string fsPath;
 ulong totalSize;
 btrfs_ioctl_dev_info_args[] devices;
 
+// Compare mode state
+bool compareMode;
+BrowserPath compareRoot;
+ulong compareTotalSize;
+bool compareExpert;
+bool comparePhysical;
+
 SubPath subPathRoot;
 
 struct RootInfo
