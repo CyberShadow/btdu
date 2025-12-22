@@ -30,6 +30,7 @@ import std.conv;
 import std.encoding : sanitize;
 import std.exception : errnoEnforce, enforce;
 import std.format;
+import std.math.algebraic : abs;
 import std.math.rounding : round;
 import std.range;
 import std.string;
@@ -133,6 +134,7 @@ struct Browser
 	{
 		name,
 		size,
+		delta, // Size change (compare mode)
 		time, // Average query duration
 	}
 	SortMode sortMode;
@@ -347,6 +349,13 @@ struct Browser
 						-cmp(a.I!getSamples(), b.I!getSamples()),
 						cmp(a.name[], b.name[]),
 					);
+				case SortMode.delta:
+					auto cmpA = getCompareResult(a, expert ? sizeMetricSampleType(sizeDisplayMode) : SampleType.represented);
+					auto cmpB = getCompareResult(b, expert ? sizeMetricSampleType(sizeDisplayMode) : SampleType.represented);
+					return firstNonZero(
+						-cmp(cmpA.deltaSize, cmpB.deltaSize),
+						cmp(a.name[], b.name[]),
+					);
 				case SortMode.time:
 					return firstNonZero(
 						-cmp(a.I!getAverageDuration(), b.I!getAverageDuration()),
@@ -413,6 +422,27 @@ struct Browser
 					{
 						for (auto child = currentPath.firstChild; child; child = child.nextSibling)
 							itemsBuf.put(child);
+
+						// In compare mode, add deleted items from the compare tree
+						if (compareMode)
+						{
+							auto compareCurrentPath = findInCompareTree(currentPath);
+							if (compareCurrentPath)
+							{
+								for (auto compareChild = compareCurrentPath.firstChild; compareChild; compareChild = compareChild.nextSibling)
+								{
+									// Check if this child exists in the main tree
+									auto name = compareChild.name[];
+									if (!(name in *currentPath))
+									{
+										// Create a placeholder node in the main tree for navigation
+										auto placeholder = currentPath.appendName(name);
+										itemsBuf.put(placeholder);
+									}
+								}
+							}
+						}
+
 						itemsBuf.peek().sort!((a, b) => compareItems(a, b) < 0);
 					}
 					break;
@@ -491,11 +521,23 @@ struct Browser
 					}
 					else
 						at(0, 0, { write(" btdu v" ~ btduVersion ~ " @ ", fsPath, endl); });
+					// Status indicators on the right side of top bar
+					auto indicatorPos = width;
 					if (imported)
-						at(width - 10, 0, { write(" [IMPORT] "); });
-					else
-					if (paused)
-						at(width - 10, 0, { write(" [PAUSED] "); });
+					{
+						indicatorPos -= 10;
+						at(indicatorPos, 0, { write(" [IMPORT] "); });
+					}
+					else if (paused)
+					{
+						indicatorPos -= 10;
+						at(indicatorPos, 0, { write(" [PAUSED] "); });
+					}
+					if (compareMode)
+					{
+						indicatorPos -= 11;
+						at(indicatorPos, 0, { write(" [COMPARE] "); });
+					}
 
 					// Bottom bar
 					at(0, height - 1, {
@@ -1004,6 +1046,35 @@ struct Browser
 							write("-");
 						write(endl);
 					}
+
+					// Compare mode: show old size, new size, and delta
+					if (compareMode)
+					{
+						auto cmp = getCompareResult(p, expert ? sizeMetricSampleType(sizeDisplayMode) : SampleType.represented);
+						write(endl);
+
+						write("Old size:     ");
+						if (cmp.hasOldData)
+							write("~", bold(humanSize(cmp.oldSize)));
+						else
+							write("(new)");
+						write(endl);
+
+						write("New size:     ");
+						if (cmp.hasNewData)
+							write("~", bold(humanSize(cmp.newSize)));
+						else
+							write("(deleted)");
+						write(endl);
+
+						write("Delta:        ");
+						auto delta = cmp.deltaSize;
+						write(bold(humanRelSize(delta)));
+						if (cmp.hasOldData && cmp.oldSize > 0)
+							write(formatted!" (%+.1f%%)"(delta / cmp.oldSize * 100));
+						write(endl);
+					}
+
 					write(endl);
 
 					auto fullPath = getFullPath(p);
@@ -1260,6 +1331,10 @@ struct Browser
 								estimate.lower,
 								estimate.upper,
 							);
+						case SortMode.delta:
+							auto cmp = getCompareResult(path, expert ? sizeMetricSampleType(sizeDisplayMode) : SampleType.represented);
+							auto delta = cmp.deltaSize;
+							return UnitValue(delta, delta, delta);
 						case SortMode.time:
 							auto duration = getAverageDuration(path);
 							return UnitValue(duration, duration, duration);
@@ -1277,6 +1352,9 @@ struct Browser
 								return write("?");
 							return write("~", humanSize(samples * real(totalSize) / totalUniqueSamples, true));
 
+						case SortMode.delta:
+							return write(humanRelSize(units, true));
+
 						case SortMode.time:
 							auto hnsecs = units;
 							if (hnsecs == -real.infinity)
@@ -1287,6 +1365,20 @@ struct Browser
 
 				auto currentPathUnits = currentPath.I!getUnits();
 				auto mostUnits = items.fold!((a, b) => max(a, b.I!getUnits().unitsHigh))(0.0L);
+
+				// Whether to show delta values/bars instead of absolute sizes
+				auto showDeltaDisplay = compareMode && (sortMode == SortMode.delta || sortMode == SortMode.name);
+
+				// Calculate max absolute delta for bar scaling
+				real maxAbsDelta = 0;
+				if (showDeltaDisplay)
+				{
+					foreach (child; items)
+					{
+						auto cmp = getCompareResult(child, expert ? sizeMetricSampleType(sizeDisplayMode) : SampleType.represented);
+						maxAbsDelta = max(maxAbsDelta, abs(cmp.deltaSize));
+					}
+				}
 
 				auto ratioDisplayMode = this.ratioDisplayMode;
 				if (currentPath is &marked)
@@ -1324,8 +1416,26 @@ struct Browser
 								currentPath is &marked ? '-' :
 								getRuleChar(child)
 							);
-							auto textWidth = measure({ writeUnits(childUnits.units); })[0];
-							write(formatted!"%*s"(max(0, 11 - textWidth), "")); writeUnits(childUnits.units); write(" ");
+
+							// In compare mode, show delta; otherwise show absolute size
+							if (showDeltaDisplay)
+							{
+								auto cmp = getCompareResult(child, expert ? sizeMetricSampleType(sizeDisplayMode) : SampleType.represented);
+								auto delta = cmp.deltaSize;
+
+								void writeDelta()
+								{
+									write(humanRelSize(delta, true));
+								}
+
+								auto textWidth = measure({ writeDelta(); })[0];
+								write(formatted!"%*s"(max(0, 12 - textWidth), "")); writeDelta(); write(" ");
+							}
+							else
+							{
+								auto textWidth = measure({ writeUnits(childUnits.units); })[0];
+								write(formatted!"%*s"(max(0, 11 - textWidth), "")); writeUnits(childUnits.units); write(" ");
+							}
 
 							auto effectiveRatioDisplayMode = ratioDisplayMode;
 							while (effectiveRatioDisplayMode && width < minWidth(effectiveRatioDisplayMode))
@@ -1347,7 +1457,39 @@ struct Browser
 									write(' ');
 								if (effectiveRatioDisplayMode & RatioDisplayMode.graph)
 								{
-									if (mostUnits && childUnits.units != -real.infinity)
+									// Show centered delta bar in compare mode
+									if (showDeltaDisplay)
+									{
+										auto cmp = getCompareResult(child, expert ? sizeMetricSampleType(sizeDisplayMode) : SampleType.represented);
+										auto delta = cmp.deltaSize;
+										auto center = barWidth / 2;
+
+										if (maxAbsDelta == 0)
+										{
+											// No changes - show empty bar with center
+											foreach (i; 0 .. barWidth)
+												write(i == center ? '|' : ' ');
+										}
+										else
+										{
+											// Normalize delta to bar position
+											auto normalizedDelta = delta / maxAbsDelta;
+											auto barPos = cast(int)round(normalizedDelta * center);
+
+											foreach (i; 0 .. barWidth)
+											{
+												if (i == center)
+													write('|');
+												else if (barPos < 0 && i >= center + barPos && i < center)
+													write('<');
+												else if (barPos > 0 && i > center && i <= center + barPos)
+													write('>');
+												else
+													write(' ');
+											}
+										}
+									}
+									else if (mostUnits && childUnits.units != -real.infinity)
 									{
 										auto barPosLow  = cast(size_t)round(barWidth * childUnits.unitsLow  / mostUnits);
 										auto barPosHigh = cast(size_t)round(barWidth * childUnits.unitsHigh / mostUnits);
@@ -1539,6 +1681,7 @@ struct Browser
 									printKey("Pause/resume", button("p"));
 									printKey("Sort by name (ascending/descending)", button("n"));
 									printKey("Sort by size (ascending/descending)", button("s"));
+									printKey("Sort by delta [compare mode]", button("c"));
 									printKey("Show / sort by avg. query duration", button("⇧ Shift"), "+", button("T"));
 									printKey("Cycle size metric [expert mode]", button("m"));
 									printKey("Toggle dirs before files when sorting", button("t"));
@@ -1829,9 +1972,10 @@ struct Browser
 		bool ascending;
 		final switch (sortMode)
 		{
-			case SortMode.name: ascending = !reverseSort; break;
-			case SortMode.size: ascending =  reverseSort; break;
-			case SortMode.time: ascending =  reverseSort; break;
+			case SortMode.name:  ascending = !reverseSort; break;
+			case SortMode.size:  ascending =  reverseSort; break;
+			case SortMode.delta: ascending =  reverseSort; break;
+			case SortMode.time:  ascending =  reverseSort; break;
 		}
 
 		showMessage(format("Sorting by %s (%s)", mode, ["descending", "ascending"][ascending]));
@@ -2136,6 +2280,12 @@ struct Browser
 						break;
 					case 'T':
 						setSort(SortMode.time);
+						break;
+					case 'c':
+						if (compareMode)
+							setSort(SortMode.delta);
+						else
+							showMessage("Not in compare mode - re-run with --compare");
 						break;
 					case 'm':
 						if (expert)
