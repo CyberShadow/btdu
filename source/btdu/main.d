@@ -139,9 +139,12 @@ Please report defects and enhancement requests to the GitHub issue tracker:
 	if (maxTime)
 		parsedMaxTime = parseDuration(maxTime);
 
-	ulong parsedMaxSamples;
+	ulong parsedMaxSamples = ulong.max;  // ulong.max means no limit
 	if (maxSamples)
 		parsedMaxSamples = maxSamples.to!ulong;
+
+	foreach (ref subproc; subprocesses)
+		subproc.sampleLimit = &parsedMaxSamples;
 
 	@property real parsedMinResolution()
 	{
@@ -244,6 +247,7 @@ Please report defects and enhancement requests to the GitHub issue tracker:
 				}
 				// Only pause once
 				maxSamples = maxTime = minResolution = null;
+				parsedMaxSamples = ulong.max;
 			}
 		}
 

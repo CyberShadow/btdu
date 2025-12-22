@@ -50,6 +50,7 @@ struct Subprocess
 	Pipe pipe;
 	Socket socket;
 	Pid pid;
+	ulong* sampleLimit;  /// Points to limit value; ulong.max means no limit
 
 	void start()
 	{
@@ -81,6 +82,12 @@ struct Subprocess
 	/// Section of buffer containing received and unparsed data
 	private size_t bufStart, bufEnd;
 
+	/// Check if more data is wanted (called by proto.parse before each message)
+	bool wantData()
+	{
+		return browserRoot.getSamples(SampleType.represented) < *sampleLimit;
+	}
+
 	/// Called when select() identifies that the process wrote something.
 	/// Reads one datum; returns `true` if there is more to read.
 	bool handleInput()
@@ -92,6 +99,10 @@ struct Subprocess
 		bufStart = bufEnd - data.length;
 		if (bufStart == bufEnd)
 			bufStart = bufEnd = 0;
+
+		if (bytesNeeded == 0)
+			return false;
+
 		if (buf.length < bufEnd + bytesNeeded)
 		{
 			// Moving remaining data to the start of the buffer

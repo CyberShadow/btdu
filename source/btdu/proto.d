@@ -216,6 +216,9 @@ size_t parse(H)(ref ubyte[] buf, ref H handler)
 {
 	while (true)
 	{
+		if (!handler.wantData())
+			return 0;
+
 		if (buf.length < Header.sizeof)
 			return Header.sizeof - buf.length;
 
