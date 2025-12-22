@@ -93,6 +93,14 @@ btrfs subvolume snapshot /mnt/btdu-test/home /mnt/btdu-test/home-snapshot-2024-0
 # Modify the original after snapshot to create some unique data
 dd if=/dev/urandom of=/mnt/btdu-test/home/new_file.dat bs=1M count=5 2>/dev/null
 
+# 5b. Subvolumes that cannot be deleted (for testing deletion error handling)
+echo "  - Creating undeletable subvolumes..."
+# Nested subvolume - parent can't be deleted while child exists
+btrfs subvolume create /mnt/btdu-test/undeletable-parent >/dev/null
+btrfs subvolume create /mnt/btdu-test/undeletable-parent/nested-child >/dev/null
+dd if=/dev/urandom of=/mnt/btdu-test/undeletable-parent/parent-data.dat bs=1M count=2 2>/dev/null
+dd if=/dev/urandom of=/mnt/btdu-test/undeletable-parent/nested-child/child-data.dat bs=1M count=2 2>/dev/null
+
 # 6. Sparse files
 echo "  - Creating sparse files..."
 dd if=/dev/urandom of=/mnt/btdu-test/sparse.dat bs=1M count=1 2>/dev/null
@@ -149,6 +157,7 @@ echo "  • Basic files in various directories"
 echo "  • Reflinked files (4 copies of original.bin sharing data)"
 echo "  • Compressed files (zeros.dat compresses well, random.dat does not)"
 echo "  • Subvolumes (home, backups)"
+echo "  • Undeletable subvolume (undeletable-parent with nested-child)"
 echo "  • Snapshots (2 snapshots of home subvolume)"
 echo "  • Sparse file (1GB logical, ~1MB physical)"
 echo "  • Fragmented file (~100 extents)"
