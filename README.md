@@ -54,6 +54,10 @@ Use cases
 
   btdu shows explanations for hierarchy objects and common errors, which can help understand how btrfs uses disk space. The `--expert` mode enables the collection and display of [additional size metrics](CONCEPTS.md#size-metrics), providing more insight into the allocation of objects with non-trivial sharing. [Logical and physical sampling modes](CONCEPTS.md#logical-vs-physical-space) can help understand RAID space usage, especially when using multiple profiles.
 
+- **Track disk usage changes over time**
+
+  Using `--compare`, btdu can compare current disk usage against a previously exported baseline, showing what has grown or shrunk. This helps identify active space consumers (files or directories that are *accumulating* data) rather than just showing what currently uses the most space. Useful for finding runaway logs, growing caches, or verifying that cleanup operations had the intended effect.
+
 
 Installation
 ------------
@@ -110,6 +114,10 @@ In `--expert` mode, four size columns are displayed (represented, distributed, e
 
     # btdu --headless --expert --max-time=30s /mnt/btrfs
 
+In `--compare` mode, a delta column is displayed showing size changes:
+
+    # btdu --headless --compare=baseline.json --max-time=30s /mnt/btrfs
+
 For automated invocations or scripting, combine with `--export` to save results to a file that can later be viewed in the UI:
 
     # btdu --headless --export=results.json --max-time=10m /mnt/btrfs
@@ -150,6 +158,24 @@ Press <kbd>⇧ Shift</kbd><kbd>O</kbd> to save an export file during an interact
 Exports can be loaded with `--import`. Then, specify a file name instead of the filesystem path to sample.
 
 For a more portable (but less detailed) export, use `--du`; the resulting file should then be loadable by any disk usage analyzer which supports loading `du` output.
+
+### Comparing
+
+Use `--compare=BASELINE.json` to compare against a previously exported baseline. btdu will show size deltas instead of absolute sizes, making it easy to see what has grown or shrunk.
+
+For the most accurate comparisons, use deterministic sampling parameters: `-j1` (single process) and `--max-samples` (rather than `--max-time`). Use the same parameters when creating both exports being compared.
+
+Compare live sampling against a baseline:
+
+    # btdu -j1 --max-samples=10000 /mnt/btrfs --export=baseline.json --headless
+    # ... time passes, changes are made ...
+    # btdu -j1 --max-samples=10000 /mnt/btrfs --compare=baseline.json
+
+Compare two exported snapshots:
+
+    $ btdu --import new.json --compare=old.json
+
+Press <kbd>c</kbd> to sort by delta (largest changes first), and <kbd>s</kbd> to sort by absolute current size.
 
 License
 -------
