@@ -206,34 +206,65 @@ ref Errno getErrno(int errno)
 
 // Conversion
 
-alias humanSize = stringifiable!(
-	(size, aligned, sink)
-	{
-		if (size == 0 && !aligned)
-			return sink("0");
-		static immutable prefixChars = " KMGTPEZY";
-		size_t power = 0;
-		while (size > 1000 && power + 1 < prefixChars.length)
+/*private*/ template humanSizeImpl(bool showSign)
+{
+	alias humanSizeImpl = stringifiable!(
+		(size, aligned, sink)
 		{
-			size /= 1024;
-			power++;
-		}
-		auto digits =
-			size == 0 ? 1 :
-			size < 10 ? 3 :
-			size < 100 ? 2 :
-			1;
-		if (aligned)
-			sink.formattedWrite!"%5.*f %s%sB"(digits, size,                                  prefixChars[power             ], prefixChars[power] == ' ' ? ' ' : 'i');
-		else
-			sink.formattedWrite!"%.*f %s%sB"(digits, size, prefixChars[power] == ' ' ? "" : prefixChars[power .. power + 1], prefixChars[power] == ' ' ? ""  : "i");
-	}, real, bool);
-auto humanSize(real size) { return humanSize(size, false); }
+			import std.math.algebraic : abs;
+
+			if (size == 0 && !aligned && !showSign)
+				return sink("0");
+
+			auto absSize = abs(size);
+
+			static immutable prefixChars = " KMGTPEZY";
+			size_t power = 0;
+			while (absSize > 1000 && power + 1 < prefixChars.length)
+			{
+				absSize /= 1024;
+				power++;
+			}
+			auto digits =
+				absSize == 0 ? 1 :
+				absSize < 10 ? 3 :
+				absSize < 100 ? 2 :
+				1;
+
+			auto displaySize = size < 0 ? -absSize : absSize;
+			auto prefixChar = prefixChars[power];
+			auto isSI = prefixChar != ' ';
+
+			static if (showSign)
+			{
+				if (aligned)
+					sink.formattedWrite!"%+6.*f %s%sB"(digits, displaySize, prefixChar, isSI ? 'i' : ' ');
+				else
+					sink.formattedWrite!"%+.*f %s%sB"(digits, displaySize, isSI ? prefixChars[power .. power + 1] : "", isSI ? "i" : "");
+			}
+			else
+			{
+				if (aligned)
+					sink.formattedWrite!"%5.*f %s%sB"(digits, displaySize, prefixChar, isSI ? 'i' : ' ');
+				else
+					sink.formattedWrite!"%.*f %s%sB"(digits, displaySize, isSI ? prefixChars[power .. power + 1] : "", isSI ? "i" : "");
+			}
+		}, real, bool);
+
+	auto humanSizeImpl(real size) { return humanSizeImpl(size, false); }
+}
+
+alias humanSize = humanSizeImpl!false;
+
+/// Like humanSize but for relative/delta values - always includes sign, handles negative numbers
+alias humanRelSize = humanSizeImpl!true;
 
 unittest
 {
 	import std.conv : text;
 	assert(humanSize(8192).text == "8.000 KiB");
+	assert(humanRelSize(8192).text == "+8.000 KiB");
+	assert(humanRelSize(-8192).text == "-8.000 KiB");
 }
 
 real parseSize(string s)
