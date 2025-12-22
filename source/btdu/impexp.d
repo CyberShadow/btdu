@@ -5,7 +5,7 @@ import std.algorithm.iteration : filter, map;
 import std.algorithm.sorting : sort;
 import std.array : array;
 import std.conv : to;
-import std.math : ceil;
+import std.math : abs, ceil;
 import std.process : environment;
 import std.stdio : File, stdout;
 
@@ -15,7 +15,7 @@ import ae.sys.data;
 import ae.sys.datamm;
 import ae.utils.json;
 
-import btdu.common : humanSize, pointerWriter;
+import btdu.common : humanSize, humanRelSize, pointerWriter;
 import btdu.paths;
 import btdu.state;
 
@@ -168,7 +168,14 @@ void exportHuman()
 		}
 
 		// Format and print the line
-		if (expert)
+		if (compareMode)
+		{
+			// Compare mode: show delta
+			auto cmp = getCompareResult(path, SampleType.represented);
+			auto delta = cmp.deltaSize;
+			stdout.writefln!" %s   %s%s"(humanRelSize(delta, true), prefix, label);
+		}
+		else if (expert)
 		{
 			// Expert mode: four size columns
 			auto represented = sizeFromSamples(samples);
@@ -198,16 +205,54 @@ void exportHuman()
 			if (child.getSamples(SampleType.represented) >= threshold)
 				children ~= child;
 
+		// In compare mode, also include deleted items from compare tree
+		if (compareMode)
+		{
+			auto compareCurrentPath = findInCompareTree(path);
+			if (compareCurrentPath)
+			{
+				for (auto compareChild = compareCurrentPath.firstChild; compareChild; compareChild = compareChild.nextSibling)
+				{
+					auto name = compareChild.name[];
+					if (!(name in *path))
+					{
+						// Create placeholder node for deleted item
+						auto placeholder = path.appendName(name);
+						// Check if it passes threshold (based on delta)
+						auto cmp = getCompareResult(placeholder, SampleType.represented);
+						if (abs(cmp.deltaSize) >= sizeFromSamples(threshold))
+							children ~= placeholder;
+					}
+				}
+			}
+		}
+
 		// Sort children by size (largest first)
-		children.sort!((a, b) => a.getSamples(SampleType.represented) > b.getSamples(SampleType.represented));
+		if (compareMode)
+		{
+			// In compare mode, sort by absolute delta
+			children.sort!((a, b) {
+				auto cmpA = getCompareResult(a, SampleType.represented);
+				auto cmpB = getCompareResult(b, SampleType.represented);
+				return abs(cmpA.deltaSize) > abs(cmpB.deltaSize);
+			});
+		}
+		else
+		{
+			children.sort!((a, b) => a.getSamples(SampleType.represented) > b.getSamples(SampleType.represented));
+		}
 
 		// Visit children
 		foreach (i, child; children)
 			visit(child, childIndent, i + 1 == children.length);
 	}
 
-	// Print header in expert mode
-	if (expert)
+	// Print header
+	if (compareMode)
+	{
+		stdout.writeln("     Delta     Path");
+	}
+	else if (expert)
 	{
 		stdout.writeln(" Represented  Distributed   Exclusive     Shared     Path");
 	}
