@@ -72,7 +72,7 @@ struct Deleter
 
 	@property bool needRefresh()
 	{
-		return this.state.status == Deleter.Status.progress;
+		return this.state.status.among(Status.progress, Status.subvolumeProgress, Status.subvolumeConfirm) != 0;
 	}
 
 	/// One item to delete.
