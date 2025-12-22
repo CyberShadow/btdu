@@ -46,6 +46,7 @@ private SerializedState loadExportFile(string path, out Data mmapData)
 
 /// Keep memory-mapped files alive, as directory names may reference them
 private __gshared Data importMmapData;
+private __gshared Data compareMmapData;
 
 void importData(string path)
 {
@@ -59,6 +60,20 @@ void importData(string path)
 
 	browserRoot.resetParents();
 	imported = true;
+}
+
+void importCompareData(string path)
+{
+	auto s = loadExportFile(path, compareMmapData);
+
+	compareExpert = s.expert;
+	comparePhysical = s.physical;
+	compareTotalSize = s.totalSize;
+	// Note: we don't set fsPath from compare - keep current fsPath
+	move(*s.root, compareRoot);
+
+	compareRoot.resetParents();
+	compareMode = true;
 }
 
 void exportData(string path)
