@@ -240,6 +240,10 @@ struct Curses
 			// Move the cursor to the next line. This happens regardless.
 			auto origX = x;
 			auto origY = y;
+			// Update maxX to reflect that the line filled up to the wrap point.
+			// This is needed for measure() to correctly calculate the content width
+			// when wrapping occurs at natural break points (words/paths).
+			maxX = max(maxX, width);
 			newLine();
 
 			auto space = " "d.ptr.toCChar(attr, color);
