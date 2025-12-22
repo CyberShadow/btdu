@@ -1235,6 +1235,8 @@ struct Browser
 					at(0, height - 1, { drawOverflowMarker(bottomOverflowText); });
 			};
 
+			string undiscoveredEst;
+
 			void drawItems()
 			{
 				auto totalUniqueSamples = getTotalUniqueSamplesFor(currentPath);
@@ -1300,6 +1302,8 @@ struct Browser
 					)[ratioDisplayMode] +
 					"/".length +
 					6;
+
+				typeof(x) fileNameX;  // Captured from loop for undiscovered estimate alignment
 
 				foreach (i, child; items)
 				{
@@ -1377,6 +1381,7 @@ struct Browser
 							}
 							else
 							{
+								fileNameX = x;
 								write(child.firstChild is null ? ' ' : '/');
 
 								withWindow(x, y, maxItemWidth.to!xy_t, 1, {
@@ -1389,6 +1394,22 @@ struct Browser
 							write(endl);
 						});
 					});
+				}
+
+				// Render undiscovered estimate below file list
+				if (undiscoveredEst !is null)
+				{
+					auto undiscoveredY = cast(int)(items.length - itemScrollContext.y.offset);
+					if (undiscoveredY >= 0 && undiscoveredY < itemScrollContext.y.contentAreaSize)
+					{
+						dim({
+							xOverflowEllipsis({
+								write(formatted!"%*s"(fileNameX, ""), "[", undiscoveredEst, "]", endl);
+							});
+						});
+					}
+					else
+						y++;  // Advance y even if not visible for content size tracking
 				}
 			}
 
@@ -1423,7 +1444,9 @@ struct Browser
 						auto infoWidth = infoPanelsVisible ? min(60, (width - 1) / 2) : 0;
 						auto itemsWidth = infoPanelsVisible ? width - infoWidth - 1 : width;
 						withWindow(infoPanelsVisible ? infoWidth + 1 : 0, 0, itemsWidth, height, {
-							itemScrollContext.y.contentSize = items.length;
+							undiscoveredEst = currentPath is &marked ? null : estimateUndiscoveredStr(currentPath);
+							auto hasUndiscoveredRow = undiscoveredEst !is null;
+							itemScrollContext.y.contentSize = items.length + (hasUndiscoveredRow ? 1 : 0);
 							itemScrollContext.y.contentAreaSize = height - 1;
 							itemScrollContext.y.cursor = selection && items ? items.countUntil(selection) : 0;
 							itemScrollContext.y.normalize();
@@ -1438,8 +1461,6 @@ struct Browser
 									displayedPath = buf2.stringify!"…%s"(displayedPath[$ - (maxPathWidth - 1) .. $]);
 								drawPanel(bold(displayedPath), null, null, itemScrollContext, 0, 1, &drawItems);
 							}
-
-							assert(itemScrollContext.y.contentSize == items.length);
 						});
 
 						if (infoPanelsVisible)
@@ -2338,6 +2359,151 @@ SizeEstimate estimateError(
 		centerProportion * n,      // Center (Wilson center, not raw samples)
 		upperProportion * n,       // Upper bound
 	);
+}
+
+/// Include explanations in the displayed undiscovered estimate.
+// debug debug = btdu_undiscovered;
+
+/// Estimate undiscovered children using Chao1 estimator with confidence indicators.
+/// Returns a string like "and ~500 more items" or "and likely more items",
+/// or null if complete.
+///
+/// Decision categories (in order):
+/// 1. complete:      n1=0 AND global_C≥30% AND (obs≥10 OR samples≥50×obs) → null (no display)
+/// 2. early:         global_coverage < 30%             → "and likely more"
+/// 3. near-complete: obs≥20 AND (n1<10 OR n1/obs<5% OR f0<5) → "and about X more"
+/// 4. unknown:       n2 < 5                            → "and likely more"
+/// 5. biased:        iChao1 > 1.5×Chao1                → "and likely more"
+/// 6. lower-bound:   H > 0.5                           → "and roughly at least X more"
+/// 7. ballpark:      0.25 < H ≤ 0.5                    → "and roughly X more"
+/// 8. strong:        H ≤ 0.25                          → "and ~X more"
+string estimateUndiscoveredStr(BrowserPath* path)
+{
+	import std.math : sqrt, ceil;
+	import std.algorithm : max;
+
+	// Helper: in debug builds, append explanation to display string
+	static string withExplanation(string display, lazy string explanation)
+	{
+		debug (btdu_undiscovered)
+			return (display is null ? "and no more items" : display) ~ " " ~ explanation;
+		else
+			return display;
+	}
+
+	// Count frequency statistics among children
+	size_t observed = 0;    // Total observed children
+	size_t n1 = 0;          // Singletons: children with exactly 1 sample
+	size_t n2 = 0;          // Doubletons: children with exactly 2 samples
+	size_t n3 = 0;          // Tripletons: children with exactly 3 samples
+	size_t n4 = 0;          // Children with exactly 4 samples
+
+	for (auto child = path.firstChild; child; child = child.nextSibling)
+	{
+		observed++;
+		auto samples = child.getSamples(SampleType.represented);
+		if (samples == 1) n1++;
+		else if (samples == 2) n2++;
+		else if (samples == 3) n3++;
+		else if (samples == 4) n4++;
+	}
+
+	// Global coverage from numSingleSampleGroups (sharing groups sampled exactly once)
+	auto totalSamples = getTotalUniqueSamplesFor(&browserRoot);
+	double globalC = totalSamples > 0 ? 1.0 - cast(double)numSingleSampleGroups / totalSamples : 0.0;
+
+	// Samples hitting this directory (for saturation check)
+	auto pathSamples = path.getSamples(SampleType.represented);
+
+	// === Decision logic ===
+
+	// Use softer language when only one item discovered
+	string likelyMore = observed == 1 ? "and possibly more items" : "and likely more items";
+
+	// Complete: no singletons, but only if good global coverage and sufficient obs
+	// Three ways to claim complete:
+	// 1. We have substantial observations (obs >= 10)
+	// 2. We're saturated: many samples but few unique items (50x for obs >= 2)
+	// 3. Single item with very high saturation (100x for obs == 1)
+	//    Be more conservative for single item since we can't know if tiny items exist
+	if (n1 == 0)
+	{
+		if (globalC < 0.3)
+			return withExplanation(likelyMore,
+				format!"(n1=0 but C=%.0f%%)"(globalC * 100));
+		bool hasEnoughObs = observed >= 10;
+		bool isSaturated = observed >= 2 && pathSamples >= 50 * observed;
+		bool isSingleSaturated = observed == 1 && pathSamples >= 100 * observed;
+		if (!hasEnoughObs && !isSaturated && !isSingleSaturated)
+			return withExplanation(likelyMore,
+				format!"(n1=0 but obs=%d, samples=%d)"(observed, cast(size_t)pathSamples));
+		return withExplanation(null,
+			format!"(n1=0, obs=%d, samples=%d)"(observed, cast(size_t)pathSamples));  // Truly complete
+	}
+
+	// Early: global coverage < 30%
+	if (globalC < 0.3)
+		return withExplanation(likelyMore,
+			format!"(early: C=%.0f%%, n1=%d, n2=%d)"(globalC * 100, n1, n2));
+
+	// Compute Chao1 estimate
+	double f0_est;
+	if (n2 == 0)
+		f0_est = n1 * (n1 - 1) / 2.0;
+	else
+		f0_est = cast(double)(n1 * n1) / (2.0 * n2);
+
+	// Helper: format "and <qualifier> N more item(s)"
+	static string moreItemsStr(string qualifier)(double n)
+	{
+		auto count = ceil(n);
+		return format!"and %s%.0f more %s"(qualifier, count, count == 1 ? "item" : "items");
+	}
+
+	// Near-complete: few singletons relative to observed (but need enough obs to trust it)
+	if (observed >= 20)
+	{
+		double singletonRatio = cast(double)n1 / observed;
+		if (n1 < 10 || singletonRatio < 0.05 || f0_est < 5)
+			return withExplanation(moreItemsStr!"about "(f0_est),
+				format!"(near-complete: obs=%d, n1=%d, n2=%d, f0=%.1f)"(observed, n1, n2, f0_est));
+	}
+
+	// Unknown: can't compute reliable SE
+	if (n2 < 5)
+		return withExplanation(likelyMore,
+			format!"(unknown: n2=%d<5, obs=%d, n1=%d)"(n2, observed, n1));
+
+	// Bias check using iChao1
+	double f0_ichao1 = f0_est;
+	if (n4 > 0 && n3 > 0)
+	{
+		double correction = (cast(double)n3 / (4 * n4)) * max(0.0, n1 - cast(double)n2 * n3 / (2 * n4));
+		f0_ichao1 = f0_est + correction;
+	}
+	else if (n3 > 0 && n2 > 0)
+	{
+		f0_ichao1 = f0_est * (1 + cast(double)n3 / (2 * n2));
+	}
+	if (f0_ichao1 > 1.5 * f0_est)
+		return withExplanation(likelyMore,
+			format!"(biased: iChao1=%.0f >> Chao1=%.0f)"(f0_ichao1, f0_est));
+
+	// Compute SE and reliability score H
+	double a = cast(double)n1 / n2;
+	double var_s = n2 * (a * a * a * a / 4.0 + a * a * a + a * a / 2.0);
+	double se = sqrt(var_s);
+	double H = 1.96 * se / max(f0_est, 1.0);
+
+	if (H > 0.5)
+		return withExplanation(moreItemsStr!"roughly at least "(f0_est),
+			format!"(lower-bound: H=%.2f, n1=%d, n2=%d)"(H, n1, n2));
+	else if (H > 0.25)
+		return withExplanation(moreItemsStr!"roughly "(f0_est),
+			format!"(ballpark: H=%.2f, n1=%d, n2=%d)"(H, n1, n2));
+	else
+		return withExplanation(moreItemsStr!"~"(f0_est),
+			format!"(strong: H=%.2f, n1=%d, n2=%d)"(H, n1, n2));
 }
 
 auto durationAsDecimalString(Duration d) @nogc
