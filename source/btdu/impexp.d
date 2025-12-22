@@ -31,15 +31,25 @@ struct SerializedState
 	BrowserPath* root;
 }
 
-void importData(string path)
+/// Load and parse an exported JSON file.
+/// Returns the parsed state structure.
+/// The memory-mapped file is stored in the output parameter to keep it alive.
+private SerializedState loadExportFile(string path, out Data mmapData)
 {
-	__gshared Data importData; // Keep memory-mapped file alive, as directory names may reference it
-
-	importData = mapFile(path, MmMode.read);
-	auto json = cast(string)importData.unsafeContents;
+	mmapData = mapFile(path, MmMode.read);
+	auto json = cast(string)mmapData.unsafeContents;
 
 	debug importing = true;
-	auto s = json.jsonParse!SerializedState();
+	scope(exit) debug importing = false;
+	return json.jsonParse!SerializedState();
+}
+
+/// Keep memory-mapped files alive, as directory names may reference them
+private __gshared Data importMmapData;
+
+void importData(string path)
+{
+	auto s = loadExportFile(path, importMmapData);
 
 	expert = s.expert;
 	physical = s.physical;
@@ -48,7 +58,6 @@ void importData(string path)
 	move(*s.root, browserRoot);
 
 	browserRoot.resetParents();
-	debug importing = false;
 	imported = true;
 }
 
