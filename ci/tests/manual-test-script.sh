@@ -145,6 +145,12 @@ cp --reflink=always --sparse=auto /mnt/btdu-test/base_file.dat /mnt/btdu-test/pa
 # Overwrite the middle of the clone, creating a mix of shared and unique extents
 dd if=/dev/urandom of=/mnt/btdu-test/partial_clone.dat bs=1M count=3 seek=3 conv=notrunc 2>/dev/null
 
+# 13. Deeply nested file (for testing path wrapping in UI)
+echo "  - Creating deeply nested file..."
+DEEP_PATH="/mnt/btdu-test/very/deeply/nested/directory/structure/that/goes/on/and/on/for/quite/a/while/to/test/path/wrapping/in/dialogs"
+mkdir -p "$DEEP_PATH"
+dd if=/dev/urandom of="$DEEP_PATH/important_data.bin" bs=1M count=3 2>/dev/null
+
 # Final sync
 sync -f /mnt/btdu-test
 
@@ -166,6 +172,7 @@ echo "  • Files with spaces and special characters"
 echo "  • Unicode filenames (emoji, Chinese, French)"
 echo "  • Deleted file space (UNUSED)"
 echo "  • Partial extent sharing (partial_clone.dat)"
+echo "  • Deeply nested file (for path wrapping tests)"
 echo ""
 echo -e "${BLUE}Starting btdu...${NC}"
 echo ""
