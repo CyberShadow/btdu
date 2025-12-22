@@ -479,6 +479,7 @@ struct Curses
 		{
 			reverse = A_REVERSE,
 			bold = A_BOLD,
+			dim = A_DIM,
 		}
 
 		void attrSet(Attribute attribute, bool set, scope void delegate() fn)
@@ -489,6 +490,7 @@ struct Curses
 		void attrOn (Attribute attribute, scope void delegate() fn) { attrSet(attribute, true , fn); }
 		void attrOff(Attribute attribute, scope void delegate() fn) { attrSet(attribute, false, fn); }
 		void reverse(scope void delegate() fn) { attrOn(Attribute.reverse, fn); }
+		void dim    (scope void delegate() fn) { attrOn(Attribute.dim    , fn); }
 
 		// --- Text output (high-level)
 
@@ -515,6 +517,7 @@ struct Curses
 		}
 		auto bold    (Args...)(auto ref Args args) { return withAttr(Attribute.bold   , true, forward!args); }
 		auto reversed(Args...)(auto ref Args args) { return withAttr(Attribute.reverse, true, forward!args); }
+		auto dimmed  (Args...)(auto ref Args args) { return withAttr(Attribute.dim    , true, forward!args); }
 
 		/// Get the width (in coordinates) of the given stringifiables.
 		size_t getTextWidth(Args...)(auto ref Args args)
