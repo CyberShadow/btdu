@@ -283,6 +283,89 @@ ulong getTotalUniqueSamplesFor(BrowserPath* p)
 	}
 }
 
+// ============================================================
+// Compare mode utilities
+// ============================================================
+
+/// Result of comparing a path between current and baseline data
+struct CompareResult
+{
+	bool hasOldData;     /// True if path existed in comparison baseline
+	bool hasNewData;     /// True if path exists in current data
+	real oldSize = 0;    /// Size from comparison baseline (bytes)
+	real newSize = 0;    /// Size from current data (bytes)
+
+	real deltaSize() const { return newSize - oldSize; }
+}
+
+/// Find the corresponding node in the comparison tree.
+/// Returns null if the path doesn't exist in comparison or if not in compare mode.
+BrowserPath* findInCompareTree(BrowserPath* path)
+{
+	if (!compareMode)
+		return null;
+	if (path is null)
+		return null;
+	if (path is &browserRoot)
+		return &compareRoot;
+	if (path is &marked)
+		return null; // Marks don't translate
+
+	// Build path from root to this node
+	static BrowserPath*[] pathStack;
+	pathStack.length = 0;
+	for (auto p = path; p && p !is &browserRoot; p = p.parent)
+		pathStack ~= p;
+
+	// Walk down comparison tree
+	BrowserPath* comparePath = &compareRoot;
+	foreach_reverse (node; pathStack)
+	{
+		BrowserPath* found = null;
+		for (auto child = comparePath.firstChild; child; child = child.nextSibling)
+		{
+			if (child.name[] == node.name[])
+			{
+				found = child;
+				break;
+			}
+		}
+		if (found is null)
+			return null;
+		comparePath = found;
+	}
+	return comparePath;
+}
+
+/// Get comparison result for a path using the specified sample type.
+CompareResult getCompareResult(BrowserPath* newPath, SampleType sampleType)
+{
+	CompareResult result;
+
+	result.hasNewData = newPath !is null;
+
+	auto oldPath = findInCompareTree(newPath);
+	result.hasOldData = oldPath !is null;
+
+	auto newTotalSamples = getTotalUniqueSamplesFor(&browserRoot);
+	auto oldTotalSamples = compareTotalSize > 0 ?
+		compareRoot.getSamples(SampleType.represented) : 0;
+
+	if (result.hasNewData && newTotalSamples > 0)
+	{
+		auto samples = newPath.getSamples(sampleType);
+		result.newSize = samples * real(totalSize) / newTotalSamples;
+	}
+
+	if (result.hasOldData && oldTotalSamples > 0)
+	{
+		auto samples = oldPath.getSamples(sampleType);
+		result.oldSize = samples * real(compareTotalSize) / oldTotalSamples;
+	}
+
+	return result;
+}
+
 Subprocess[] subprocesses;
 bool paused;
 debug bool importing;
