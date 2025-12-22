@@ -44,7 +44,7 @@ import ae.utils.typecons : require;
 
 import btdu.ui.browser;
 import btdu.common;
-import btdu.impexp : importData, exportData, exportDu, exportHuman;
+import btdu.impexp : importData, importCompareData, exportData, exportDu, exportHuman;
 import btdu.paths;
 import btdu.sample;
 import btdu.subproc;
@@ -71,6 +71,7 @@ void program(
 	Option!(string[], "Deprioritize allocating representative samples in the given path.", "PATTERN") ignore = null,
 	Switch!("On exit, export represented size estimates in 'du' format to standard output.") du = false,
 	Switch!("Instead of analyzing a btrfs filesystem, read previously collected results saved with --export from PATH.", 'f', "import") doImport = false,
+	Option!(string, "Compare against a baseline from a previously exported file.", "PATH", 'c', "compare") comparePath = null,
 )
 {
 	if (man)
@@ -133,6 +134,25 @@ Please report defects and enhancement requests to the GitHub issue tracker:
 		subprocesses = new Subprocess[procs];
 		foreach (ref subproc; subprocesses)
 			subproc.start();
+	}
+
+	// Load comparison baseline if requested
+	if (comparePath)
+	{
+		if (subprocess)
+			throw new Exception("Cannot use --compare with subprocess mode");
+
+		stderr.writeln("Loading comparison baseline...");
+		importCompareData(comparePath);
+
+		// Warn on mode mismatches
+		if (doImport)
+		{
+			if (compareExpert != expert)
+				stderr.writeln("Warning: Expert mode mismatch between files");
+			if (comparePhysical != physical)
+				stderr.writeln("Warning: Physical mode mismatch between files");
+		}
 	}
 
 	Duration parsedMaxTime;
