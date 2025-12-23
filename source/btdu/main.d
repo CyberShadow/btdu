@@ -325,9 +325,11 @@ Please report defects and enhancement requests to the GitHub issue tracker:
 
 	if (exportPath)
 	{
+		auto exportFilePath = exportPath == "-" ? null : exportPath.value;
 		stderr.writeln("Exporting results...");
-		exportData(exportPath);
-		stderr.writeln("Exported results to: ", exportPath);
+		exportData(exportFilePath);
+		if (exportFilePath)
+			stderr.writeln("Exported results to: ", exportFilePath);
 	}
 
 	if (du)

@@ -90,7 +90,7 @@ void exportData(string path)
 
 	{
 		JsonFileSerializer j;
-		auto file = path == "-" ? stdout : File(path, "wb");
+		auto file = path is null ? stdout : File(path, "wb");
 		j.writer.output = file.lockingBinaryWriter;
 		j.put(s);
 	}
