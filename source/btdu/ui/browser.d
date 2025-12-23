@@ -54,6 +54,7 @@ import btdu.proto : logicalOffsetHole, logicalOffsetSlack;
 import btdu.state;
 import btdu.ui.curses;
 import btdu.ui.deletion;
+import btdu.ui.pathabbrev;
 
 alias imported = btdu.state.imported;
 
@@ -1151,10 +1152,20 @@ struct Browser
 											else
 											{
 												maxX = max(maxX, maxPathWidth);
+												// Get neighbor paths for smart abbreviation
+												string abovePath = row > 1 ? seenAs[row - 2].key : null;
+												string belowPath = row < seenAs.length ? seenAs[row].key : null;
+												if (abovePath !is null) abovePath.skipOver("/");
+												if (belowPath !is null) belowPath.skipOver("/");
+
+												auto abbreviated = abbreviatePath(path, abovePath, belowPath, maxPathWidth);
 												return withWindow(0, 0, maxPathWidth, 1, {
-													middleTruncate({
-														write(path);
-													});
+													foreach (seg; abbreviated.segments) {
+														if (seg.isUnique)
+															write(bold(seg.text));
+														else
+															write(seg.text);
+													}
 												});
 											}
 										case 1:
