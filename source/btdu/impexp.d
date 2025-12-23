@@ -19,6 +19,14 @@ import btdu.common : humanSize, humanRelSize, pointerWriter;
 import btdu.paths;
 import btdu.state;
 
+/// Export format types
+enum ExportFormat
+{
+	json,   /// Full JSON export with all metadata
+	du,     /// du(1) compatible format
+	human,  /// Human-readable tree output
+}
+
 alias imported = btdu.state.imported;
 
 /// Serialized
@@ -76,7 +84,23 @@ void importCompareData(string path)
 	compareMode = true;
 }
 
-void exportData(string path)
+void exportData(string path, ExportFormat fmt = ExportFormat.json)
+{
+	final switch (fmt)
+	{
+		case ExportFormat.json:
+			exportJson(path);
+			break;
+		case ExportFormat.du:
+			exportDu(path);
+			break;
+		case ExportFormat.human:
+			exportHuman(path);
+			break;
+	}
+}
+
+private void exportJson(string path)
 {
 	SerializedState s;
 	s.expert = expert;
@@ -96,7 +120,7 @@ void exportData(string path)
 	}
 }
 
-void exportDu()
+private void exportDu(string path)
 {
 	ulong blockSize = {
 		// As in du(1)
@@ -109,7 +133,7 @@ void exportDu()
 	}();
 
 	auto totalSamples = browserRoot.getSamples(SampleType.represented);
-	auto file = stdout;
+	auto file = path is null ? stdout : File(path, "w");
 
 	void visit(BrowserPath* p)
 	{
@@ -124,16 +148,16 @@ void exportDu()
 		visit(&browserRoot);
 }
 
-/// Print a pretty tree of the biggest nodes to stdout.
+/// Print a pretty tree of the biggest nodes.
 /// In non-expert mode: size and path columns.
 /// In expert mode: represented, distributed, exclusive, shared size columns.
-void exportHuman()
+private void exportHuman(string path)
 {
 	auto totalSamples = browserRoot.getSamples(SampleType.represented);
 	if (totalSamples == 0)
 		return;
 
-	auto file = stdout;
+	auto file = path is null ? stdout : File(path, "w");
 
 	// Threshold: 1% of total size
 	auto threshold = totalSamples / 100;

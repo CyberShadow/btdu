@@ -44,7 +44,7 @@ import ae.utils.typecons : require;
 
 import btdu.ui.browser;
 import btdu.common;
-import btdu.impexp : importData, importCompareData, exportData, exportDu, exportHuman;
+import btdu.impexp : ExportFormat, importData, importCompareData, exportData;
 import btdu.paths;
 import btdu.sample;
 import btdu.subproc;
@@ -320,7 +320,7 @@ Please report defects and enhancement requests to the GitHub issue tracker:
 
 		// Print CLI tree output unless --du mode is used
 		if (!du)
-			exportHuman();
+			exportData(null, ExportFormat.human);
 	}
 
 	if (exportPath)
@@ -333,7 +333,7 @@ Please report defects and enhancement requests to the GitHub issue tracker:
 	}
 
 	if (du)
-		exportDu();
+		exportData(null, ExportFormat.du);
 }
 
 void checkBtrfs(string fsPath)
