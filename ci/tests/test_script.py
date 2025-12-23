@@ -129,9 +129,7 @@ def get_file_size(data, path, sample_kind='represented'):
 
 def run_btdu(args, timeout=30):
     """Run btdu with given arguments and return output."""
-    # Use --seed=42 for determinism in tests
-    if "--seed" not in args:
-        args = f"--seed=42 {args}"
+    # Default seed is 0 which is deterministic, no need to override
     cmd = f"timeout {timeout} btdu {args}"
     return machine.succeed(cmd)
 
@@ -220,9 +218,8 @@ def test_export_and_import():
     run_btdu("--headless --export=/tmp/export.json --max-samples=5000 /mnt/btrfs", timeout=120)
     exported_data = verify_json_export("/tmp/export.json")
 
-    # Import and verify it works (--import conflicts with --seed and sampling options, so run directly)
-    # Just verify import loads without crashing (no --max-time since it conflicts with --import)
-    machine.succeed("timeout 5 btdu --import --headless /tmp/export.json || true")
+    # Just verify import loads without crashing
+    run_btdu("--import --headless /tmp/export.json", timeout=5)
 
     # Verify the exported data has expected structure and content
     assert exported_data['totalSize'] > 0, "totalSize should be > 0"
@@ -412,7 +409,7 @@ def test_max_samples_limit():
     create_test_files()
 
     # Use -j1 and higher sample count for better tolerance (percentage overshoot decreases with more samples)
-    machine.succeed("timeout 60 btdu --seed=42 -j1 --headless --export=/tmp/max_samples.json --max-samples=500 /mnt/btrfs")
+    run_btdu("-j1 --headless --export=/tmp/max_samples.json --max-samples=500 /mnt/btrfs", timeout=60)
     data = verify_json_export("/tmp/max_samples.json")
 
     # With single subprocess and larger sample count, tolerance can be tighter
@@ -534,7 +531,7 @@ def test_conflicting_options():
     verify_json_export("/tmp/test.json")
 
     # Test --import with --export is idempotent (re-exporting imported data produces same file)
-    machine.succeed("btdu --headless --import --export=/tmp/reimport.json /tmp/test.json")
+    run_btdu("--headless --import --export=/tmp/reimport.json /tmp/test.json")
     original = machine.succeed("cat /tmp/test.json")
     reimported = machine.succeed("cat /tmp/reimport.json")
     assert original == reimported, "Re-exported file should be identical to original"
@@ -595,7 +592,7 @@ def test_relative_paths():
     create_test_files()
 
     # Run btdu with relative path and verify results
-    machine.succeed("cd /mnt && btdu --seed=42 --headless --export=/tmp/relative.json --max-samples=5000 ./btrfs")
+    machine.succeed("cd /mnt && timeout 30 btdu --headless --export=/tmp/relative.json --max-samples=5000 ./btrfs")
     data = verify_json_export("/tmp/relative.json")
 
     # Verify we actually collected samples and found expected directories
@@ -623,7 +620,7 @@ def test_prefer_ignore_options():
     setup_btrfs_basic()
 
     # Test old-style pattern (relative path) - should work with a warning
-    result = machine.succeed("btdu --headless --prefer='/zzz_ignored' --max-samples=100 /mnt/btrfs 2>&1")
+    result = run_btdu("--headless --prefer='/zzz_ignored' --max-samples=100 /mnt/btrfs 2>&1")
     assert "warning" in result.lower() and "assuming you meant" in result.lower(), \
         f"Expected backward compatibility warning, got: {result}"
     print("  ✓ Old-style pattern works with warning")
