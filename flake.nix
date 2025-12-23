@@ -249,18 +249,6 @@
             buildPhase = ''
               echo "Building btdu static for ${targetTriple}"
 
-              # Patch ae library for 32-bit off_t compatibility
-              # dubSetupHook uses $DUB_HOME which points to /build/.dub
-              ae_dir=$(find "$DUB_HOME/packages/ae" -maxdepth 1 -type d -name '[0-9]*' 2>/dev/null | head -1)
-              if [ -n "$ae_dir" ]; then
-                chmod -R u+w "$ae_dir"
-                patch -d "$ae_dir/ae" -p1 < ${./ci/patches/0001-sys.file-Use-checked-cast-to-off_t-in-allocate.patch}
-              else
-                echo "Warning: ae package not found at $DUB_HOME/packages/ae"
-                ls -la "$DUB_HOME/" || true
-                ls -la "$DUB_HOME/packages/" || true
-              fi
-
               # Get import paths from dub (now works with fetched packages)
               importPaths=$(${pkgs.dub}/bin/dub describe | ${pkgs.jq}/bin/jq -r '.targets[] | select(.rootPackage=="btdu") | .buildSettings.importPaths[]')
 
