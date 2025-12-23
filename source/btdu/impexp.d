@@ -109,6 +109,7 @@ void exportDu()
 	}();
 
 	auto totalSamples = browserRoot.getSamples(SampleType.represented);
+	auto file = stdout;
 
 	void visit(BrowserPath* p)
 	{
@@ -117,7 +118,7 @@ void exportDu()
 
 		auto samples = p.getSamples(SampleType.represented);
 		auto size = ceil(samples * real(totalSize) / totalSamples / blockSize).to!ulong;
-		stdout.writefln("%d\t%s%s", size, fsPath, p.pointerWriter);
+		file.writefln("%d\t%s%s", size, fsPath, p.pointerWriter);
 	}
 	if (totalSamples)
 		visit(&browserRoot);
@@ -131,6 +132,8 @@ void exportHuman()
 	auto totalSamples = browserRoot.getSamples(SampleType.represented);
 	if (totalSamples == 0)
 		return;
+
+	auto file = stdout;
 
 	// Threshold: 1% of total size
 	auto threshold = totalSamples / 100;
@@ -173,7 +176,7 @@ void exportHuman()
 			// Compare mode: show delta
 			auto cmp = getCompareResult(p, SampleType.represented);
 			auto delta = cmp.deltaSize;
-			stdout.writefln!" %s   %s%s"(humanRelSize(delta, true), prefix, label);
+			file.writefln!" %s   %s%s"(humanRelSize(delta, true), prefix, label);
 		}
 		else if (expert)
 		{
@@ -183,7 +186,7 @@ void exportHuman()
 			auto exclusive = sizeFromSamples(p.getSamples(SampleType.exclusive));
 			auto shared_ = sizeFromSamples(p.getSamples(SampleType.shared_));
 
-			stdout.writefln(" ~%s   ~%s   ~%s   ~%s   %s%s",
+			file.writefln(" ~%s   ~%s   ~%s   ~%s   %s%s",
 				humanSize(represented, true),
 				humanSize(distributed, true),
 				humanSize(exclusive, true),
@@ -196,7 +199,7 @@ void exportHuman()
 		{
 			// Non-expert mode: single size column
 			auto size = sizeFromSamples(samples);
-			stdout.writefln("%s%s (~%s)", prefix, label, humanSize(size, false));
+			file.writefln("%s%s (~%s)", prefix, label, humanSize(size, false));
 		}
 
 		// Collect children that pass threshold
@@ -250,11 +253,11 @@ void exportHuman()
 	// Print header
 	if (compareMode)
 	{
-		stdout.writeln("     Delta     Path");
+		file.writeln("     Delta     Path");
 	}
 	else if (expert)
 	{
-		stdout.writeln(" Represented  Distributed   Exclusive     Shared     Path");
+		file.writeln(" Represented  Distributed   Exclusive     Shared     Path");
 	}
 
 	visit(&browserRoot, "", true);
