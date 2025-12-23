@@ -318,8 +318,8 @@ Please report defects and enhancement requests to the GitHub issue tracker:
 			MonoTime.currTime() - startTime,
 		);
 
-		// Print CLI tree output unless --du mode is used
-		if (!du)
+		// Print CLI tree output unless --du or --export mode is used
+		if (!du && !exportPath)
 			exportData(null, ExportFormat.human);
 	}
 
