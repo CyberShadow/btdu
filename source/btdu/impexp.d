@@ -110,14 +110,14 @@ void exportDu()
 
 	auto totalSamples = browserRoot.getSamples(SampleType.represented);
 
-	void visit(BrowserPath* path)
+	void visit(BrowserPath* p)
 	{
-		for (auto child = path.firstChild; child; child = child.nextSibling)
+		for (auto child = p.firstChild; child; child = child.nextSibling)
 			visit(child);
 
-		auto samples = path.getSamples(SampleType.represented);
+		auto samples = p.getSamples(SampleType.represented);
 		auto size = ceil(samples * real(totalSize) / totalSamples / blockSize).to!ulong;
-		stdout.writefln("%d\t%s%s", size, fsPath, path.pointerWriter);
+		stdout.writefln("%d\t%s%s", size, fsPath, p.pointerWriter);
 	}
 	if (totalSamples)
 		visit(&browserRoot);
@@ -144,17 +144,17 @@ void exportHuman()
 	}
 
 	// Collect and print nodes recursively
-	void visit(BrowserPath* path, string indent, bool isLast)
+	void visit(BrowserPath* p, string indent, bool isLast)
 	{
 		// Get samples for represented size (primary sort/filter)
-		auto samples = path.getSamples(SampleType.represented);
+		auto samples = p.getSamples(SampleType.represented);
 
 		// Skip nodes below threshold (but always show root)
-		if (path !is &browserRoot && samples < threshold)
+		if (p !is &browserRoot && samples < threshold)
 			return;
 
 		string prefix, childIndent, label;
-		if (path is &browserRoot)
+		if (p is &browserRoot)
 		{
 			prefix = "";
 			childIndent = "";
@@ -164,14 +164,14 @@ void exportHuman()
 		{
 			prefix = indent ~ (isLast ? "└── " : "├── ");
 			childIndent = indent ~ (isLast ? "    " : "│   ");
-			label = path.humanName.to!string;
+			label = p.humanName.to!string;
 		}
 
 		// Format and print the line
 		if (compareMode)
 		{
 			// Compare mode: show delta
-			auto cmp = getCompareResult(path, SampleType.represented);
+			auto cmp = getCompareResult(p, SampleType.represented);
 			auto delta = cmp.deltaSize;
 			stdout.writefln!" %s   %s%s"(humanRelSize(delta, true), prefix, label);
 		}
@@ -179,9 +179,9 @@ void exportHuman()
 		{
 			// Expert mode: four size columns
 			auto represented = sizeFromSamples(samples);
-			auto distributed = sizeFromSamples(path.getDistributedSamples());
-			auto exclusive = sizeFromSamples(path.getSamples(SampleType.exclusive));
-			auto shared_ = sizeFromSamples(path.getSamples(SampleType.shared_));
+			auto distributed = sizeFromSamples(p.getDistributedSamples());
+			auto exclusive = sizeFromSamples(p.getSamples(SampleType.exclusive));
+			auto shared_ = sizeFromSamples(p.getSamples(SampleType.shared_));
 
 			stdout.writefln(" ~%s   ~%s   ~%s   ~%s   %s%s",
 				humanSize(represented, true),
@@ -201,23 +201,23 @@ void exportHuman()
 
 		// Collect children that pass threshold
 		BrowserPath*[] children;
-		for (auto child = path.firstChild; child; child = child.nextSibling)
+		for (auto child = p.firstChild; child; child = child.nextSibling)
 			if (child.getSamples(SampleType.represented) >= threshold)
 				children ~= child;
 
 		// In compare mode, also include deleted items from compare tree
 		if (compareMode)
 		{
-			auto compareCurrentPath = findInCompareTree(path);
+			auto compareCurrentPath = findInCompareTree(p);
 			if (compareCurrentPath)
 			{
 				for (auto compareChild = compareCurrentPath.firstChild; compareChild; compareChild = compareChild.nextSibling)
 				{
 					auto name = compareChild.name[];
-					if (!(name in *path))
+					if (!(name in *p))
 					{
 						// Create placeholder node for deleted item
-						auto placeholder = path.appendName(name);
+						auto placeholder = p.appendName(name);
 						// Check if it passes threshold (based on delta)
 						auto cmp = getCompareResult(placeholder, SampleType.represented);
 						if (abs(cmp.deltaSize) >= sizeFromSamples(threshold))
