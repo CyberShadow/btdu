@@ -1609,7 +1609,7 @@ struct Browser
 					case Mode.browser:
 
 						// Items
-						auto infoWidth = infoPanelsVisible ? min(60, (width - 1) / 2) : 0;
+						auto infoWidth = infoPanelsVisible ? (width > 240 ? width / 4 : min(60, (width - 1) / 2)) : 0;
 						auto itemsWidth = infoPanelsVisible ? width - infoWidth - 1 : width;
 						withWindow(infoPanelsVisible ? infoWidth + 1 : 0, 0, itemsWidth, height, {
 							undiscoveredEst = currentPath is &marked ? null : estimateUndiscoveredStr(currentPath);
