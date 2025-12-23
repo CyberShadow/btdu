@@ -69,11 +69,28 @@ btdu can be installed in one of the following ways:
 - Via package manager, if it is packaged by your distribution (see on the right).
 - Download a static binary from [the releases page](https://github.com/CyberShadow/btdu/releases)
   or [the latest CI run](https://github.com/CyberShadow/btdu/actions?query=branch%3Amaster).
+- Using Nix: `nix run github:CyberShadow/btdu` (or `nix profile install github:CyberShadow/btdu` for permanent installation).
 - Clone this repository and build from source (see below).
 
 
 Building
 --------
+
+### Using Nix
+
+If you have [Nix](https://nixos.org/) installed with flakes enabled:
+
+    nix build github:CyberShadow/btdu
+
+Or from a local clone:
+
+    nix build
+
+The binary will be available at `./result/bin/btdu`.
+
+For development, use `nix develop` to enter a shell with all dependencies available, then build with `dub build`.
+
+### Manual build
 
 1. Install [a D compiler](https://dlang.org/download.html).  
    Note that you will need a compiler supporting D v2.097 or newer - the compiler in your distribution's repositories might be too old.
