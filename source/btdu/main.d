@@ -51,6 +51,7 @@ import btdu.subproc;
 import btdu.state;
 
 @(`Sampling disk usage profiler for btrfs.`)
+@Version("btdu v" ~ btduVersion)
 void program(
 	Parameter!(string, "Path to the root of the filesystem to analyze") path,
 	Option!(uint, "Number of sampling subprocesses\n (default is number of logical CPUs for this system)", "N", 'j') procs = 0,
@@ -423,10 +424,4 @@ private string escapeShellCommand(string[] args)
 	return args.join(" ");
 }
 
-void usageFun(string usage)
-{
-	stderr.writeln("btdu v" ~ btduVersion);
-	stderr.writeln(usage);
-}
-
-mixin main!(funopt!(program, FunOptConfig.init, usageFun));
+mixin main!(funopt!program);
