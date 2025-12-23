@@ -310,13 +310,16 @@ Please report defects and enhancement requests to the GitHub issue tracker:
 
 	if (headless)
 	{
-		auto totalSamples = browserRoot.getSamples(SampleType.represented);
-		stderr.writefln(
-			"Collected %s samples (achieving a resolution of ~%s) in %s.",
-			totalSamples,
-			totalSamples ? (totalSize / totalSamples).humanSize().to!string : "-",
-			MonoTime.currTime() - startTime,
-		);
+		if (!doImport)
+		{
+			auto totalSamples = browserRoot.getSamples(SampleType.represented);
+			stderr.writefln(
+				"Collected %s samples (achieving a resolution of ~%s) in %s.",
+				totalSamples,
+				totalSamples ? (totalSize / totalSamples).humanSize().to!string : "-",
+				MonoTime.currTime() - startTime,
+			);
+		}
 
 		// Print CLI tree output unless --du or --export mode is used
 		if (!du && !exportPath)
