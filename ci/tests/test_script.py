@@ -533,10 +533,12 @@ def test_conflicting_options():
     run_btdu("--headless --export=/tmp/test.json --max-samples=50 /mnt/btrfs")
     verify_json_export("/tmp/test.json")
 
-    # Test --import with --export (can't import and export at same time)
-    result = machine.fail("btdu --import --export=/tmp/out.json /tmp/test.json 2>&1")
-    assert "conflicting" in result.lower(), f"Expected 'conflicting' in error, got: {result}"
-    print("  ✓ --import with --export rejected")
+    # Test --import with --export is idempotent (re-exporting imported data produces same file)
+    machine.succeed("btdu --headless --import --export=/tmp/reimport.json /tmp/test.json")
+    original = machine.succeed("cat /tmp/test.json")
+    reimported = machine.succeed("cat /tmp/reimport.json")
+    assert original == reimported, "Re-exported file should be identical to original"
+    print("  ✓ --import with --export is idempotent")
 
     # Test --import with --physical (physical mode only applies during sampling)
     result = machine.fail("btdu --import --physical /tmp/test.json 2>&1")

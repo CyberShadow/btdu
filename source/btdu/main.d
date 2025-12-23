@@ -103,7 +103,7 @@ Please report defects and enhancement requests to the GitHub issue tracker:
 
 	if (doImport)
 	{
-		if (procs || seed || subprocess || expert || physical || maxSamples || maxTime || minResolution || exportPath || prefer || ignore)
+		if (procs || seed || subprocess || expert || physical || maxSamples || maxTime || minResolution || prefer || ignore)
 			throw new Exception("Conflicting command-line options");
 
 		stderr.writeln("Loading results from file...");
