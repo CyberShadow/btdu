@@ -5,9 +5,11 @@ import std.algorithm.iteration : filter, map;
 import std.algorithm.sorting : sort;
 import std.array : array;
 import std.conv : to;
+import std.exception : enforce;
 import std.math : abs, ceil;
 import std.process : environment;
 import std.stdio : File, stdout;
+import std.typecons : Nullable, nullable;
 
 import core.lifetime : move;
 
@@ -28,6 +30,35 @@ enum ExportFormat
 }
 
 alias imported = btdu.state.imported;
+
+/// Auto-detect export format
+Nullable!ExportFormat detectFormat(string path)
+{
+	if (isJsonFormat(path))
+		return ExportFormat.json.nullable;
+	return Nullable!ExportFormat();
+}
+
+/// Import data, auto-detecting format
+void importData(string path)
+{
+	auto format = detectFormat(path);
+	enforce(!format.isNull,
+		"Failed to detect format of file '" ~ path ~ "'. " ~
+		"Is this a valid btdu export?"
+	);
+	switch (format.get)
+	{
+		case ExportFormat.json:
+			return importJson(path);
+		default:
+			assert(false, "Detected an un-importable format");
+	}
+}
+
+// ============================================================================
+// JSON format
+// ============================================================================
 
 /// Serialized
 struct SerializedState
@@ -56,7 +87,14 @@ private SerializedState loadExportFile(string path, out Data mmapData)
 private __gshared Data importMmapData;
 private __gshared Data compareMmapData;
 
-void importData(string path)
+bool isJsonFormat(string path)
+{
+	import std.file : read;
+	auto firstByte = read(path, 1);
+	return firstByte == "{";
+}
+
+void importJson(string path)
 {
 	auto s = loadExportFile(path, importMmapData);
 
@@ -120,6 +158,10 @@ private void exportJson(string path)
 	}
 }
 
+// ============================================================================
+// du format
+// ============================================================================
+
 private void exportDu(string path)
 {
 	ulong blockSize = {
@@ -147,6 +189,10 @@ private void exportDu(string path)
 	if (totalSamples)
 		visit(&browserRoot);
 }
+
+// ============================================================================
+// Human-readable format
+// ============================================================================
 
 /// Print a pretty tree of the biggest nodes.
 /// In non-expert mode: size and path columns.
