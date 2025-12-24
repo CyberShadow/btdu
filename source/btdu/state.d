@@ -469,12 +469,14 @@ auto toFilesystemPath(BrowserPath* path)
 ///   samples = Number of samples to add
 ///   offsets = Sample offsets to record
 ///   duration = Total duration for these samples
+///   target = Which dataset to populate (main or compare)
 void populateBrowserPathsFromSharingGroup(
 	SharingGroup* group,
 	bool needsLinking,
 	ulong samples,
 	const(Offset)[] offsets,
-	ulong duration
+	ulong duration,
+	DataSet target = DataSet.main
 )
 {
 	bool allMarked = true;
@@ -578,21 +580,24 @@ void populateBrowserPathsFromSharingGroup(
 		exclusiveBrowserPath.addSamples(SampleType.exclusive, samples, offsets, duration);
 	}
 
-	// Update global marked state
-	markTotalSamples += samples;
-
-	// Check marks and update marked node
-	if (expert)
+	// Update global marked state (only for main dataset)
+	if (target == DataSet.main)
 	{
-		foreach (i, ref path; paths)
-			if (!group.pathData[i].path.getEffectiveMark())
-			{
-				allMarked = false;
-				break;
-			}
+		markTotalSamples += samples;
 
-		if (allMarked)
-			marked.addSamples(SampleType.exclusive, samples, offsets, duration);
+		// Check marks and update marked node
+		if (expert)
+		{
+			foreach (i, ref path; paths)
+				if (!group.pathData[i].path.getEffectiveMark())
+				{
+					allMarked = false;
+					break;
+				}
+
+			if (allMarked)
+				marked.addSamples(SampleType.exclusive, samples, offsets, duration);
+		}
 	}
 }
 
