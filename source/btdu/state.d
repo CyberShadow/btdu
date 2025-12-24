@@ -46,43 +46,50 @@ template allocatorFor(T)
 		alias allocatorFor = growAllocator;
 }
 
-// Global variables
-
-__gshared: // btdu is single-threaded
-
-IndexedSlabAllocator!SubPath subPathAllocator;
-
-bool imported;
-bool expert;
-bool physical;
-bool exportSeenAs;
-string fsPath;
-ulong totalSize;
-btrfs_ioctl_dev_info_args[] devices;
-
-// Compare mode state
-bool compareMode;
-BrowserPath compareRoot;
-ulong compareTotalSize;
-bool compareExpert;
-bool comparePhysical;
-
-SubPath subPathRoot;
+// ============================================================
+// SamplingState - per-dataset state
+// ============================================================
 
 struct RootInfo
 {
 	GlobalPath* path;
 	bool isOrphan;  /// True if this is a TREE_%d (deleted subvolume)
 }
+
+/// Encapsulates the state for a single sampled dataset.
+/// This allows having separate state instances for main data vs compare baseline.
+struct SamplingState
+{
+	ulong totalSize;
+	bool expert;
+	bool physical;
+	BrowserPath browserRoot;
+
+	/// Returns pointer to browserRoot
+	BrowserPath* rootPtr() return { return &browserRoot; }
+}
+
+// ============================================================
+// Global state
+// ============================================================
+
+__gshared: // btdu is single-threaded
+
+// State instances
+SamplingState mainState;
+SamplingState compareState;
+bool compareMode;
+
+// Allocators (shared across all state instances)
+IndexedSlabAllocator!SubPath subPathAllocator;
+
+// Other global state (not per-dataset)
+bool imported;
+bool exportSeenAs;
+string fsPath;
+btrfs_ioctl_dev_info_args[] devices;
+SubPath subPathRoot;
 RootInfo[u64] globalRoots;
-
-BrowserPath browserRoot;
-
-/// Returns pointer to browserRoot (for code that needs &browserRoot pattern)
-BrowserPath* browserRootPtr() { return &browserRoot; }
-
-/// Returns pointer to compareRoot (for code that needs &compareRoot pattern)
-BrowserPath* compareRootPtr() { return &compareRoot; }
 
 /// Deduplicates sharing groups - multiple samples with the same set of paths
 /// will reference the same SharingGroup and just increment its sample count.
@@ -95,6 +102,24 @@ SlabAllocator!SharingGroup sharingGroupAllocator;
 size_t numSharingGroups;
 /// Number of sharing groups with exactly 1 sample
 size_t numSingleSampleGroups;
+
+// ============================================================
+// Compatibility shims - forward to mainState/compareState
+// ============================================================
+
+// Main state shims
+@property ref totalSize() { return mainState.totalSize; }
+@property ref expert() { return mainState.expert; }
+@property ref physical() { return mainState.physical; }
+@property ref browserRoot() { return mainState.browserRoot; }
+BrowserPath* browserRootPtr() { return mainState.rootPtr; }
+
+// Compare state shims
+@property ref compareRoot() { return compareState.browserRoot; }
+BrowserPath* compareRootPtr() { return compareState.rootPtr; }
+@property ref compareTotalSize() { return compareState.totalSize; }
+@property ref compareExpert() { return compareState.expert; }
+@property ref comparePhysical() { return compareState.physical; }
 
 /// Disk visualization map - tracks statistics per visual sector
 struct DiskMap
