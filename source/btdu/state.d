@@ -56,6 +56,13 @@ struct RootInfo
 	bool isOrphan;  /// True if this is a TREE_%d (deleted subvolume)
 }
 
+/// Index for accessing different sampling states
+enum DataSet
+{
+	main,    /// Primary state (for live sampling or --import)
+	compare, /// Baseline state (for --compare)
+}
+
 /// Encapsulates the state for a single sampled dataset.
 /// This allows having separate state instances for main data vs compare baseline.
 struct SamplingState
@@ -75,9 +82,8 @@ struct SamplingState
 
 __gshared: // btdu is single-threaded
 
-// State instances
-SamplingState mainState;
-SamplingState compareState;
+// State instances indexed by DataSet
+SamplingState[enumLength!DataSet] states;
 bool compareMode;
 
 // Allocators (shared across all state instances)
@@ -104,22 +110,22 @@ size_t numSharingGroups;
 size_t numSingleSampleGroups;
 
 // ============================================================
-// Compatibility shims - forward to mainState/compareState
+// Compatibility shims - forward to states[DataSet.xxx]
 // ============================================================
 
 // Main state shims
-@property ref totalSize() { return mainState.totalSize; }
-@property ref expert() { return mainState.expert; }
-@property ref physical() { return mainState.physical; }
-@property ref browserRoot() { return mainState.browserRoot; }
-BrowserPath* browserRootPtr() { return mainState.rootPtr; }
+@property ref totalSize() { return states[DataSet.main].totalSize; }
+@property ref expert() { return states[DataSet.main].expert; }
+@property ref physical() { return states[DataSet.main].physical; }
+@property ref browserRoot() { return states[DataSet.main].browserRoot; }
+BrowserPath* browserRootPtr() { return states[DataSet.main].rootPtr; }
 
 // Compare state shims
-@property ref compareRoot() { return compareState.browserRoot; }
-BrowserPath* compareRootPtr() { return compareState.rootPtr; }
-@property ref compareTotalSize() { return compareState.totalSize; }
-@property ref compareExpert() { return compareState.expert; }
-@property ref comparePhysical() { return compareState.physical; }
+@property ref compareRoot() { return states[DataSet.compare].browserRoot; }
+BrowserPath* compareRootPtr() { return states[DataSet.compare].rootPtr; }
+@property ref compareTotalSize() { return states[DataSet.compare].totalSize; }
+@property ref compareExpert() { return states[DataSet.compare].expert; }
+@property ref comparePhysical() { return states[DataSet.compare].physical; }
 
 /// Disk visualization map - tracks statistics per visual sector
 struct DiskMap
