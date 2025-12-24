@@ -835,8 +835,11 @@ struct BrowserPath
 			for (const(BrowserPath)* p = firstChild; p; p = p.nextSibling)
 				total += p.getSamples(SampleType.represented);
 			assert(total == aggregateData.data[SampleType.represented].samples,
-				"%s: Represented samples mismatch: aggregate data has %d, but children have %d"
-					.format(this, aggregateData.data[SampleType.represented].samples, total));
+				"%s: Represented samples mismatch: aggregate data has %d, but children have %d (node has %s)"
+					.format(
+						this, aggregateData.data[SampleType.represented].samples, total,
+						!firstChild ? "no children" : !firstChild.nextSibling ? "one child" : "multiple children"
+					));
 		}
 	}
 
