@@ -92,7 +92,8 @@ if (!hasIndirections!T)
 /// Slab allocator for efficient allocation of many small objects.
 /// Allocates objects in large contiguous slabs linked together.
 /// Overhead: one pointer per slab (~4MB), plus fixed global state.
-struct SlabAllocator(T, size_t slabSize = 4 * 1024 * 1024)
+/// When indexed=true, supports reverse lookup (pointer -> index) via binary search.
+struct SlabAllocator(T, size_t slabSize = 4 * 1024 * 1024, bool indexed = false)
 {
 	enum itemsPerSlab = (slabSize - (Slab*).sizeof) / T.sizeof;
 	static assert(itemsPerSlab > 0, "Type too large for slab allocator");
@@ -108,6 +109,10 @@ struct SlabAllocator(T, size_t slabSize = 4 * 1024 * 1024)
 	Slab* firstSlab;
 	Slab* currentSlab;
 	size_t currentIndex;
+
+	// Array of slab base pointers in allocation order (for reverse lookup)
+	static if (indexed)
+		Slab*[] slabIndex;
 
 	/// Standard allocator interface for compatibility with std.experimental.allocator.make
 	enum alignment = T.alignof;
@@ -132,6 +137,9 @@ struct SlabAllocator(T, size_t slabSize = 4 * 1024 * 1024)
 				firstSlab = newSlab;
 			currentSlab = newSlab;
 			currentIndex = 0;
+			// Add to index for reverse lookup (in allocation order)
+			static if (indexed)
+				slabIndex ~= newSlab;
 		}
 		return (cast(void*) &currentSlab.items[currentIndex++])[0 .. T.sizeof];
 	}
@@ -193,13 +201,69 @@ struct SlabAllocator(T, size_t slabSize = 4 * 1024 * 1024)
 	}
 
 	/// Number of allocated items.
-	size_t length() const
+	static if (indexed)
 	{
-		if (!firstSlab)
-			return 0;
-		size_t count = currentIndex;
-		for (const(Slab)* slab = firstSlab; slab !is currentSlab; slab = slab.next)
-			count += itemsPerSlab;
-		return count;
+		size_t length() const
+		{
+			if (!firstSlab)
+				return 0;
+			return (slabIndex.length - 1) * itemsPerSlab + currentIndex;
+		}
+	}
+	else
+	{
+		size_t length() const
+		{
+			if (!firstSlab)
+				return 0;
+			size_t count = currentIndex;
+			for (const(Slab)* slab = firstSlab; slab !is currentSlab; slab = slab.next)
+				count += itemsPerSlab;
+			return count;
+		}
+	}
+
+	// Indexed-only methods
+	static if (indexed)
+	{
+		/// Reverse lookup: given a pointer to an item, return its allocation-order index.
+		/// Returns -1 if the pointer is not found (not allocated by this allocator).
+		long indexOf(const(T)* ptr) const
+		{
+			if (ptr is null || slabIndex.length == 0)
+				return -1;
+
+			auto ptrAddr = cast(size_t) ptr;
+
+			// Linear search through slabs (in allocation order)
+			foreach (slabNum, slab; slabIndex)
+			{
+				auto slabStart = cast(size_t) &slab.items[0];
+				auto slabEnd = slabStart + itemsPerSlab * T.sizeof;
+
+				if (ptrAddr >= slabStart && ptrAddr < slabEnd)
+				{
+					// Found the slab, calculate offset
+					size_t offset = (ptrAddr - slabStart) / T.sizeof;
+					// Verify it's aligned properly
+					if ((ptrAddr - slabStart) % T.sizeof != 0)
+						return -1;
+					// Check if within allocated range for last slab
+					if (slabNum == slabIndex.length - 1 && offset >= currentIndex)
+						return -1;
+					return cast(long)(slabNum * itemsPerSlab + offset);
+				}
+			}
+			return -1;
+		}
+
+		/// Check if a pointer was allocated by this allocator.
+		bool contains(const(T)* ptr) const
+		{
+			return indexOf(ptr) >= 0;
+		}
 	}
 }
+
+/// Alias for indexed slab allocator
+alias IndexedSlabAllocator(T, size_t slabSize = 4 * 1024 * 1024) = SlabAllocator!(T, slabSize, true);
