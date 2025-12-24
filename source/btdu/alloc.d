@@ -89,7 +89,7 @@ if (!hasIndirections!T)
 	alias StaticAppender = FastAppender!(T, Mallocator);
 }
 
-/// Typed slab allocator for objects that need efficient iteration.
+/// Slab allocator for efficient allocation of many small objects.
 /// Allocates objects in large contiguous slabs linked together.
 /// Overhead: one pointer per slab (~4MB), plus fixed global state.
 struct SlabAllocator(T, size_t slabSize = 4 * 1024 * 1024)
@@ -109,9 +109,16 @@ struct SlabAllocator(T, size_t slabSize = 4 * 1024 * 1024)
 	Slab* currentSlab;
 	size_t currentIndex;
 
-	/// Allocate a new item, returns a pointer to uninitialized memory.
-	T* allocate()
+	/// Standard allocator interface for compatibility with std.experimental.allocator.make
+	enum alignment = T.alignof;
+
+	/// Deallocate is a no-op (slab allocator doesn't support individual deallocation)
+	bool deallocate(void[] b) { return false; }
+
+	/// Allocate a new item, returns a slice to uninitialized memory.
+	void[] allocate(size_t n)
 	{
+		assert(n == T.sizeof, "SlabAllocator only supports fixed-size allocations");
 		if (!currentSlab || currentIndex >= itemsPerSlab)
 		{
 			auto mem = MmapAllocator.instance.allocate(Slab.sizeof);
@@ -126,7 +133,7 @@ struct SlabAllocator(T, size_t slabSize = 4 * 1024 * 1024)
 			currentSlab = newSlab;
 			currentIndex = 0;
 		}
-		return &currentSlab.items[currentIndex++];
+		return (cast(void*) &currentSlab.items[currentIndex++])[0 .. T.sizeof];
 	}
 
 	/// Iterate over all allocated items.

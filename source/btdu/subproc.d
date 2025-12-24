@@ -317,7 +317,7 @@ struct Subprocess
 			newGroupData.paths = persistentPaths;
 			newGroupData.pathData = pathData.ptr;
 			newGroupData.representativeIndex = representativeIndex;
-			group = sharingGroupAllocator.allocate();
+			group = make!SharingGroup(sharingGroupAllocator);
 			*group = newGroupData;
 
 			// Add to HashSet for future deduplication
