@@ -78,6 +78,9 @@ RootInfo[u64] globalRoots;
 
 BrowserPath browserRoot;
 
+/// Returns pointer to browserRoot (for code that needs &browserRoot pattern)
+BrowserPath* browserRootPtr() { return &browserRoot; }
+
 /// Deduplicates sharing groups - multiple samples with the same set of paths
 /// will reference the same SharingGroup and just increment its sample count.
 HashSet!(SharingGroup.Paths, CasualAllocator, SharingGroup.Paths.hashOf, false, true) sharingGroups;
@@ -283,7 +286,7 @@ ulong getTotalUniqueSamplesFor(BrowserPath* p)
 
 		// We use `browserRoot` because we add samples to all nodes going up in the hierarchy,
 		// so we will always include `browserRoot`.
-		auto reference = &browserRoot;
+		auto reference = browserRootPtr;
 
 		// We use `SampleType.represented` because
 		// 1. It is always going to be collected
@@ -319,7 +322,7 @@ BrowserPath* findInCompareTree(BrowserPath* path)
 		return null;
 	if (path is null)
 		return null;
-	if (path is &browserRoot)
+	if (path is browserRootPtr)
 		return &compareRoot;
 	if (path is &marked)
 		return null; // Marks don't translate
@@ -327,7 +330,7 @@ BrowserPath* findInCompareTree(BrowserPath* path)
 	// Build path from root to this node
 	static BrowserPath*[] pathStack;
 	pathStack.length = 0;
-	for (auto p = path; p && p !is &browserRoot; p = p.parent)
+	for (auto p = path; p && p !is browserRootPtr; p = p.parent)
 		pathStack ~= p;
 
 	// Walk down comparison tree
@@ -360,7 +363,7 @@ CompareResult getCompareResult(BrowserPath* newPath, SampleType sampleType)
 	auto oldPath = findInCompareTree(newPath);
 	result.hasOldData = oldPath !is null;
 
-	auto newTotalSamples = getTotalUniqueSamplesFor(&browserRoot);
+	auto newTotalSamples = getTotalUniqueSamplesFor(browserRootPtr);
 	auto oldTotalSamples = compareTotalSize > 0 ?
 		compareRoot.getSamples(SampleType.represented) : 0;
 

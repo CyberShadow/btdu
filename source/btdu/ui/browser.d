@@ -193,7 +193,7 @@ struct Browser
 	{
 		curses.start();
 
-		currentPath = &browserRoot;
+		currentPath = browserRootPtr;
 	}
 
 	/// Returns true when the UI should be refreshed periodically
@@ -483,7 +483,7 @@ struct Browser
 					return update();
 				}
 				else
-				if (mode == Mode.browser && currentPath !is &browserRoot)
+				if (mode == Mode.browser && currentPath !is browserRootPtr)
 				{
 					mode = Mode.info;
 					textScrollContext = ScrollContext.init;
@@ -557,7 +557,7 @@ struct Browser
 
 					// Bottom bar
 					at(0, height - 1, {
-						auto totalSamples = getTotalUniqueSamplesFor(&browserRoot);
+						auto totalSamples = getTotalUniqueSamplesFor(browserRootPtr);
 						write(" Samples: ", bold(totalSamples));
 
 						write("  Resolution: ");
@@ -591,7 +591,7 @@ struct Browser
 			{
 				void writeExplanation()
 				{
-					if (p is &browserRoot)
+					if (p is browserRootPtr)
 					{
 						if (mode == Mode.browser)
 							return write(
@@ -944,7 +944,7 @@ struct Browser
 						write(endl, endl);
 
 					// Draw disk visualization for root node (only for live sampling)
-					if (p is &browserRoot && !imported)
+					if (p is browserRootPtr && !imported)
 						drawDiskVisualization();
 
 					if (p.deleted)
@@ -1011,7 +1011,7 @@ struct Browser
 										auto samples = p.I!getSamples(metric);
 										auto totalSamples = getTotalUniqueSamplesFor(p);
 										auto showError = !!metric.among(SizeMetric.represented, SizeMetric.exclusive);
-										writeSamples(samples, totalSamples, showError, p is &browserRoot);
+										writeSamples(samples, totalSamples, showError, p is browserRootPtr);
 									}
 									else // samples
 									{
@@ -1050,7 +1050,7 @@ struct Browser
 						auto totalSamples = getTotalUniqueSamplesFor(p);
 						if (totalSamples > 0)
 						{
-							auto estimate = estimateError(totalSamples, p.getSamples(type), z_975, p is &browserRoot);
+							auto estimate = estimateError(totalSamples, p.getSamples(type), z_975, p is browserRootPtr);
 							write("~", bold(humanSize(estimate.center * real(totalSize) / totalSamples)));
 							if (showError) write(" ±", humanSize(estimate.halfWidth * totalSize / totalSamples));
 							write(formatted!" (%d sample%s)"(
@@ -1337,7 +1337,7 @@ struct Browser
 			void drawItems()
 			{
 				auto totalUniqueSamples = getTotalUniqueSamplesFor(currentPath);
-				auto totalRootSamples = (&browserRoot).I!getSamples(); // in the current mode
+				auto totalRootSamples = (browserRootPtr).I!getSamples(); // in the current mode
 
 				struct UnitValue
 				{
@@ -1351,7 +1351,7 @@ struct Browser
 						case SortMode.name:
 						case SortMode.size:
 							auto samples = path.I!getSamples();
-							auto estimate = estimateError(totalRootSamples, samples, z_975, path is &browserRoot);
+							auto estimate = estimateError(totalRootSamples, samples, z_975, path is browserRootPtr);
 							return UnitValue(
 								estimate.center,
 								estimate.lower,
@@ -1539,7 +1539,7 @@ struct Browser
 							{
 								withWindow(x, y, maxItemWidth.to!xy_t, 1, {
 									middleTruncate({
-										if (child is &browserRoot)
+										if (child is browserRootPtr)
 											write("/", endl);
 										else
 											write(child.pointerWriter, endl);
@@ -1591,7 +1591,7 @@ struct Browser
 					auto bottomOverflowText = fmtSeq(" more - press ", overflowKeyText, " to view ");
 
 				drawPanel(
-					fmtSeq(titlePrefix, bold(fmtIf(p is &browserRoot, () => "/", functor!(p => p.humanName)(p)))),
+					fmtSeq(titlePrefix, bold(fmtIf(p is browserRootPtr, () => "/", functor!(p => p.humanName)(p)))),
 					null,
 					bottomOverflowText,
 					scrollContext,
@@ -1623,7 +1623,7 @@ struct Browser
 								drawPanel("Marks", null, null, itemScrollContext, 0, 1, &drawItems);
 							else
 							{
-								auto displayedPath = currentPath is &browserRoot ? "/" : buf.stringify(currentPath.pointerWriter);
+								auto displayedPath = currentPath is browserRootPtr ? "/" : buf.stringify(currentPath.pointerWriter);
 								auto maxPathWidth = width - 8 /*- prefix.length*/;
 								if (displayedPath.length > maxPathWidth) // TODO: this slice is wrong
 									displayedPath = buf2.stringify!"…%s"(displayedPath[$ - (maxPathWidth - 1) .. $]);
@@ -2582,7 +2582,7 @@ string estimateUndiscoveredStr(BrowserPath* path)
 	}
 
 	// Global coverage from numSingleSampleGroups (sharing groups sampled exactly once)
-	auto totalSamples = getTotalUniqueSamplesFor(&browserRoot);
+	auto totalSamples = getTotalUniqueSamplesFor(browserRootPtr);
 	double globalC = totalSamples > 0 ? 1.0 - cast(double)numSingleSampleGroups / totalSamples : 0.0;
 
 	// Samples hitting this directory (for saturation check)

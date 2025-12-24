@@ -183,7 +183,7 @@ struct Subprocess
 	{
 		result.offset = m.offset;
 		result.sampleIndex = m.sampleIndex;
-		result.browserPath = &browserRoot;
+		result.browserPath = browserRootPtr;
 		static immutable flagNames = [
 			"DATA",
 			"SYSTEM",

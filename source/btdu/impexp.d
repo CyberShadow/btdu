@@ -145,7 +145,7 @@ private void exportJson(string path)
 	s.physical = physical;
 	s.fsPath = fsPath;
 	s.totalSize = totalSize;
-	s.root = &browserRoot;
+	s.root = browserRootPtr;
 
 	alias LockingBinaryWriter = typeof(File.lockingBinaryWriter());
 	alias JsonFileSerializer = CustomJsonSerializer!(JsonWriter!LockingBinaryWriter);
@@ -187,7 +187,7 @@ private void exportDu(string path)
 		file.writefln("%d\t%s%s", size, fsPath, p.pointerWriter);
 	}
 	if (totalSamples)
-		visit(&browserRoot);
+		visit(browserRootPtr);
 }
 
 // ============================================================================
@@ -223,11 +223,11 @@ private void exportHuman(string path)
 		auto samples = p.getSamples(SampleType.represented);
 
 		// Skip nodes below threshold (but always show root)
-		if (p !is &browserRoot && samples < threshold)
+		if (p !is browserRootPtr && samples < threshold)
 			return;
 
 		string prefix, childIndent, label;
-		if (p is &browserRoot)
+		if (p is browserRootPtr)
 		{
 			prefix = "";
 			childIndent = "";
@@ -330,5 +330,5 @@ private void exportHuman(string path)
 		file.writeln(" Represented  Distributed   Exclusive     Shared     Path");
 	}
 
-	visit(&browserRoot, "", true);
+	visit(browserRootPtr, "", true);
 }
