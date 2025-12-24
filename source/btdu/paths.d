@@ -43,6 +43,7 @@ import ae.utils.meta;
 import ae.utils.path.glob;
 
 import btdu.alloc;
+import btdu.state : allocatorFor;
 
 public import btdu.proto : Offset;
 
@@ -256,7 +257,7 @@ mixin template SimplePath()
 			static if (existingOnly)
 				return null;
 			else
-				return *ppnext = growAllocator.make!(typeof(this))(&this, NameString(name));
+				return *ppnext = allocatorFor!(typeof(this)).make!(typeof(this))(&this, NameString(name));
 	}
 
 	/// ditto
@@ -269,7 +270,7 @@ mixin template SimplePath()
 			static if (existingOnly)
 				return null;
 			else
-				return *ppnext = growAllocator.make!(typeof(this))(&this, name);
+				return *ppnext = allocatorFor!(typeof(this)).make!(typeof(this))(&this, name);
 	}
 
 	/// Append a normalized relative string path to this one.
