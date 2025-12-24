@@ -35,9 +35,22 @@ import btdu.alloc;
 import btdu.paths;
 import btdu.subproc : Subprocess;
 
+/// Returns the appropriate allocator for a given type.
+/// SubPath uses IndexedSlabAllocator for efficient reverse lookups,
+/// other types use the general growAllocator.
+template allocatorFor(T)
+{
+	static if (is(T == SubPath))
+		alias allocatorFor = subPathAllocator;
+	else
+		alias allocatorFor = growAllocator;
+}
+
 // Global variables
 
 __gshared: // btdu is single-threaded
+
+IndexedSlabAllocator!SubPath subPathAllocator;
 
 bool imported;
 bool expert;
