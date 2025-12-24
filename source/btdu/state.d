@@ -81,6 +81,9 @@ BrowserPath browserRoot;
 /// Returns pointer to browserRoot (for code that needs &browserRoot pattern)
 BrowserPath* browserRootPtr() { return &browserRoot; }
 
+/// Returns pointer to compareRoot (for code that needs &compareRoot pattern)
+BrowserPath* compareRootPtr() { return &compareRoot; }
+
 /// Deduplicates sharing groups - multiple samples with the same set of paths
 /// will reference the same SharingGroup and just increment its sample count.
 HashSet!(SharingGroup.Paths, CasualAllocator, SharingGroup.Paths.hashOf, false, true) sharingGroups;
@@ -323,7 +326,7 @@ BrowserPath* findInCompareTree(BrowserPath* path)
 	if (path is null)
 		return null;
 	if (path is browserRootPtr)
-		return &compareRoot;
+		return compareRootPtr;
 	if (path is &marked)
 		return null; // Marks don't translate
 
@@ -334,7 +337,7 @@ BrowserPath* findInCompareTree(BrowserPath* path)
 		pathStack ~= p;
 
 	// Walk down comparison tree
-	BrowserPath* comparePath = &compareRoot;
+	BrowserPath* comparePath = compareRootPtr;
 	foreach_reverse (node; pathStack)
 	{
 		BrowserPath* found = null;
