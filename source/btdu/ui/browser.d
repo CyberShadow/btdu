@@ -1470,6 +1470,9 @@ struct Browser
 							if (effectiveRatioDisplayMode)
 							{
 								auto barWidth = max(10, (width - x - 4) / 5);
+								// In compare mode, ensure odd width so center '|' is properly centered
+								if (showDeltaDisplay && barWidth % 2 == 0)
+									barWidth--;
 
 								write('[');
 								if (effectiveRatioDisplayMode & RatioDisplayMode.percentage)
