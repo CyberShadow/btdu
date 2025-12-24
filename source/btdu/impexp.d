@@ -110,6 +110,24 @@ void importJson(string path)
 
 void importCompareData(string path)
 {
+	auto format = detectFormat(path);
+	enforce(!format.isNull,
+		"Failed to detect format of file '" ~ path ~ "'. " ~
+		"Is this a valid btdu export?"
+	);
+
+	switch (format.get)
+	{
+		case ExportFormat.json:
+			importCompareJson(path);
+			break;
+		default:
+			assert(false, "Detected an un-importable format");
+	}
+}
+
+private void importCompareJson(string path)
+{
 	auto s = loadExportFile(path, compareMmapData);
 
 	compareExpert = s.expert;
