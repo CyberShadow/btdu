@@ -252,6 +252,155 @@ def test_du_output_format():
     print(f"  ✓ du output verified: found expected directories in {len(lines)} entries")
 
 
+def test_binary_export_import():
+    """Test exporting results to binary format and verify import capability."""
+    setup_btrfs_basic()
+    create_test_files()
+
+    # Export results in binary format
+    run_btdu("--headless --export=/tmp/export.bin --export-format=binary --max-samples=5000 /mnt/btrfs", timeout=120)
+
+    # Import binary and re-export to JSON to verify round-trip
+    machine.succeed("timeout 10 btdu --import --headless --export=/tmp/reimport.json /tmp/export.bin")
+    reimported_data = verify_json_export("/tmp/reimport.json")
+
+    # Verify the reimported data has expected structure and content
+    assert reimported_data['totalSize'] > 0, "totalSize should be > 0 after binary import"
+    assert reimported_data['root']['data']['represented']['samples'] > 0, "Should have samples after binary import"
+
+    # Verify directories from create_test_files() appear in reimported tree
+    dir1 = get_node(reimported_data['root'], [SINGLE, DATA, 'dir1'])
+    dir2 = get_node(reimported_data['root'], [SINGLE, DATA, 'dir2'])
+
+    assert dir1 is not None, "dir1 not found in reimported tree"
+    assert dir2 is not None, "dir2 not found in reimported tree"
+    assert dir1['data']['represented']['samples'] > 0, "dir1 should have samples after binary import"
+    assert dir2['data']['represented']['samples'] > 0, "dir2 should have samples after binary import"
+
+    print("  ✓ Binary export and import verified: complete data structure with dir1 and dir2")
+
+
+def test_binary_format_autodetect():
+    """Verify auto-detection works for both JSON and binary formats."""
+    setup_btrfs_basic()
+    create_test_files()
+
+    # Export in both formats
+    run_btdu("--headless --export=/tmp/autodetect.json --export-format=json --max-samples=3000 /mnt/btrfs", timeout=120)
+    run_btdu("--headless --export=/tmp/autodetect.bin --export-format=binary --max-samples=3000 /mnt/btrfs", timeout=120)
+
+    # Import JSON (auto-detected) and re-export to verify
+    machine.succeed("timeout 5 btdu --import --headless --export=/tmp/from_json.json /tmp/autodetect.json")
+    json_data = verify_json_export("/tmp/from_json.json")
+    assert json_data['totalSize'] > 0, "JSON auto-detect failed: no totalSize"
+
+    # Import binary (auto-detected) and re-export to verify
+    machine.succeed("timeout 5 btdu --import --headless --export=/tmp/from_binary.json /tmp/autodetect.bin")
+    binary_data = verify_json_export("/tmp/from_binary.json")
+    assert binary_data['totalSize'] > 0, "Binary auto-detect failed: no totalSize"
+
+    print("  ✓ Format auto-detection verified: both JSON and binary imports succeeded")
+
+
+def test_binary_expert_mode():
+    """Verify binary format contains complete data for expert mode viewing."""
+    setup_btrfs_basic()
+
+    # Create a mix of unique and reflinked files to test expert metrics
+    machine.succeed("dd if=/dev/urandom of=/mnt/btrfs/unique.dat bs=1M count=5")
+    machine.succeed("dd if=/dev/urandom of=/mnt/btrfs/base.dat bs=1M count=5")
+    machine.succeed("cp --reflink=always /mnt/btrfs/base.dat /mnt/btrfs/clone.dat")
+    machine.succeed("sync")
+
+    # Export in binary format (expert flag in file is informational only)
+    run_btdu("--headless --export=/tmp/expert.bin --export-format=binary --max-samples=10000 /mnt/btrfs", timeout=180)
+
+    # Import with --expert to view in expert mode (CLI controls view mode)
+    # Binary format always contains complete data for all metrics
+    machine.succeed("timeout 10 btdu --import --expert --headless --export=/tmp/expert_reimport.json /tmp/expert.bin")
+    data = verify_json_export("/tmp/expert_reimport.json")
+
+    # Verify expert mode is enabled via CLI
+    assert data['expert'] == True, "Expert mode not enabled via CLI"
+
+    # Verify expert mode fields exist (binary format has complete data)
+    root_data = data['root']['data']
+    assert 'distributedSamples' in root_data, "Missing distributedSamples field after binary import"
+    assert 'exclusive' in root_data, "Missing exclusive field after binary import"
+    assert 'shared' in root_data, "Missing shared field after binary import"
+
+    print("  ✓ Binary expert mode verified: complete data available for expert view")
+
+
+def test_binary_physical_mode():
+    """Verify physical mode data is preserved in binary format."""
+    setup_btrfs_basic()
+    create_test_files()
+
+    # Export in binary format with physical mode
+    run_btdu("--physical --headless --export=/tmp/physical.bin --export-format=binary --max-samples=5000 /mnt/btrfs", timeout=120)
+
+    # Import and verify physical mode is preserved
+    machine.succeed("timeout 10 btdu --import --headless --export=/tmp/physical_reimport.json /tmp/physical.bin")
+    data = verify_json_export("/tmp/physical_reimport.json")
+
+    # Verify physical mode is enabled
+    assert data.get('physical') == True, "Physical mode not preserved in binary format"
+
+    # Verify totalSize is reasonable for physical mode
+    total_size = data['totalSize']
+    assert total_size > 0, "totalSize should be > 0 in physical mode"
+
+    samples = data['root']['data']['represented']['samples']
+    assert samples > 0, "Should have samples after physical binary import"
+
+    print(f"  ✓ Binary physical mode verified: physical={data.get('physical')}, totalSize={total_size/1024/1024:.1f}MB")
+
+
+def test_binary_round_trip_accuracy():
+    """Verify binary format is lossless by comparing JSON exports before and after."""
+    setup_btrfs_basic()
+    create_test_files()
+
+    # Export to JSON first
+    run_btdu("--expert --headless --export=/tmp/original.json --max-samples=5000 /mnt/btrfs", timeout=120)
+    original_data = verify_json_export("/tmp/original.json")
+
+    # Export same data to binary
+    run_btdu("--expert --headless --export=/tmp/round_trip.bin --export-format=binary --max-samples=5000 /mnt/btrfs", timeout=120)
+
+    # Import binary and export to JSON (use --expert to match original)
+    machine.succeed("timeout 10 btdu --import --expert --headless --export=/tmp/round_trip.json /tmp/round_trip.bin")
+    round_trip_data = verify_json_export("/tmp/round_trip.json")
+
+    # Compare key fields
+    assert original_data['totalSize'] == round_trip_data['totalSize'], \
+        f"totalSize mismatch: {original_data['totalSize']} vs {round_trip_data['totalSize']}"
+    assert original_data['expert'] == round_trip_data['expert'], \
+        f"expert mismatch: {original_data['expert']} vs {round_trip_data['expert']}"
+    assert original_data['fsPath'] == round_trip_data['fsPath'], \
+        f"fsPath mismatch: {original_data['fsPath']} vs {round_trip_data['fsPath']}"
+
+    # Compare sample counts (should be identical since binary is lossless)
+    orig_samples = original_data['root']['data']['represented']['samples']
+    rt_samples = round_trip_data['root']['data']['represented']['samples']
+    assert orig_samples == rt_samples, \
+        f"Sample count mismatch: {orig_samples} vs {rt_samples}"
+
+    # Verify tree structure is preserved
+    orig_dir1 = get_node(original_data['root'], [SINGLE, DATA, 'dir1'])
+    rt_dir1 = get_node(round_trip_data['root'], [SINGLE, DATA, 'dir1'])
+
+    assert (orig_dir1 is None) == (rt_dir1 is None), "dir1 presence mismatch"
+    if orig_dir1 and rt_dir1:
+        orig_dir1_samples = orig_dir1['data']['represented']['samples']
+        rt_dir1_samples = rt_dir1['data']['represented']['samples']
+        assert orig_dir1_samples == rt_dir1_samples, \
+            f"dir1 samples mismatch: {orig_dir1_samples} vs {rt_dir1_samples}"
+
+    print(f"  ✓ Binary round-trip accuracy verified: {orig_samples} samples preserved exactly")
+
+
 # =============================================================================
 # Feature-Specific Tests
 # =============================================================================
@@ -1547,6 +1696,11 @@ def execute_all_tests():
         test_basic_analysis,
         test_export_and_import,
         test_du_output_format,
+        test_binary_export_import,
+        test_binary_format_autodetect,
+        test_binary_expert_mode,
+        test_binary_physical_mode,
+        test_binary_round_trip_accuracy,
 
         # Feature-specific tests
         test_physical_sampling,
