@@ -899,7 +899,7 @@ struct Browser
 							case data:
 								// Use density scale
 								if (maxDensity == 0 || maxDensity == minDensity)
-									return '░';
+									return '█';
 								auto normalized = cast(float)(state.groupDensity - minDensity) / (maxDensity - minDensity);
 								if (normalized < 0.25)
 									return '░';
