@@ -31,11 +31,32 @@ enum ExportFormat
 
 alias imported = btdu.state.imported;
 
-/// Auto-detect export format
+/// Auto-detect import format by inspecting file contents
 Nullable!ExportFormat detectFormat(string path)
 {
 	if (isJsonFormat(path))
 		return ExportFormat.json.nullable;
+	return Nullable!ExportFormat();
+}
+
+/// Extension to format mapping for export
+enum exportExtensions = [
+	".json": ExportFormat.json,
+	".du": ExportFormat.du,
+	".txt": ExportFormat.human,
+];
+
+/// Guess export format from file extension
+Nullable!ExportFormat guessExportFormat(string path)
+{
+	import std.path : extension;
+	import std.uni : toLower;
+
+	if (path is null)
+		return Nullable!ExportFormat();
+
+	if (auto fmt = path.extension.toLower in exportExtensions)
+		return (*fmt).nullable;
 	return Nullable!ExportFormat();
 }
 
