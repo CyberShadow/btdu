@@ -103,6 +103,7 @@ struct RebuildState
 	size_t processed;     /// Number of groups processed so far
 	size_t total;         /// Total number of groups to process
 	size_t step;          /// Number of groups to process per step (1% of total)
+	GlobalPathCache pathCache;  /// Memoization cache for GlobalPath→BrowserPath lookups
 
 	bool inProgress() const { return !range.empty; }
 	int progressPercent() const { return total > 0 ? cast(int)(processed * 100 / total) : 0; }
@@ -725,6 +726,7 @@ private void initRebuildForDataset(DataSet dataset)
 	state.rebuildState.step = state.rebuildState.total / 100;
 	if (state.rebuildState.step == 0)
 		state.rebuildState.step = 1;
+	state.rebuildState.pathCache.clear();  // Clear any leftover cache data
 }
 
 /// Process one step of the incremental rebuild (1% of total sharing groups).
@@ -762,7 +764,8 @@ bool processRebuildStep()
 				group.data.samples,
 				group.data.offsets[],
 				group.data.duration,
-				dataset
+				dataset,
+				&state.rebuildState.pathCache
 			);
 
 			state.rebuildState.range.popFront();
@@ -773,6 +776,11 @@ bool processRebuildStep()
 		// Check if there's actually more work (this dataset or next)
 		return rebuildInProgress();
 	}
+
+	// Clear caches when rebuild is complete to free memory
+	states[DataSet.main].rebuildState.pathCache.clear();
+	if (compareMode)
+		states[DataSet.compare].rebuildState.pathCache.clear();
 
 	return false;  // All done
 }
