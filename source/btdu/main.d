@@ -25,7 +25,7 @@ import core.time;
 import std.algorithm.iteration;
 import std.algorithm.searching;
 import std.array;
-import std.conv : to;
+import std.conv : ConvException, to;
 import std.exception;
 import std.parallelism : totalCPUs;
 import std.path;
@@ -44,7 +44,7 @@ import ae.utils.typecons : require;
 
 import btdu.ui.browser;
 import btdu.common;
-import btdu.impexp : ExportFormat, importData, importCompareData, exportData;
+import btdu.impexp : ExportFormat, importData, importCompareData, exportData, guessExportFormat, exportExtensions;
 import btdu.paths;
 import btdu.sample;
 import btdu.subproc;
@@ -67,6 +67,7 @@ void program(
 	Option!(string, `Stop after achieving this resolution (e.g. "1MB" or "1%").`, "SIZE") minResolution = null,
 	Switch!hiddenOption exitOnLimit = false,
 	Option!(string, "On exit, export the collected results to the given file.", "PATH", 'o', "export") exportPath = null,
+	Option!(string, "Export format (guessed from extension if not specified).", "FORMAT", 'F', "export-format") exportFormatStr = null,
 	Switch!("When exporting, include 'seenAs' data showing shared paths.") exportSeenAs = false,
 	Option!(string[], "Prioritize allocating representative samples in the given path.", "PATTERN") prefer = null,
 	Option!(string[], "Deprioritize allocating representative samples in the given path.", "PATTERN") ignore = null,
@@ -328,9 +329,39 @@ Please report defects and enhancement requests to the GitHub issue tracker:
 
 	if (exportPath)
 	{
+		import std.traits : EnumMembers;
+
 		auto exportFilePath = exportPath == "-" ? null : exportPath.value;
+
+		// Determine export format: explicit option > guess from extension > error
+		ExportFormat resolvedFormat;
+		if (exportFormatStr)
+		{
+			try
+				resolvedFormat = exportFormatStr.value.to!ExportFormat;
+			catch (ConvException)
+				throw new Exception("Unknown export format: '" ~ exportFormatStr.value ~ "'. " ~
+					"Valid formats are: " ~ [EnumMembers!ExportFormat].map!(e => e.to!string).join(", "));
+		}
+		else if (exportFilePath)
+		{
+			auto guessed = guessExportFormat(exportFilePath);
+			if (guessed.isNull)
+				throw new Exception(
+					"Cannot determine export format from extension of '" ~ exportFilePath ~ "'. " ~
+					"Use --export-format to specify the format, or use a recognized extension: " ~
+					exportExtensions.byKey.join(", ")
+				);
+			resolvedFormat = guessed.get;
+		}
+		else
+		{
+			// Writing to stdout, default to JSON
+			resolvedFormat = ExportFormat.json;
+		}
+
 		stderr.writeln("Exporting results...");
-		exportData(exportFilePath);
+		exportData(exportFilePath, resolvedFormat);
 		if (exportFilePath)
 			stderr.writeln("Exported results to: ", exportFilePath);
 	}
