@@ -507,13 +507,16 @@ auto toFilesystemPath(BrowserPath* path)
 ///   offsets = Sample offsets to record
 ///   duration = Total duration for these samples
 ///   target = Which dataset to populate (main or compare)
+///   pathCache = Optional memoization cache for GlobalPath→BrowserPath lookups
+///               (speeds up import/rebuild with shared path prefixes)
 void populateBrowserPathsFromSharingGroup(
 	SharingGroup* group,
 	bool needsLinking,
 	ulong samples,
 	const(Offset)[] offsets,
 	ulong duration,
-	DataSet target = DataSet.main
+	DataSet target = DataSet.main,
+	GlobalPathCache* pathCache = null
 )
 {
 	bool allMarked = true;
@@ -529,6 +532,15 @@ void populateBrowserPathsFromSharingGroup(
 
 	auto representativeIndex = group.representativeIndex;
 
+	// Helper to look up BrowserPath, using cache if available
+	BrowserPath* lookupPath(ref GlobalPath path)
+	{
+		if (pathCache)
+			return pathCache.lookup(path, root);
+		else
+			return root.appendPath(&path);
+	}
+
 	// ============================================================
 	// Phase 1: Create BrowserPath nodes (but don't link sharing groups yet)
 	// ============================================================
@@ -541,13 +553,13 @@ void populateBrowserPathsFromSharingGroup(
 		{
 			foreach (i, ref path; paths)
 			{
-				auto pathBrowserPath = root.appendPath(&path);
+				auto pathBrowserPath = lookupPath(path);
 				group.pathData[i].path = pathBrowserPath;
 			}
 		}
 		else
 		{
-			auto representativeBrowserPath = root.appendPath(&paths[representativeIndex]);
+			auto representativeBrowserPath = lookupPath(paths[representativeIndex]);
 			group.pathData[representativeIndex].path = representativeBrowserPath;
 		}
 	}
