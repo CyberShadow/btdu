@@ -76,6 +76,9 @@ void program(
 	Option!(string, "Compare against a baseline from a previously exported file.", "PATH", 'c', "compare") comparePath = null,
 )
 {
+	if (exportFormatStr && !exportPath)
+		throw new Exception("--export-format requires --export to be specified");
+
 	if (man)
 	{
 		stdout.write(generateManPage!program(
