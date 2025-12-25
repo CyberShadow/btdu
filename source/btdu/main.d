@@ -104,8 +104,13 @@ Please report defects and enhancement requests to the GitHub issue tracker:
 
 	if (doImport)
 	{
-		if (procs || seed || subprocess || expert || physical || maxSamples || maxTime || minResolution || prefer || ignore)
+		if (procs || seed || subprocess || physical || maxSamples || maxTime || minResolution || prefer || ignore)
 			throw new Exception("Conflicting command-line options");
+
+		// Set expert mode from CLI before import.
+		// For binary format: CLI controls view mode (data is always complete).
+		// For JSON format: importJson will override this based on data availability.
+		.expert = expert;
 
 		stderr.writeln("Loading results from file...");
 		importData(path);
