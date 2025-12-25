@@ -446,11 +446,16 @@ struct Browser
 							auto compareCurrentPath = findInCompareTree(currentPath);
 							if (compareCurrentPath)
 							{
+								// Build a set of names from current path for O(1) lookups
+								bool[const(char)[]] existingNames;
+								for (auto child = currentPath.firstChild; child; child = child.nextSibling)
+									existingNames[child.name[]] = true;
+
 								for (auto compareChild = compareCurrentPath.firstChild; compareChild; compareChild = compareChild.nextSibling)
 								{
 									// Check if this child exists in the main tree
 									auto name = compareChild.name[];
-									if (!(name in *currentPath))
+									if (name !in existingNames)
 									{
 										// Create a placeholder node in the main tree for navigation
 										auto placeholder = currentPath.appendName(name);
