@@ -127,6 +127,13 @@ void importJson(string path)
 {
 	auto s = loadExportFile(path, importMmapData);
 
+	// Check for expert mode mismatch (global expert is set from CLI before import)
+	if (expert && !s.expert)
+		throw new Exception(
+			"--expert was specified but the JSON export was created without expert mode. " ~
+			"Expert metrics are not available in this file."
+		);
+
 	expert = s.expert;
 	physical = s.physical;
 	fsPath = s.fsPath;
