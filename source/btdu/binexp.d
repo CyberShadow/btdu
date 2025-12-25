@@ -105,7 +105,7 @@ import std.bitmanip : nativeToLittleEndian, littleEndianToNative;
 import containers.hashmap : HashMap;
 
 import btdu.alloc : CasualAllocator, growAllocator;
-import btdu.paths : historySize, BrowserPath, SubPath, SharingGroup, Mark;
+import btdu.paths : historySize, BrowserPath, SubPath, SharingGroup, Mark, GlobalPathCache;
 import btdu.proto : Offset;
 import btrfs.c.ioctl : btrfs_ioctl_fs_info_args;
 
@@ -211,6 +211,7 @@ struct BinaryIO(BinaryFormatVersion ver, bool writing)
     {
         SamplingState* targetState;
         DataSet target;
+        GlobalPathCache pathCache;  // Memoization cache for GlobalPath→BrowserPath lookups
     }
 
     // ========================================================================
@@ -982,7 +983,8 @@ void visitSharingGroup(IO)(ref IO io, SharingGroup* group)
             group.data.samples,
             group.data.offsets[],
             group.data.duration,
-            io.target
+            io.target,
+            &io.pathCache
         );
     }
 }
