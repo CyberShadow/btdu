@@ -20,6 +20,7 @@
 module btdu.state;
 
 import std.format : format;
+import std.functional : memoize;
 import std.traits : EnumMembers;
 
 import ae.utils.appender : FastAppender;
@@ -350,7 +351,10 @@ struct CompareResult
 
 /// Find the corresponding node in the comparison tree.
 /// Returns null if the path doesn't exist in comparison or if not in compare mode.
-BrowserPath* findInCompareTree(BrowserPath* path)
+/// Memoized to avoid repeated expensive lookups during sorting.
+alias findInCompareTree = memoize!findInCompareTreeImpl;
+
+private BrowserPath* findInCompareTreeImpl(BrowserPath* path)
 {
 	if (!compareMode)
 		return null;
