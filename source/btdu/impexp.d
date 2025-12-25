@@ -17,6 +17,7 @@ import ae.sys.data;
 import ae.sys.datamm;
 import ae.utils.json;
 
+import btdu.binexp : isBinaryFormat, importBinary, exportBinary;
 import btdu.common : humanSize, humanRelSize, pointerWriter;
 import btdu.paths;
 import btdu.state;
@@ -27,6 +28,7 @@ enum ExportFormat
 	json,   /// Full JSON export with all metadata
 	du,     /// du(1) compatible format
 	human,  /// Human-readable tree output
+	binary, /// Lossless binary format
 }
 
 alias imported = btdu.state.imported;
@@ -34,6 +36,8 @@ alias imported = btdu.state.imported;
 /// Auto-detect import format by inspecting file contents
 Nullable!ExportFormat detectFormat(string path)
 {
+	if (isBinaryFormat(path))
+		return ExportFormat.binary.nullable;
 	if (isJsonFormat(path))
 		return ExportFormat.json.nullable;
 	return Nullable!ExportFormat();
@@ -44,6 +48,8 @@ enum exportExtensions = [
 	".json": ExportFormat.json,
 	".du": ExportFormat.du,
 	".txt": ExportFormat.human,
+	".btdu": ExportFormat.binary,
+	".bin": ExportFormat.binary,
 ];
 
 /// Guess export format from file extension
@@ -72,6 +78,8 @@ void importData(string path)
 	{
 		case ExportFormat.json:
 			return importJson(path);
+		case ExportFormat.binary:
+			return importBinary(path);
 		default:
 			assert(false, "Detected an un-importable format");
 	}
@@ -142,6 +150,9 @@ void importCompareData(string path)
 		case ExportFormat.json:
 			importCompareJson(path);
 			break;
+		case ExportFormat.binary:
+			importBinary(path, DataSet.compare);
+			break;
 		default:
 			assert(false, "Detected an un-importable format");
 	}
@@ -173,6 +184,9 @@ void exportData(string path, ExportFormat fmt = ExportFormat.json)
 			break;
 		case ExportFormat.human:
 			exportHuman(path);
+			break;
+		case ExportFormat.binary:
+			exportBinary(path);
 			break;
 	}
 }
