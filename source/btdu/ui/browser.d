@@ -2576,12 +2576,13 @@ string estimateUndiscoveredStr(BrowserPath* path)
 
 	for (auto child = path.firstChild; child; child = child.nextSibling)
 	{
-		observed++;
 		auto samples = child.getSamples(SampleType.represented);
+		if (samples == 0) continue;
 		if (samples == 1) n1++;
 		else if (samples == 2) n2++;
 		else if (samples == 3) n3++;
 		else if (samples == 4) n4++;
+		observed++;
 	}
 
 	// Global coverage from numSingleSampleGroups (sharing groups sampled exactly once)
