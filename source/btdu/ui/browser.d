@@ -2593,6 +2593,10 @@ string estimateUndiscoveredStr(BrowserPath* path)
 
 	// === Decision logic ===
 
+	// In expert mode, paths may only have non-representative samples
+	if (pathSamples == 0)
+		return withExplanation(null, "(no representative samples)");
+
 	// Use softer language when only one item discovered
 	string likelyMore = observed == 1 ? "and possibly more items" : "and likely more items";
 
