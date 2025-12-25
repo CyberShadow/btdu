@@ -658,6 +658,57 @@ struct GlobalPath
 	mixin PathCmp;
 }
 
+/// Memoization cache for GlobalPath → BrowserPath* lookups.
+/// Speeds up import/rebuild by avoiding repeated tree traversals
+/// for paths with shared prefixes.
+struct GlobalPathCache
+{
+	import std.typecons : Tuple;
+	import containers.internal.hash : generateHash;
+	alias CacheKey = Tuple!(GlobalPath, "path", BrowserPath*, "root");
+	// Disable GC registration - all pointers are managed by custom allocators
+	private HashMap!(CacheKey, BrowserPath*, CasualAllocator, generateHash!CacheKey, false) cache;
+
+	/// Look up or create the BrowserPath for a GlobalPath, using memoization.
+	/// The root parameter is the BrowserPath to start traversal from.
+	BrowserPath* lookup(GlobalPath gp, BrowserPath* root)
+	{
+		auto key = CacheKey(gp, root);
+		if (auto cached = key in cache)
+			return *cached;
+
+		BrowserPath* result;
+
+		// Check if we're at the root (both GlobalPath.parent and SubPath.parent are null)
+		if (gp.parent is null && gp.subPath.parent is null)
+		{
+			// At root - return the root BrowserPath
+			result = root;
+		}
+		else if (gp.subPath.parent is null)
+		{
+			// SubPath is a root but we have a parent GlobalPath - just use parent's result
+			// (root SubPaths have no name to append)
+			result = lookup(*gp.parent, root);
+		}
+		else
+		{
+			// Normal case: look up parent and append this component's name
+			auto parentGP = GlobalPath(gp.parent, gp.subPath.parent);
+			auto parentBP = lookup(parentGP, root);
+			result = parentBP.appendName(gp.subPath.name);
+		}
+
+		cache[key] = result;
+		return result;
+	}
+
+	void clear()
+	{
+		cache.clear();
+	}
+}
+
 /// Sample path (BrowserPath root + GlobalPath)
 /// Combines a BrowserPath prefix (containing special flags like \0DATA)
 /// with a GlobalPath (filesystem path) to provide the same path semantics
