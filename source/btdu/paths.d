@@ -618,6 +618,42 @@ struct GlobalPath
 			.joiner;
 	}
 
+	/// Return an iterator for GlobalPath values from leaf toward root.
+	/// Each element represents the path with one more component removed.
+	/// Useful for memoized path traversal during import/rebuild.
+	auto pathRange()
+	{
+		static struct Range
+		{
+			GlobalPath current;
+
+			bool empty()
+			{
+				return current.parent is null && current.subPath.parent is null;
+			}
+
+			GlobalPath front()
+			{
+				return current;
+			}
+
+			void popFront()
+			{
+				if (current.subPath.parent !is null)
+					current = GlobalPath(current.parent, current.subPath.parent);
+				else
+					current = *current.parent;
+			}
+
+			Range save()
+			{
+				return this;
+			}
+		}
+
+		return Range(this);
+	}
+
 	mixin PathCommon;
 	mixin PathCmp;
 }
