@@ -2064,6 +2064,13 @@ struct Browser
 			import std.process : pipe, spawnProcess, wait;
 			import ae.sys.file : readFile;
 
+			void logMessage(string msg)
+			{
+				outputFile.writeln(msg);
+				outputFile.flush();
+				showMessage(msg);
+			}
+
 			// Prompt for filename
 			auto p = pipe();
 			auto promptMsg = format(
@@ -2080,7 +2087,7 @@ struct Browser
 			auto status = wait(pid);
 			if (status != 0)
 			{
-				showMessage("Export cancelled.");
+				logMessage("Export cancelled.");
 				return;
 			}
 
@@ -2104,14 +2111,14 @@ struct Browser
 				auto status2 = wait(pid2);
 				if (status2 != 0 || answer.length == 0 || (answer[0] != 'y' && answer[0] != 'Y'))
 				{
-					showMessage("Export cancelled.");
+					logMessage("Export cancelled.");
 					return;
 				}
 			}
 
 			outputFile.writeln("Exporting..."); outputFile.flush();
 			exportData(path, fmt);
-			showMessage("Exported to " ~ path);
+			logMessage("Exported to " ~ path);
 		});
 	}
 
