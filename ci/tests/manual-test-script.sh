@@ -14,7 +14,7 @@ set -eEuo pipefail
 if [[ ! -v BTDU_IN_UNSHARE ]] ; then
 
     echo -e "${BLUE}Building btdu...${NC}"
-    dub build
+    dub build --build=checked
 
     echo -e "${BLUE}Entering mount namespace...${NC}"
 
