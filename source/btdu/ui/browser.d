@@ -388,7 +388,8 @@ struct Browser
 
 	void update()
 	{
-		debug(check) checkState(); scope(success) debug(check) checkState();
+		debug(check) checkState();
+		scope(success) debug(check) checkState();
 
 		auto wand = curses.getWand();
 		with (wand)

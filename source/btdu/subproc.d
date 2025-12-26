@@ -335,7 +335,8 @@ struct Subprocess
 
 	void handleMessage(ResultEndMessage m)
 	{
-		debug(check) checkState(); scope(success) debug(check) checkState();
+		debug(check) checkState();
+		scope(success) debug(check) checkState();
 
 		if (result.ignoringOffset)
 		{

@@ -272,7 +272,9 @@ debug(check) void checkState()
 /// Called when something is marked or unmarked.
 void invalidateMark()
 {
-	debug(check) checkState(); scope(success) debug(check) checkState();
+	debug(check) checkState();
+	scope(success) debug(check) checkState();
+
 	markTotalSamples = 0;
 	if (expert)
 		marked.resetNodeSamples(SampleType.exclusive);
@@ -281,7 +283,9 @@ void invalidateMark()
 /// Update stats in `marked` for a redisplay.
 void updateMark()
 {
-	debug(check) checkState(); scope(success) debug(check) checkState();
+	debug(check) checkState();
+	scope(success) debug(check) checkState();
+
 	static foreach (sampleType; EnumMembers!SampleType)
 		if (sampleType != SampleType.exclusive)
 			marked.resetNodeSamples(sampleType);
@@ -639,7 +643,8 @@ RebuildState rebuildState;
 /// Call processRebuildStep() repeatedly until rebuildState.inProgress is false.
 void startRebuild()
 {
-	debug(check) checkState(); scope(success) debug(check) checkState();
+	debug(check) checkState();
+	scope(success) debug(check) checkState();
 
 	// Reset all BrowserPath sample data and sharing group links
 	browserRoot.reset();
@@ -658,7 +663,8 @@ void startRebuild()
 /// Returns: true if there is more work to do, false if rebuild is complete.
 bool processRebuildStep()
 {
-	debug(check) checkState(); scope(success) debug(check) checkState();
+	debug(check) checkState();
+	scope(success) debug(check) checkState();
 
 	if (rebuildState.range.empty)
 		return false;
