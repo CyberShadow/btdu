@@ -804,33 +804,36 @@ struct BrowserPath
 		assert(!(firstSharingGroup && firstChild),
 			"%s: Node has both sharing groups and children".format(this));
 
-		// The tree is not consistent during rebuild - the structure remains,
-		// but nodes may not have their sharing groups reassigned yet.
-		if (!rebuildState.inProgress)
+		// Root and special nodes may be temporarily inconsistent
+		// while we are in the middle of processing a message
+		auto isRoot = !parent;
+		auto isSpecial = name[].startsWith("\0");
+		if (!isRoot && !isSpecial)
 		{
-			// Root and special nodes may be temporarily inconsistent
-			// while we are in the middle of processing a message
-			auto isRoot = !parent;
-			auto isSpecial = name[].startsWith("\0");
-			if (!isRoot && !isSpecial)
+			// During rebuild, sharing groups are cleared then re-linked one by one,
+			// so leaf nodes temporarily have neither children nor sharing groups.
+			// Skip this check during rebuild.
+			if (!rebuildState.inProgress)
 			{
 				// Non-root nodes must have either children or sharing groups
 				assert(firstChild || firstSharingGroup,
 					"%s: Non-root non-special node has neither children nor sharing groups".format(this));
-
-				// aggregateData should match needsAggregateData
-				assert(hasCorrectAggregateDataState,
-					"%s: aggregateData state mismatch: needsAggregateData = %s, but aggregateData %s null. Node has %s and %s"
-						.format(
-							this, needsAggregateData, aggregateData ? "is not" : "is",
-							!firstChild ? "no children" : !firstChild.nextSibling ? "one child" : "multiple children",
-							firstSharingGroup ? "sharing groups" : "no sharing groups"
-						));
 			}
+
+			// aggregateData check: tree structure doesn't change during rebuild,
+			// so multi-child nodes should always have aggregateData.
+			assert(hasCorrectAggregateDataState,
+				"%s: aggregateData state mismatch: needsAggregateData = %s, but aggregateData %s null. Node has %s and %s"
+					.format(
+						this, needsAggregateData, aggregateData ? "is not" : "is",
+						!firstChild ? "no children" : !firstChild.nextSibling ? "one child" : "multiple children",
+						firstSharingGroup ? "sharing groups" : "no sharing groups"
+					));
 		}
 
 		// For nodes with aggregateData, verify it matches children's samples
-		if (aggregateData)
+		// Skip during rebuild since samples are being recomputed
+		if (aggregateData && !rebuildState.inProgress)
 		{
 			ulong total = 0;
 			for (const(BrowserPath)* p = firstChild; p; p = p.nextSibling)
