@@ -700,6 +700,18 @@ bool processRebuildStep()
 		// Recalculate which path is the representative under current rules
 		group.representativeIndex = selectRepresentativeIndex(group.paths);
 
+		// Determine which dataset this group belongs to by walking up to the tree root
+		BrowserPath* treeRoot = group.root;
+		while (treeRoot.parent !is null)
+			treeRoot = treeRoot.parent;
+		DataSet target;
+		if (treeRoot is browserRootPtr)
+			target = DataSet.main;
+		else if (treeRoot is compareRootPtr)
+			target = DataSet.compare;
+		else
+			assert(false, "SharingGroup root does not belong to any known tree");
+
 		// Repopulate BrowserPath tree from this group's stored data
 		// During rebuild, aggregateData already exists (just zeroed by reset),
 		// so updateStructure won't trigger ensureAggregateData capture.
@@ -709,7 +721,8 @@ bool processRebuildStep()
 			true,  // needsLinking - always true for rebuild
 			group.data.samples,
 			group.data.offsets[],
-			group.data.duration
+			group.data.duration,
+			target
 		);
 
 		rebuildState.range.popFront();
