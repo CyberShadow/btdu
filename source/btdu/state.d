@@ -105,6 +105,10 @@ RootInfo[u64] globalRoots;
 HashSet!(SharingGroup.Paths, CasualAllocator, SharingGroup.Paths.hashOf, false, true) sharingGroups;
 
 /// Slab allocator instance for SharingGroups - enables efficient iteration over all groups.
+/// Note: In compare mode, both main and compare datasets share this allocator.
+/// Each SharingGroup's `root` pointer indicates which tree it belongs to.
+/// This shared usage means binary export is not supported in compare mode,
+/// as we cannot distinguish which groups belong to which dataset during iteration.
 SlabAllocator!SharingGroup sharingGroupAllocator;
 
 /// Total number of created sharing groups
