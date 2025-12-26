@@ -90,11 +90,6 @@ The format is designed for:
 - Forward compatibility via version field
 - Lossless round-trips of all sampling data
 
-Limitations:
-- Binary export is not supported in compare mode. When comparing datasets,
-  both the main and compare data share the same sharingGroupAllocator,
-  making it difficult to distinguish which groups belong to which dataset.
-
 See also: ExportFormat enum for available export formats.
 +/
 module btdu.binexp;
@@ -906,8 +901,7 @@ void visitSharingGroup(IO)(ref IO io, SharingGroup* group)
 {
     import std.experimental.allocator : make, makeArray;
     import std.typecons : Tuple;
-    import btdu.state : sharingGroupAllocator,
-        numSharingGroups, numSingleSampleGroups, populateBrowserPathsFromSharingGroup;
+    import btdu.state : populateBrowserPathsFromSharingGroup;
 
     alias Index = IO.Index;
 
@@ -917,9 +911,9 @@ void visitSharingGroup(IO)(ref IO io, SharingGroup* group)
     // Wire format for Offset: signed longs for efficient zigzag encoding of -1
     alias OffsetWire = Tuple!(long, "logical", long, "devID", long, "physical");
 
-    // For reading: allocate the group upfront
+    // For reading: allocate the group upfront using target dataset's allocator
     static if (!IO.isWriting)
-        group = make!SharingGroup(sharingGroupAllocator);
+        group = make!SharingGroup(io.targetState.sharingGroupAllocator);
 
     // Browser root index
     visitBrowserRootIndex(io, group.root);
@@ -977,13 +971,10 @@ void visitSharingGroup(IO)(ref IO io, SharingGroup* group)
     {
         group.pathData = growAllocator.makeArray!(SharingGroup.PathData)(group.paths.length).ptr;
 
-        // Only update global counters for main dataset
-        if (io.target == DataSet.main)
-        {
-            numSharingGroups++;
-            if (group.data.samples == 1)
-                numSingleSampleGroups++;
-        }
+        // Update counters for target dataset
+        io.targetState.numSharingGroups++;
+        if (group.data.samples == 1)
+            io.targetState.numSingleSampleGroups++;
 
         populateBrowserPathsFromSharingGroup(
             group,
@@ -1037,7 +1028,7 @@ void visitMarks(IO, MarksList)(ref IO io, MarksList marksList)
 // Export
 // ============================================================================
 
-import btdu.state : browserRoot, browserRootPtr, globalRoots, sharingGroupAllocator, expert, physical, totalSize, fsPath, fsid, imported, compareMode;
+import btdu.state : browserRoot, browserRootPtr, globalRoots, sharingGroupAllocator, expert, physical, totalSize, fsPath, fsid, imported;
 
 void exportBinary(BinaryFormatVersion ver = latestBinaryFormatVersion)(string path)
 {
@@ -1050,13 +1041,6 @@ void exportBinary(BinaryFormatVersion ver = latestBinaryFormatVersion)(string pa
     enforce(!imported || sharingGroupAllocator[].length > 0,
         "Cannot export to binary format: data was imported from JSON which lacks " ~
         "the detailed sampling information required by the binary format. " ~
-        "Use JSON format instead (--export-format=json).");
-
-    // Binary export in compare mode is not supported because both datasets share
-    // the same sharingGroupAllocator, and we cannot distinguish which groups
-    // belong to which dataset.
-    enforce(!compareMode,
-        "Cannot export to binary format in compare mode. " ~
         "Use JSON format instead (--export-format=json).");
 
     auto file = path is null

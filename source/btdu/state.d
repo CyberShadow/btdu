@@ -75,8 +75,37 @@ struct SamplingState
 	typeof(btrfs_ioctl_fs_info_args.fsid) fsid;
 	RootInfo[u64] roots;
 
+	/// Deduplicates sharing groups - multiple samples with the same set of paths
+	/// will reference the same SharingGroup and just increment its sample count.
+	HashSet!(SharingGroup.Paths, CasualAllocator, SharingGroup.Paths.hashOf, false, true) sharingGroups;
+
+	/// Slab allocator instance for SharingGroups - enables efficient iteration over all groups.
+	SlabAllocator!SharingGroup sharingGroupAllocator;
+
+	/// Total number of created sharing groups
+	size_t numSharingGroups;
+	/// Number of sharing groups with exactly 1 sample
+	size_t numSingleSampleGroups;
+
+	/// State for incremental rebuild from sharing groups
+	RebuildState rebuildState;
+
 	/// Returns pointer to browserRoot
 	BrowserPath* rootPtr() return { return &browserRoot; }
+}
+
+/// State for incremental rebuild from sharing groups
+struct RebuildState
+{
+	alias Range = SlabAllocator!SharingGroup.Range;
+
+	Range range;          /// Range over sharing groups to process
+	size_t processed;     /// Number of groups processed so far
+	size_t total;         /// Total number of groups to process
+	size_t step;          /// Number of groups to process per step (1% of total)
+
+	bool inProgress() const { return !range.empty; }
+	int progressPercent() const { return total > 0 ? cast(int)(processed * 100 / total) : 0; }
 }
 
 // ============================================================
@@ -99,22 +128,6 @@ string fsPath;
 btrfs_ioctl_dev_info_args[] devices;
 SubPath subPathRoot;
 
-/// Deduplicates sharing groups - multiple samples with the same set of paths
-/// will reference the same SharingGroup and just increment its sample count.
-HashSet!(SharingGroup.Paths, CasualAllocator, SharingGroup.Paths.hashOf, false, true) sharingGroups;
-
-/// Slab allocator instance for SharingGroups - enables efficient iteration over all groups.
-/// Note: In compare mode, both main and compare datasets share this allocator.
-/// Each SharingGroup's `root` pointer indicates which tree it belongs to.
-/// This shared usage means binary export is not supported in compare mode,
-/// as we cannot distinguish which groups belong to which dataset during iteration.
-SlabAllocator!SharingGroup sharingGroupAllocator;
-
-/// Total number of created sharing groups
-size_t numSharingGroups;
-/// Number of sharing groups with exactly 1 sample
-size_t numSingleSampleGroups;
-
 // ============================================================
 // Compatibility shims - forward to states[DataSet.xxx]
 // ============================================================
@@ -127,6 +140,10 @@ size_t numSingleSampleGroups;
 BrowserPath* browserRootPtr() { return states[DataSet.main].rootPtr; }
 @property ref fsid() { return states[DataSet.main].fsid; }
 @property ref globalRoots() { return states[DataSet.main].roots; }
+@property ref sharingGroups() { return states[DataSet.main].sharingGroups; }
+@property ref sharingGroupAllocator() { return states[DataSet.main].sharingGroupAllocator; }
+@property ref numSharingGroups() { return states[DataSet.main].numSharingGroups; }
+@property ref numSingleSampleGroups() { return states[DataSet.main].numSingleSampleGroups; }
 
 // Compare state shims
 @property ref compareTotalSize() { return states[DataSet.compare].totalSize; }
@@ -640,23 +657,26 @@ void populateBrowserPathsFromSharingGroup(
 				group.pathData[i].path.checkState();
 }
 
-/// State for incremental rebuild from sharing groups
-struct RebuildState
+/// Check if any rebuild is in progress
+bool rebuildInProgress()
 {
-	alias Range = typeof(sharingGroupAllocator).Range;
-
-	Range range;          /// Range over sharing groups to process
-	size_t processed;     /// Number of groups processed so far
-	size_t total;         /// Total number of groups to process
-	size_t step;          /// Number of groups to process per step (1% of total)
-
-	bool inProgress() const { return !range.empty; }
-	int progressPercent() const { return total > 0 ? cast(int)(processed * 100 / total) : 0; }
+	return states[DataSet.main].rebuildState.inProgress ||
+	       (compareMode && states[DataSet.compare].rebuildState.inProgress);
 }
-RebuildState rebuildState;
+
+/// Get overall rebuild progress as a string
+string rebuildProgress()
+{
+	if (states[DataSet.main].rebuildState.inProgress)
+		return format!"Rebuilding... %d%%"(states[DataSet.main].rebuildState.progressPercent);
+	else if (compareMode && states[DataSet.compare].rebuildState.inProgress)
+		return format!"Rebuilding baseline... %d%%"(states[DataSet.compare].rebuildState.progressPercent);
+	else
+		return "Done";
+}
 
 /// Start an incremental rebuild of the BrowserPath tree from all SharingGroups.
-/// Call processRebuildStep() repeatedly until rebuildState.inProgress is false.
+/// Call processRebuildStep() repeatedly until rebuildInProgress() is false.
 void startRebuild()
 {
 	debug(check) checkState();
@@ -668,18 +688,31 @@ void startRebuild()
 		compareRoot.reset();
 	markTotalSamples = 0;
 
+	// Initialize rebuild for main dataset
+	initRebuildForDataset(DataSet.main);
+
+	// Initialize rebuild for compare dataset if in compare mode
+	if (compareMode)
+		initRebuildForDataset(DataSet.compare);
+}
+
+/// Initialize rebuild state for a specific dataset
+private void initRebuildForDataset(DataSet dataset)
+{
+	auto state = &states[dataset];
+
 	// Clear all pathData[i].next pointers to avoid stale values causing cycles
-	foreach (ref group; sharingGroupAllocator[])
+	foreach (ref group; state.sharingGroupAllocator[])
 		foreach (i; 0 .. group.paths.length)
 			group.pathData[i].next = null;
 
 	// Initialize rebuild state with a range over all current sharing groups
-	rebuildState.range = sharingGroupAllocator[];
-	rebuildState.total = rebuildState.range.length;
-	rebuildState.processed = 0;
-	rebuildState.step = rebuildState.total / 100;
-	if (rebuildState.step == 0)
-		rebuildState.step = 1;
+	state.rebuildState.range = state.sharingGroupAllocator[];
+	state.rebuildState.total = state.rebuildState.range.length;
+	state.rebuildState.processed = 0;
+	state.rebuildState.step = state.rebuildState.total / 100;
+	if (state.rebuildState.step == 0)
+		state.rebuildState.step = 1;
 }
 
 /// Process one step of the incremental rebuild (1% of total sharing groups).
@@ -689,46 +722,45 @@ bool processRebuildStep()
 	debug(check) checkState();
 	scope(success) debug(check) checkState();
 
-	if (rebuildState.range.empty)
-		return false;
-
-	size_t count = 0;
-	while (!rebuildState.range.empty && count < rebuildState.step)
+	// Process main dataset first, then compare
+	foreach (dataset; [DataSet.main, DataSet.compare])
 	{
-		SharingGroup* group = &rebuildState.range.front();
+		if (dataset == DataSet.compare && !compareMode)
+			continue;
 
-		// Recalculate which path is the representative under current rules
-		group.representativeIndex = selectRepresentativeIndex(group.paths);
+		auto state = &states[dataset];
+		if (state.rebuildState.range.empty)
+			continue;
 
-		// Determine which dataset this group belongs to by walking up to the tree root
-		BrowserPath* treeRoot = group.root;
-		while (treeRoot.parent !is null)
-			treeRoot = treeRoot.parent;
-		DataSet target;
-		if (treeRoot is browserRootPtr)
-			target = DataSet.main;
-		else if (treeRoot is compareRootPtr)
-			target = DataSet.compare;
-		else
-			assert(false, "SharingGroup root does not belong to any known tree");
+		size_t count = 0;
+		while (!state.rebuildState.range.empty && count < state.rebuildState.step)
+		{
+			SharingGroup* group = &state.rebuildState.range.front();
 
-		// Repopulate BrowserPath tree from this group's stored data
-		// During rebuild, aggregateData already exists (just zeroed by reset),
-		// so updateStructure won't trigger ensureAggregateData capture.
-		// addSamples simply increments the zeroed values.
-		populateBrowserPathsFromSharingGroup(
-			group,
-			true,  // needsLinking - always true for rebuild
-			group.data.samples,
-			group.data.offsets[],
-			group.data.duration,
-			target
-		);
+			// Recalculate which path is the representative under current rules
+			group.representativeIndex = selectRepresentativeIndex(group.paths);
 
-		rebuildState.range.popFront();
-		rebuildState.processed++;
-		count++;
+			// Repopulate BrowserPath tree from this group's stored data
+			// During rebuild, aggregateData already exists (just zeroed by reset),
+			// so updateStructure won't trigger ensureAggregateData capture.
+			// addSamples simply increments the zeroed values.
+			populateBrowserPathsFromSharingGroup(
+				group,
+				true,  // needsLinking - always true for rebuild
+				group.data.samples,
+				group.data.offsets[],
+				group.data.duration,
+				dataset
+			);
+
+			state.rebuildState.range.popFront();
+			state.rebuildState.processed++;
+			count++;
+		}
+
+		// Check if there's actually more work (this dataset or next)
+		return rebuildInProgress();
 	}
 
-	return !rebuildState.range.empty;
+	return false;  // All done
 }

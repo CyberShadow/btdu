@@ -810,7 +810,7 @@ struct BrowserPath
 
 	debug(check) void checkState() const
 	{
-		import btdu.state : rebuildState, compareMode;
+		import btdu.state : rebuildInProgress, compareMode;
 
 		// Check children first (because our validity depends on theirs)
 		for (const(BrowserPath)* p = firstChild; p; p = p.nextSibling)
@@ -832,7 +832,7 @@ struct BrowserPath
 			// In compare mode, placeholder nodes (created by the browser to enforce
 			// tree symmetry) may exist for items only in the compare baseline -
 			// these legitimately have no sharing groups.
-			if (!rebuildState.inProgress && !compareMode)
+			if (!rebuildInProgress() && !compareMode)
 			{
 				// Non-root nodes must have either children or sharing groups
 				assert(firstChild || firstSharingGroup,
@@ -852,7 +852,7 @@ struct BrowserPath
 
 		// For nodes with aggregateData, verify it matches children's samples
 		// Skip during rebuild since samples are being recomputed
-		if (aggregateData && !rebuildState.inProgress)
+		if (aggregateData && !rebuildInProgress())
 		{
 			ulong total = 0;
 			for (const(BrowserPath)* p = firstChild; p; p = p.nextSibling)
