@@ -650,6 +650,11 @@ void startRebuild()
 	browserRoot.reset();
 	markTotalSamples = 0;
 
+	// Clear all pathData[i].next pointers to avoid stale values causing cycles
+	foreach (ref group; sharingGroupAllocator[])
+		foreach (i; 0 .. group.paths.length)
+			group.pathData[i].next = null;
+
 	// Initialize rebuild state with a range over all current sharing groups
 	rebuildState.range = sharingGroupAllocator[];
 	rebuildState.total = rebuildState.range.length;
