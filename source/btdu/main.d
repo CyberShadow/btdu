@@ -163,6 +163,15 @@ Please report defects and enhancement requests to the GitHub issue tracker:
 			if (comparePhysical != physical)
 				stderr.writeln("Warning: Physical mode mismatch between files");
 		}
+
+		// Warn if comparing exports from different filesystems
+		if (fsid != typeof(fsid).init && compareFsid != typeof(compareFsid).init && fsid != compareFsid)
+		{
+			import std.uuid : UUID;
+			stderr.writefln("Warning: Filesystem UUID mismatch - comparing different filesystems");
+			stderr.writefln("  Current:  %s", UUID(fsid));
+			stderr.writefln("  Baseline: %s", UUID(compareFsid));
+		}
 	}
 
 	Duration parsedMaxTime;
