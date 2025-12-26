@@ -215,7 +215,7 @@ struct Deleter
 			this.state.stopping = true;
 			this.state.status = Status.progress;
 		}
-		this.subvolumeResume.set();
+		this.subvolumeResume.setIfInitialized();
 	}
 
 	void stop()
