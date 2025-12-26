@@ -2060,8 +2060,11 @@ struct Browser
 		auto defaultFilename = UUID(fsid).toString() ~ suggestedExt;
 
 		curses.suspend((inputFile, outputFile) {
+			import std.file : exists;
 			import std.process : pipe, spawnProcess, wait;
 			import ae.sys.file : readFile;
+
+			// Prompt for filename
 			auto p = pipe();
 			auto promptMsg = format(
 				`printf 'Exporting as %s.\nFile name [%s]: ' >&2 && read -r fn && printf -- %%s "$fn"`,
@@ -2075,15 +2078,40 @@ struct Browser
 			);
 			auto output = p.readEnd.readFile();
 			auto status = wait(pid);
-			if (status == 0)
+			if (status != 0)
 			{
-				auto path = output.length ? cast(string)output : defaultFilename;
-				outputFile.writeln("Exporting..."); outputFile.flush();
-				exportData(path, fmt);
-				showMessage("Exported to " ~ path);
-			}
-			else
 				showMessage("Export cancelled.");
+				return;
+			}
+
+			auto path = output.length ? cast(string)output : defaultFilename;
+
+			// Check for overwrite confirmation
+			if (path.exists)
+			{
+				auto p2 = pipe();
+				auto confirmMsg = format(
+					`printf 'File "%s" already exists. Overwrite? [y/N]: ' >&2 && read -r -n 1 ans && echo >&2 && printf -- %%s "$ans"`,
+					path
+				);
+				auto pid2 = spawnProcess(
+					["/bin/sh", "-c", confirmMsg],
+					inputFile,
+					p2.writeEnd,
+					outputFile,
+				);
+				auto answer = cast(string)p2.readEnd.readFile();
+				auto status2 = wait(pid2);
+				if (status2 != 0 || answer.length == 0 || (answer[0] != 'y' && answer[0] != 'Y'))
+				{
+					showMessage("Export cancelled.");
+					return;
+				}
+			}
+
+			outputFile.writeln("Exporting..."); outputFile.flush();
+			exportData(path, fmt);
+			showMessage("Exported to " ~ path);
 		});
 	}
 
