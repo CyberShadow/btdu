@@ -73,6 +73,7 @@ struct SamplingState
 	bool physical;
 	BrowserPath browserRoot;
 	typeof(btrfs_ioctl_fs_info_args.fsid) fsid;
+	RootInfo[u64] roots;
 
 	/// Returns pointer to browserRoot
 	BrowserPath* rootPtr() return { return &browserRoot; }
@@ -97,7 +98,6 @@ bool exportSeenAs;
 string fsPath;
 btrfs_ioctl_dev_info_args[] devices;
 SubPath subPathRoot;
-RootInfo[u64] globalRoots;
 
 /// Deduplicates sharing groups - multiple samples with the same set of paths
 /// will reference the same SharingGroup and just increment its sample count.
@@ -126,6 +126,7 @@ size_t numSingleSampleGroups;
 @property ref browserRoot() { return states[DataSet.main].browserRoot; }
 BrowserPath* browserRootPtr() { return states[DataSet.main].rootPtr; }
 @property ref fsid() { return states[DataSet.main].fsid; }
+@property ref globalRoots() { return states[DataSet.main].roots; }
 
 // Compare state shims
 @property ref compareTotalSize() { return states[DataSet.compare].totalSize; }
@@ -134,6 +135,7 @@ BrowserPath* browserRootPtr() { return states[DataSet.main].rootPtr; }
 @property ref compareRoot() { return states[DataSet.compare].browserRoot; }
 BrowserPath* compareRootPtr() { return states[DataSet.compare].rootPtr; }
 @property ref compareFsid() { return states[DataSet.compare].fsid; }
+@property ref compareRoots() { return states[DataSet.compare].roots; }
 
 /// Disk visualization map - tracks statistics per visual sector
 struct DiskMap
