@@ -171,6 +171,17 @@ struct SharingGroup
 		return index != size_t.max ? this.pathData[index].next : null;
 	}
 
+	/// Count how many times a BrowserPath appears in this sharing group's pathData.
+	/// This handles the case where the same file uses the same extent multiple times.
+	size_t countOccurrences(const(BrowserPath)* browserPath) const
+	{
+		size_t count = 0;
+		foreach (i; 0 .. this.paths.length)
+			if (this.pathData[i].path is browserPath)
+				count++;
+		return count;
+	}
+
 	/// Wrapper type for hashing/equality based on root and paths
 	/// Used as key in HashSet for deduplication
 	static struct Paths
