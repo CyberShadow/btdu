@@ -135,6 +135,7 @@ struct Subprocess
 		if (!totalSize)
 		{
 			totalSize = m.totalSize;
+			fsid = m.fsid;
 			devices = m.devices;
 		}
 	}
