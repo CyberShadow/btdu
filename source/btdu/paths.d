@@ -861,6 +861,21 @@ struct BrowserPath
 						!firstChild ? "no children" : !firstChild.nextSibling ? "one child" : "multiple children"
 					));
 		}
+
+		// Check sharing group linkage
+		{
+			size_t numGroups;
+			const(SharingGroup)* previouslySeenGroup;
+			for (const(SharingGroup)* group = firstSharingGroup; group !is null; group = group.getNext(&this))
+			{
+				numGroups++;
+				if ((numGroups & (numGroups - 1)) == 0) // at every power of 2
+					previouslySeenGroup = group;
+				else
+				if (previouslySeenGroup && previouslySeenGroup is group)
+					assert(false, "%s: Sharing group %s appears twice".format(this, group));
+			}
+		}
 	}
 
 	private R getData(R)(
