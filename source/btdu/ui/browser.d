@@ -2032,6 +2032,8 @@ struct Browser
 
 	void promptForExportFilename(ExportFormat fmt)
 	{
+		import std.uuid : UUID;
+
 		// Get format name and suggested extension
 		string formatName, suggestedExt;
 		final switch (fmt)
@@ -2054,13 +2056,16 @@ struct Browser
 				break;
 		}
 
+		// Generate default filename from filesystem UUID
+		auto defaultFilename = UUID(fsid).toString() ~ suggestedExt;
+
 		curses.suspend((inputFile, outputFile) {
 			import std.process : pipe, spawnProcess, wait;
 			import ae.sys.file : readFile;
 			auto p = pipe();
 			auto promptMsg = format(
-				`printf 'Exporting as %s.\nFile name (e.g., results%s): ' >&2 && read -r fn && printf -- %%s "$fn"`,
-				formatName, suggestedExt
+				`printf 'Exporting as %s.\nFile name [%s]: ' >&2 && read -r fn && printf -- %%s "$fn"`,
+				formatName, defaultFilename
 			);
 			auto pid = spawnProcess(
 				["/bin/sh", "-c", promptMsg],
@@ -2070,9 +2075,9 @@ struct Browser
 			);
 			auto output = p.readEnd.readFile();
 			auto status = wait(pid);
-			if (status == 0 && output.length)
+			if (status == 0)
 			{
-				auto path = cast(string)output;
+				auto path = output.length ? cast(string)output : defaultFilename;
 				outputFile.writeln("Exporting..."); outputFile.flush();
 				exportData(path, fmt);
 				showMessage("Exported to " ~ path);
