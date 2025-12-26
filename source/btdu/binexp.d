@@ -16,7 +16,82 @@
  * Boston, MA 021110-1307, USA.
  */
 
-/// Binary import/export format
+/++
+Binary import/export format for btdu.
+
+The binary format provides lossless serialization of btdu's sampling data,
+enabling exact restoration of all metrics (represented, distributed, exclusive,
+shared sizes) and supporting comparison operations between exports.
+
+Unlike JSON export, the binary format always contains complete data for all
+size metrics regardless of whether --expert was specified during sampling.
+The --expert flag is specified at import time to control whether expert
+metrics are computed and displayed (which uses more memory, just like during
+live sampling).
+
+Format Overview:
+----------------
+The format uses a versioned header for forward compatibility. All multi-byte
+integers are little-endian. Variable-length integers use unsigned LEB128
+encoding (64-bit values) or fixed-size encoding (smaller integers).
+
+Version History:
+- v1: Initial version
+- v2: Added filesystem UUID (fsid) to header
+
+File Structure:
+```
+┌─────────────────────────────────────────────────────────────────┐
+│ Header                                                          │
+│   - Magic: "BTDU\0BIN" (8 bytes)                                │
+│   - Version: uint32 (format version)                            │
+│   - Flags: uint32 (expert=0x1, physical=0x2)                    │
+│   - Fsid: 16 bytes (filesystem UUID, v2+)                       │
+│   - TotalSize: varint (filesystem size in bytes)                │
+├─────────────────────────────────────────────────────────────────┤
+│ Filesystem Path (length-prefixed string)                        │
+├─────────────────────────────────────────────────────────────────┤
+│ String Table                                                    │
+│   - Count: varint                                               │
+│   - Strings: length-prefixed byte arrays (sorted, deduplicated) │
+├─────────────────────────────────────────────────────────────────┤
+│ SubPath Table (delta-encoded)                                   │
+│   - Count: varint                                               │
+│   - Entries: (nameIndex, parentIndex) pairs                     │
+├─────────────────────────────────────────────────────────────────┤
+│ Roots Table (delta-encoded)                                     │
+│   - Count: varint                                               │
+│   - Entries: (rootID, parentRootIndex, subPathIndex) tuples     │
+├─────────────────────────────────────────────────────────────────┤
+│ BrowserRoots Table (delta-encoded)                              │
+│   - Count: varint                                               │
+│   - Entries: (parentIndex, nameIndex) pairs                     │
+├─────────────────────────────────────────────────────────────────┤
+│ SharingGroups                                                   │
+│   - Count: varint                                               │
+│   - Groups: each contains paths, samples, offsets, duration     │
+├─────────────────────────────────────────────────────────────────┤
+│ Marks                                                           │
+│   - Count: varint                                               │
+│   - Entries: (browserRootIndex, marked) pairs                   │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+Encoding Details:
+-----------------
+- Varints: Unsigned LEB128 for 64-bit values (1-10 bytes depending on magnitude)
+- Signed varints: Zigzag encoding then LEB128 (efficient for small negative values)
+- Delta encoding: Sequential values stored as differences from previous value
+- Indices: -1 represents null/root, otherwise 0-based index into respective table
+
+The format is designed for:
+- Compact size through delta and varint encoding
+- Fast sequential reading (memory-mapped, single pass)
+- Forward compatibility via version field
+- Lossless round-trips of all sampling data
+
+See also: ExportFormat enum for available export formats.
++/
 module btdu.binexp;
 
 import std.conv : to;
