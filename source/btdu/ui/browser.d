@@ -2099,23 +2099,31 @@ struct Browser
 
 			auto path = output.length ? cast(string)output : defaultFilename;
 
-			// Check for overwrite confirmation
-			if (path.exists)
+			// Helper to prompt for a single keypress and return it
+			// Returns null if the read failed (e.g., user pressed Ctrl+C)
+			import std.typecons : Nullable;
+			Nullable!string readKey(string prompt)
 			{
 				auto p2 = pipe();
-				auto confirmMsg = format(
-					`printf 'File "%s" already exists. Overwrite? [y/N]: ' >&2 && read -r -n 1 ans && echo >&2 && printf -- %%s "$ans"`,
-					path
-				);
+				auto cmd = format(`printf '%s' >&2 && read -r -n 1 ans && echo >&2 && printf -- %%s "$ans"`, prompt);
 				auto pid2 = spawnProcess(
-					["/bin/sh", "-c", confirmMsg],
+					["/bin/sh", "-c", cmd],
 					inputFile,
 					p2.writeEnd,
 					outputFile,
 				);
 				auto answer = cast(string)p2.readEnd.readFile();
-				auto status2 = wait(pid2);
-				if (status2 != 0 || answer.length == 0 || (answer[0] != 'y' && answer[0] != 'Y'))
+				auto status = wait(pid2);
+				if (status != 0)
+					return Nullable!string.init;
+				return Nullable!string(answer);
+			}
+
+			// Check for overwrite confirmation
+			if (path.exists)
+			{
+				auto answer = readKey(format(`File "%s" already exists. Overwrite? [y/N]: `, path));
+				if (answer.isNull || answer.get.length == 0 || (answer.get[0] != 'y' && answer.get[0] != 'Y'))
 				{
 					logMessage("Export cancelled.");
 					return;
