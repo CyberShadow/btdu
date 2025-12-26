@@ -32,6 +32,8 @@ import containers.hashmap : HashMap;
 import btdu.alloc : CasualAllocator, growAllocator;
 import btdu.paths : historySize, BrowserPath, SubPath, SharingGroup, Mark;
 import btdu.proto : Offset;
+import btrfs.c.ioctl : btrfs_ioctl_fs_info_args;
+
 import btdu.state : DataSet, SamplingState, subPathAllocator, subPathRoot;
 
 static import btdu.paths;
@@ -40,6 +42,7 @@ alias PathsGlobalPath = btdu.paths.GlobalPath;
 enum BinaryFormatVersion : uint
 {
     v1 = 1,
+    v2 = 2,    /// Added fsid to header
 }
 enum latestBinaryFormatVersion = BinaryFormatVersion.max;
 
@@ -62,6 +65,9 @@ struct BinaryHeader(BinaryFormatVersion ver = latestBinaryFormatVersion)
         physical = 1 << 1,
     }
     Flags flags;
+
+    static if (ver >= BinaryFormatVersion.v2)
+        typeof(btrfs_ioctl_fs_info_args.fsid) fsid; /// Filesystem UUID (v2+)
 
     ulong totalSize; /// Total size of the sampled filesystem (not export file)
     // Array lengths are encoded inline with each array (length-prefixed format).
@@ -951,7 +957,7 @@ void visitMarks(IO, MarksList)(ref IO io, MarksList marksList)
 // Export
 // ============================================================================
 
-import btdu.state : browserRoot, browserRootPtr, globalRoots, sharingGroupAllocator, expert, physical, totalSize, fsPath, imported;
+import btdu.state : browserRoot, browserRootPtr, globalRoots, sharingGroupAllocator, expert, physical, totalSize, fsPath, fsid, imported;
 
 void exportBinary(BinaryFormatVersion ver = latestBinaryFormatVersion)(string path)
 {
@@ -1083,6 +1089,7 @@ void exportBinary(BinaryFormatVersion ver = latestBinaryFormatVersion)(string pa
     // ========================================================================
 
     Header header;
+    header.fsid = fsid;
     header.totalSize = totalSize;
 
     if (expert)
@@ -1134,7 +1141,7 @@ void importBinary(string path, DataSet target = DataSet.main)
 
 void importBinaryImpl(BinaryFormatVersion ver)(const(ubyte)[] data, DataSet target)
 {
-    import btdu.state : imported, states, compareMode;
+    import btdu.state : imported, states, compareMode, fsid;
     debug(check) import btdu.state : checkState;
 
     alias Header = BinaryHeader!ver;
@@ -1160,7 +1167,11 @@ void importBinaryImpl(BinaryFormatVersion ver)(const(ubyte)[] data, DataSet targ
     string fileFsPath;
     visitFsPath(io, fileFsPath);
     if (target == DataSet.main)
+    {
         fsPath = fileFsPath;
+        static if (ver >= BinaryFormatVersion.v2)
+            fsid = header.fsid;
+    }
 
     visitStringTable(io);
     visitSubPaths(io);
