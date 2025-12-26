@@ -558,8 +558,17 @@ void populateBrowserPathsFromSharingGroup(
 			foreach (i, ref path; paths)
 			{
 				auto browserPath = group.pathData[i].path;
+				// Set next pointer to the current head of the list.
+				// This must be done for ALL pathData entries, even duplicates,
+				// because getNext uses findIndex which may return any matching index.
 				group.pathData[i].next = browserPath.firstSharingGroup;
-				browserPath.firstSharingGroup = group;
+			}
+			// Now update firstSharingGroup for each unique browserPath
+			foreach (i, ref path; paths)
+			{
+				auto browserPath = group.pathData[i].path;
+				if (browserPath.firstSharingGroup != group)
+					browserPath.firstSharingGroup = group;
 			}
 		}
 		else
