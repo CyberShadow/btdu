@@ -65,12 +65,9 @@
 
         # Debug build with extra assertions for testing
         btduDebug = pkgs.buildDubPackage (btduCommon // {
-          # Use debug build type to enable debugMode (required for debug blocks)
-          dubBuildType = "debug";
-          # Pass --d-debug=check to LDC compiler to enable debug(check) blocks
-          preBuild = ''
-            export DFLAGS="--d-debug=check"
-          '';
+          # Use custom "checked" build type defined in dub.sdl
+          # This enables debugMode and passes -d-debug=check to enable debug(check) blocks
+          dubBuildType = "checked";
         });
 
         # ============================================================
