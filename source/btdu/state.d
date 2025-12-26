@@ -95,6 +95,7 @@ bool imported;
 bool exportSeenAs;
 string fsPath;
 typeof(btrfs_ioctl_fs_info_args.fsid) fsid;
+typeof(btrfs_ioctl_fs_info_args.fsid) compareFsid;
 btrfs_ioctl_dev_info_args[] devices;
 SubPath subPathRoot;
 RootInfo[u64] globalRoots;
