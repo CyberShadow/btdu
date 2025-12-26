@@ -560,6 +560,11 @@ struct Browser
 						indicatorPos -= 11;
 						at(indicatorPos, 0, { write(" [COMPARE] "); });
 					}
+					debug(check)
+					{
+						indicatorPos -= 11;
+						at(indicatorPos, 0, { write(" [CHECKED] "); });
+					}
 
 					// Bottom bar
 					at(0, height - 1, {
