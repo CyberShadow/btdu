@@ -192,6 +192,7 @@ private void importCompareJson(string path)
 	compareExpert = s.expert;
 	comparePhysical = s.physical;
 	compareTotalSize = s.totalSize;
+	compareFsid = parseFsid(s.fsid);
 	// Note: we don't set fsPath from compare - keep current fsPath
 	move(*s.root, compareRoot);
 
