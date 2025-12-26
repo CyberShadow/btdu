@@ -48,7 +48,7 @@ import btrfs;
 
 import btdu.alloc : StaticAppender;
 import btdu.common;
-import btdu.impexp : exportData;
+import btdu.impexp : ExportFormat, exportData;
 import btdu.paths;
 import btdu.proto : logicalOffsetHole, logicalOffsetSlack;
 import btdu.state;
@@ -143,6 +143,7 @@ struct Browser
 		deleteConfirm,
 		deleteProgress,
 		rebuild,
+		exportFormat,
 	}
 	Popup popup;
 	string rebuildProgress; // Progress message for rebuild popup
@@ -1870,6 +1871,20 @@ struct Browser
 								title = "Recalculating";
 								write(rebuildProgress, endl);
 								break;
+
+							case Popup.exportFormat:
+								title = "Export Format";
+								write(
+									"Select export format:", endl,
+									endl,
+									"  ", button("j"), "  JSON (.json)", endl,
+									"  ", button("b"), "  Binary (.btdu)", endl,
+									"  ", button("d"), "  du format (.du)", endl,
+									"  ", button("h"), "  Human-readable (.txt)", endl,
+									endl,
+									"Press key to select, or ", button("q"), " to cancel.", endl,
+								);
+								break;
 						}
 					});
 				}
@@ -2015,6 +2030,58 @@ struct Browser
 		showMessage(format("Sorting by %s (%s)", mode, ["descending", "ascending"][ascending]));
 	}
 
+	void promptForExportFilename(ExportFormat fmt)
+	{
+		// Get format name and suggested extension
+		string formatName, suggestedExt;
+		final switch (fmt)
+		{
+			case ExportFormat.json:
+				formatName = "JSON";
+				suggestedExt = ".json";
+				break;
+			case ExportFormat.binary:
+				formatName = "binary";
+				suggestedExt = ".btdu";
+				break;
+			case ExportFormat.du:
+				formatName = "du";
+				suggestedExt = ".du";
+				break;
+			case ExportFormat.human:
+				formatName = "human-readable";
+				suggestedExt = ".txt";
+				break;
+		}
+
+		curses.suspend((inputFile, outputFile) {
+			import std.process : pipe, spawnProcess, wait;
+			import ae.sys.file : readFile;
+			auto p = pipe();
+			auto promptMsg = format(
+				`printf 'Exporting as %s.\nFile name (e.g., results%s): ' >&2 && read -r fn && printf -- %%s "$fn"`,
+				formatName, suggestedExt
+			);
+			auto pid = spawnProcess(
+				["/bin/sh", "-c", promptMsg],
+				inputFile,
+				p.writeEnd,
+				outputFile,
+			);
+			auto output = p.readEnd.readFile();
+			auto status = wait(pid);
+			if (status == 0 && output.length)
+			{
+				auto path = cast(string)output;
+				outputFile.writeln("Exporting..."); outputFile.flush();
+				exportData(path, fmt);
+				showMessage("Exported to " ~ path);
+			}
+			else
+				showMessage("Export cancelled.");
+		});
+	}
+
 	bool handleInput()
 	{
 		auto ch = curses.readKey();
@@ -2110,6 +2177,40 @@ struct Browser
 
 			case Popup.rebuild:
 				// No input handling during rebuild - it's a blocking operation
+				return true;
+
+			case Popup.exportFormat:
+				ExportFormat fmt;
+				switch (ch)
+				{
+					case 'j':
+						fmt = ExportFormat.json;
+						goto doExport;
+					case 'b':
+						fmt = ExportFormat.binary;
+						goto doExport;
+					case 'd':
+						fmt = ExportFormat.du;
+						goto doExport;
+					case 'h':
+						fmt = ExportFormat.human;
+						goto doExport;
+
+					doExport:
+						popup = Popup.none;
+						promptForExportFilename(fmt);
+						break;
+
+					case 'q':
+					case 27: // ESC
+						popup = Popup.none;
+						showMessage("Export cancelled.");
+						break;
+
+					default:
+						// Ignore other keys
+						break;
+				}
 				return true;
 		}
 
@@ -2389,28 +2490,7 @@ struct Browser
 						popup = Popup.deleteConfirm;
 						break;
 					case 'O':
-						curses.suspend((inputFile, outputFile) {
-							import std.process : pipe, spawnProcess, wait;
-							import ae.sys.file : readFile;
-							auto p = pipe();
-							auto pid = spawnProcess(
-								["/bin/sh", "-c", `printf 'Saving results.\nFile name: ' >&2 && read -r fn && printf -- %s "$fn"`],
-								inputFile,
-								p.writeEnd,
-								outputFile,
-							);
-							auto output = p.readEnd.readFile();
-							auto status = wait(pid);
-							if (status == 0 && output.length)
-							{
-								auto path = cast(string)output;
-								outputFile.writeln("Exporting..."); outputFile.flush();
-								exportData(path);
-								showMessage("Exported to " ~ path);
-							}
-							else
-								showMessage("Export canceled");
-						});
+						popup = Popup.exportFormat;
 						break;
 					case 'y':
 						if (!selection)
