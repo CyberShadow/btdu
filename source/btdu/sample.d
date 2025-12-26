@@ -176,8 +176,9 @@ void subprocessMain(string fsPath, bool physical)
 		}
 
 		u64 totalSize = chunks.map!((ref chunk) => chunk.I!length).sum;
+		auto fsInfo = getInfo(fd);
 		// stderr.writefln("Found %d chunks with a total size of %d.", chunks.length, totalSize);
-		send(StartMessage(totalSize, devices));
+		send(StartMessage(totalSize, fsInfo.fsid, devices));
 
 		while (true)
 		{
