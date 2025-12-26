@@ -17,6 +17,8 @@ import ae.sys.data;
 import ae.sys.datamm;
 import ae.utils.json;
 
+import btrfs.c.ioctl : btrfs_ioctl_fs_info_args;
+
 import btdu.binexp : isBinaryFormat, importBinary, exportBinary;
 import btdu.common : humanSize, humanRelSize, pointerWriter;
 import btdu.paths;
@@ -95,8 +97,25 @@ struct SerializedState
 	bool expert;
 	@JSONOptional bool physical;
 	string fsPath;
+	@JSONOptional string fsid;  /// UUID formatted as "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
 	ulong totalSize;
 	BrowserPath* root;
+}
+
+/// Format fsid bytes as UUID string
+private string formatFsid(typeof(btrfs_ioctl_fs_info_args.fsid) bytes)
+{
+	import std.uuid : UUID;
+	return UUID(bytes).toString();
+}
+
+/// Parse UUID string to fsid bytes
+private typeof(btrfs_ioctl_fs_info_args.fsid) parseFsid(string s)
+{
+	import std.uuid : UUID, parseUUID;
+	if (s.length == 0)
+		return typeof(return).init;
+	return parseUUID(s).data;
 }
 
 /// Load and parse an exported JSON file.
@@ -137,6 +156,7 @@ void importJson(string path)
 	expert = s.expert;
 	physical = s.physical;
 	fsPath = s.fsPath;
+	fsid = parseFsid(s.fsid);
 	totalSize = s.totalSize;
 	move(*s.root, browserRoot);
 
@@ -204,6 +224,7 @@ private void exportJson(string path)
 	s.expert = expert;
 	s.physical = physical;
 	s.fsPath = fsPath;
+	s.fsid = formatFsid(fsid);
 	s.totalSize = totalSize;
 	s.root = browserRootPtr;
 
