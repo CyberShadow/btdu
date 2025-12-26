@@ -786,25 +786,25 @@ struct BrowserPath
 		return aggregateData;
 	}
 
-	/// Check if a sharing group is relevant for a given sample type.
-	/// For types that need occurrence counting, also returns the count.
-	private bool groupIsRelevant(const(SharingGroup)* group, SampleType type, out size_t occurrences) const
+	/// Returns the number of relevant occurrences for a given sample type.
+	/// Returns 0 if the group is not relevant for this sample type.
+	private size_t relevantOccurrences(const(SharingGroup)* group, SampleType type) const
 	{
 		// Count how many times this path appears in the sharing group
 		// (same file may use same extent multiple times)
-		occurrences = group.countOccurrences(&this);
+		auto occurrences = group.countOccurrences(&this);
 
 		final switch (type)
 		{
 			case SampleType.shared_:
 				// All samples that touch this path
-				return occurrences > 0;
+				return occurrences;
 			case SampleType.represented:
 				// Samples where this path is the representative
-				return group.pathData[group.representativeIndex].path is &this;
+				return group.pathData[group.representativeIndex].path is &this ? occurrences : 0;
 			case SampleType.exclusive:
 				// Samples exclusive to this path: ALL entries in the group must be this path
-				return occurrences == group.paths.length;
+				return occurrences == group.paths.length ? occurrences : 0;
 		}
 	}
 
@@ -892,11 +892,7 @@ struct BrowserPath
 			fromSharingGroups: {
 				ulong sum = 0;
 				for (const(SharingGroup)* group = firstSharingGroup; group !is null; group = group.getNext(&this))
-				{
-					size_t occurrences;
-					if (groupIsRelevant(group, type, occurrences))
-						sum += group.data.samples * occurrences;
-				}
+					sum += group.data.samples * relevantOccurrences(group, type);
 				return sum;
 			},
 			fromChildren: {
@@ -916,11 +912,7 @@ struct BrowserPath
 			fromSharingGroups: {
 				ulong sum = 0;
 				for (const(SharingGroup)* group = firstSharingGroup; group !is null; group = group.getNext(&this))
-				{
-					size_t occurrences;
-					if (groupIsRelevant(group, type, occurrences))
-						sum += group.data.duration * occurrences;
-				}
+					sum += group.data.duration * relevantOccurrences(group, type);
 				return sum;
 			},
 			fromChildren: {
@@ -944,8 +936,7 @@ struct BrowserPath
 
 				for (const(SharingGroup)* group = firstSharingGroup; group !is null; group = group.getNext(&this))
 				{
-					size_t occurrences;
-					if (groupIsRelevant(group, type, occurrences))
+					if (relevantOccurrences(group, type))
 					{
 						foreach (i; 0 .. historySize)
 						{
