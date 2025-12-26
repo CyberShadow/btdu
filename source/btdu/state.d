@@ -494,6 +494,11 @@ void populateBrowserPathsFromSharingGroup(
 
 	assert(paths.length > 0, "Sharing groups must have at least one path");
 
+	debug (check)
+		foreach (i, ref path; paths)
+			if (group.pathData[i].path)
+				group.pathData[i].path.checkState();
+
 	auto representativeIndex = group.representativeIndex;
 
 	// ============================================================
@@ -608,6 +613,11 @@ void populateBrowserPathsFromSharingGroup(
 				marked.addSamples(SampleType.exclusive, samples, offsets, duration);
 		}
 	}
+
+	debug (check)
+		foreach (i, ref path; paths)
+			if (group.pathData[i].path)
+				group.pathData[i].path.checkState();
 }
 
 /// State for incremental rebuild from sharing groups
