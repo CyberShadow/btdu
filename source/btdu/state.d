@@ -262,6 +262,9 @@ static this()
 debug(check) void checkState()
 {
 	browserRoot.checkState();
+	// Check compare tree if in compare mode
+	if (compareMode)
+		compareRoot.checkState();
 	// Note: `marked` is not checked - it's a virtual node that aggregates from
 	// marked paths across the tree, not from its own children.
 }
