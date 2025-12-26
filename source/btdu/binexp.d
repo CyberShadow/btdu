@@ -810,7 +810,7 @@ void visitRoots(IO, RootsList, RootIDsList)(ref IO io, RootsList rootsList, Root
 {
     import std.experimental.allocator : make;
     import std.typecons : Tuple;
-    import btdu.state : globalRoots, RootInfo;
+    import btdu.state : states, RootInfo;
 
     // Wire format: (rootID, parentRootIndex, subPathIndex) - all as varints, delta-encoded
     alias Wire = Tuple!(ulong, "rootID", ulong, "parentRootIndex", ulong, "subPathIndex");
@@ -841,8 +841,8 @@ void visitRoots(IO, RootsList, RootIDsList)(ref IO io, RootsList rootsList, Root
                 gp.subPath = io.resolveSubPath(w.subPathIndex);
                 io.rootPtrs[i] = gp;
 
-                if (io.target == DataSet.main)
-                    globalRoots[w.rootID] = RootInfo(gp, false);
+                // Store roots in the appropriate dataset's roots map
+                io.targetState.roots[w.rootID] = RootInfo(gp, false);
             }
         },
         // toWire: convert runtime data to wire format (write path)
