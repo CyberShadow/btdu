@@ -26,7 +26,7 @@ import std.traits : EnumMembers;
 import ae.utils.appender : FastAppender;
 import ae.utils.meta : enumLength;
 
-import btrfs.c.ioctl : btrfs_ioctl_dev_info_args;
+import btrfs.c.ioctl : btrfs_ioctl_dev_info_args, btrfs_ioctl_fs_info_args;
 import btrfs.c.kerncompat : u64;
 
 import containers.hashset;
@@ -94,6 +94,7 @@ IndexedSlabAllocator!SubPath subPathAllocator;
 bool imported;
 bool exportSeenAs;
 string fsPath;
+typeof(btrfs_ioctl_fs_info_args.fsid) fsid;
 btrfs_ioctl_dev_info_args[] devices;
 SubPath subPathRoot;
 RootInfo[u64] globalRoots;
