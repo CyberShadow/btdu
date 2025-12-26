@@ -174,23 +174,31 @@ Press <kbd>⇧ Shift</kbd><kbd>O</kbd> to save an export file during an interact
 
 Exports can be loaded with `--import`. Then, specify a file name instead of the filesystem path to sample.
 
+btdu supports two re-importable export formats:
+
+- **Binary** (`.btdu`): Compact, efficient format that preserves all sampling data losslessly. The binary format always contains complete data regardless of `--expert` mode; the `--expert` flag is specified at import time to control whether expert metrics are displayed (which uses more memory). Recommended for backups and comparisons.
+
+- **JSON** (`.json`): Text-based format that can be processed by external tools and scripts. With `--expert`, the JSON output is larger as it captures additional sampling statistics. Without `--expert`, only basic metrics are included.
+
+The format is auto-detected from the file extension, or can be specified explicitly with `--export-format`.
+
 For a more portable (but less detailed) export, use `--du`; the resulting file should then be loadable by any disk usage analyzer which supports loading `du` output.
 
 ### Comparing
 
-Use `--compare=BASELINE.json` to compare against a previously exported baseline. btdu will show size deltas instead of absolute sizes, making it easy to see what has grown or shrunk.
+Use `--compare=BASELINE` to compare against a previously exported baseline (in JSON or binary format). btdu will show size deltas instead of absolute sizes, making it easy to see what has grown or shrunk.
 
 For the most accurate comparisons, use deterministic sampling parameters: `-j1` (single process) and `--max-samples` (rather than `--max-time`). Use the same parameters when creating both exports being compared.
 
 Compare live sampling against a baseline:
 
-    # btdu -j1 --max-samples=10000 /mnt/btrfs --export=baseline.json --headless
+    # btdu -j1 --max-samples=10000 /mnt/btrfs --export=baseline.btdu --headless
     # ... time passes, changes are made ...
-    # btdu -j1 --max-samples=10000 /mnt/btrfs --compare=baseline.json
+    # btdu -j1 --max-samples=10000 /mnt/btrfs --compare=baseline.btdu
 
 Compare two exported snapshots:
 
-    $ btdu --import new.json --compare=old.json
+    $ btdu --import new.btdu --compare=old.btdu
 
 Press <kbd>c</kbd> to sort by delta (largest changes first), and <kbd>s</kbd> to sort by absolute current size.
 
