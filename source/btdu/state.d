@@ -128,11 +128,11 @@ size_t numSingleSampleGroups;
 BrowserPath* browserRootPtr() { return states[DataSet.main].rootPtr; }
 
 // Compare state shims
-@property ref compareRoot() { return states[DataSet.compare].browserRoot; }
-BrowserPath* compareRootPtr() { return states[DataSet.compare].rootPtr; }
 @property ref compareTotalSize() { return states[DataSet.compare].totalSize; }
 @property ref compareExpert() { return states[DataSet.compare].expert; }
 @property ref comparePhysical() { return states[DataSet.compare].physical; }
+@property ref compareRoot() { return states[DataSet.compare].browserRoot; }
+BrowserPath* compareRootPtr() { return states[DataSet.compare].rootPtr; }
 
 /// Disk visualization map - tracks statistics per visual sector
 struct DiskMap
