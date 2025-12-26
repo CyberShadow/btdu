@@ -2131,8 +2131,17 @@ struct Browser
 			}
 
 			outputFile.writeln("Exporting..."); outputFile.flush();
-			exportData(path, fmt);
-			logMessage("Exported to " ~ path);
+			try
+			{
+				exportData(path, fmt);
+				logMessage("Exported to " ~ path);
+			}
+			catch (Exception e)
+			{
+				outputFile.writeln("Export failed: ", e.msg);
+				outputFile.writeln();
+				readKey("Press any key to continue...");
+			}
 		});
 	}
 
