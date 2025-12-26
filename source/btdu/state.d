@@ -648,6 +648,8 @@ void startRebuild()
 
 	// Reset all BrowserPath sample data and sharing group links
 	browserRoot.reset();
+	if (compareMode)
+		compareRoot.reset();
 	markTotalSamples = 0;
 
 	// Clear all pathData[i].next pointers to avoid stale values causing cycles
