@@ -1216,7 +1216,7 @@ void importBinary(string path, DataSet target = DataSet.main)
 
 void importBinaryImpl(BinaryFormatVersion ver)(const(ubyte)[] data, DataSet target)
 {
-    import btdu.state : imported, states, compareMode, fsid;
+    import btdu.state : imported, states, compareMode, fsid, compareFsid;
     debug(check) import btdu.state : checkState;
 
     alias Header = BinaryHeader!ver;
@@ -1246,6 +1246,11 @@ void importBinaryImpl(BinaryFormatVersion ver)(const(ubyte)[] data, DataSet targ
         fsPath = fileFsPath;
         static if (ver >= BinaryFormatVersion.v2)
             fsid = header.fsid;
+    }
+    else
+    {
+        static if (ver >= BinaryFormatVersion.v2)
+            compareFsid = header.fsid;
     }
 
     visitStringTable(io);
