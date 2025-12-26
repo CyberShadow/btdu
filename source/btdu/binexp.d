@@ -90,6 +90,11 @@ The format is designed for:
 - Forward compatibility via version field
 - Lossless round-trips of all sampling data
 
+Limitations:
+- Binary export is not supported in compare mode. When comparing datasets,
+  both the main and compare data share the same sharingGroupAllocator,
+  making it difficult to distinguish which groups belong to which dataset.
+
 See also: ExportFormat enum for available export formats.
 +/
 module btdu.binexp;
@@ -1032,7 +1037,7 @@ void visitMarks(IO, MarksList)(ref IO io, MarksList marksList)
 // Export
 // ============================================================================
 
-import btdu.state : browserRoot, browserRootPtr, globalRoots, sharingGroupAllocator, expert, physical, totalSize, fsPath, fsid, imported;
+import btdu.state : browserRoot, browserRootPtr, globalRoots, sharingGroupAllocator, expert, physical, totalSize, fsPath, fsid, imported, compareMode;
 
 void exportBinary(BinaryFormatVersion ver = latestBinaryFormatVersion)(string path)
 {
@@ -1045,6 +1050,13 @@ void exportBinary(BinaryFormatVersion ver = latestBinaryFormatVersion)(string pa
     enforce(!imported || sharingGroupAllocator[].length > 0,
         "Cannot export to binary format: data was imported from JSON which lacks " ~
         "the detailed sampling information required by the binary format. " ~
+        "Use JSON format instead (--export-format=json).");
+
+    // Binary export in compare mode is not supported because both datasets share
+    // the same sharingGroupAllocator, and we cannot distinguish which groups
+    // belong to which dataset.
+    enforce(!compareMode,
+        "Cannot export to binary format in compare mode. " ~
         "Use JSON format instead (--export-format=json).");
 
     auto file = path is null
