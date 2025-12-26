@@ -72,6 +72,7 @@ struct SamplingState
 	bool expert;
 	bool physical;
 	BrowserPath browserRoot;
+	typeof(btrfs_ioctl_fs_info_args.fsid) fsid;
 
 	/// Returns pointer to browserRoot
 	BrowserPath* rootPtr() return { return &browserRoot; }
@@ -94,8 +95,6 @@ IndexedSlabAllocator!SubPath subPathAllocator;
 bool imported;
 bool exportSeenAs;
 string fsPath;
-typeof(btrfs_ioctl_fs_info_args.fsid) fsid;
-typeof(btrfs_ioctl_fs_info_args.fsid) compareFsid;
 btrfs_ioctl_dev_info_args[] devices;
 SubPath subPathRoot;
 RootInfo[u64] globalRoots;
@@ -126,6 +125,7 @@ size_t numSingleSampleGroups;
 @property ref physical() { return states[DataSet.main].physical; }
 @property ref browserRoot() { return states[DataSet.main].browserRoot; }
 BrowserPath* browserRootPtr() { return states[DataSet.main].rootPtr; }
+@property ref fsid() { return states[DataSet.main].fsid; }
 
 // Compare state shims
 @property ref compareTotalSize() { return states[DataSet.compare].totalSize; }
@@ -133,6 +133,7 @@ BrowserPath* browserRootPtr() { return states[DataSet.main].rootPtr; }
 @property ref comparePhysical() { return states[DataSet.compare].physical; }
 @property ref compareRoot() { return states[DataSet.compare].browserRoot; }
 BrowserPath* compareRootPtr() { return states[DataSet.compare].rootPtr; }
+@property ref compareFsid() { return states[DataSet.compare].fsid; }
 
 /// Disk visualization map - tracks statistics per visual sector
 struct DiskMap
