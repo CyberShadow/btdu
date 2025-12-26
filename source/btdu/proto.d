@@ -27,7 +27,7 @@ import std.traits;
 
 import ae.utils.array;
 
-import btrfs.c.ioctl : btrfs_ioctl_dev_info_args;
+import btrfs.c.ioctl : btrfs_ioctl_dev_info_args, btrfs_ioctl_fs_info_args;
 import btrfs.c.kerncompat : u64, __u64;
 
 import btdu.alloc : StaticAppender;
@@ -42,6 +42,7 @@ struct Error
 struct StartMessage
 {
 	ulong totalSize;
+	typeof(btrfs_ioctl_fs_info_args.fsid) fsid;
 	btrfs_ioctl_dev_info_args[] devices;
 }
 
