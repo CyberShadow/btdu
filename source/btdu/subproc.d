@@ -77,6 +77,26 @@ struct Subprocess
 		pid.kill(doPause ? SIGSTOP : SIGCONT);
 	}
 
+	void terminate()
+	{
+		// Close pipe first to avoid subprocess getting SIGPIPE while trying to write
+		if (socket)
+		{
+			socket.close();
+			socket = null;
+		}
+		pipe.readEnd.close();
+		pipe.writeEnd.close();
+
+		// Kill and wait for subprocess
+		if (pid !is Pid.init)
+		{
+			pid.kill(SIGTERM);
+			pid.wait();
+			pid = Pid.init;
+		}
+	}
+
 	/// Receive buffer
 	private ubyte[] buf;
 	/// Section of buffer containing received and unparsed data
