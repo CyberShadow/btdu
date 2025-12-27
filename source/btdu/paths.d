@@ -27,6 +27,7 @@ import std.array : array;
 import std.bitmanip;
 import std.exception : enforce;
 import std.experimental.allocator : makeArray, make;
+import std.random : unpredictableSeed, Xorshift;
 import std.range;
 import std.range.primitives;
 import std.string;
@@ -658,16 +659,180 @@ struct GlobalPath
 	mixin PathCmp;
 }
 
+/// A fixed-size cache with sampled LFU (Least Frequently Used) eviction.
+///
+/// This cache maintains a fixed number of slots to bound memory usage.
+/// When the cache is full, new entries may evict existing ones based on
+/// access frequency. Eviction uses random sampling (similar to Redis):
+/// sample K random slots and evict the one with the lowest hit count.
+///
+/// This is effective for workloads where some keys are accessed much more
+/// frequently than others (e.g., path prefixes vs. full paths).
+///
+/// Params:
+///   Key = The key type for cache lookups
+///   Value = The value type stored in the cache
+///   Hasher = Hash function for keys (defaults to generateHash)
+///   maxSlots = Maximum number of entries in the cache
+///   sampleSize = Number of random slots to sample during eviction (K)
+struct SampledLFUCache(
+	Key,
+	Value,
+	alias Hasher = generateHash!Key,
+	size_t maxSlots = 100_000,
+	size_t sampleSize = 5,
+)
+{
+	/// A slot in the cache containing key, value, and access metadata
+	private struct Slot
+	{
+		Key key;
+		Value value;
+		uint hitCount;  /// Number of times this entry has been accessed
+	}
+
+	/// Storage for cache entries. We use a dynamic array that grows up to maxSlots.
+	private Slot[] slots;
+
+	/// Index from key to slot position for O(1) lookups.
+	/// Disable GC registration - keys may contain pointers managed by custom allocators.
+	private HashMap!(Key, size_t, CasualAllocator, Hasher, false) index;
+
+	/// Random number generator for sampling
+	private Xorshift rng;
+
+	/// Whether RNG has been seeded
+	private bool rngSeeded = false;
+
+	/// Ensure RNG is seeded (lazy initialization)
+	private void ensureSeeded()
+	{
+		if (!rngSeeded)
+		{
+			rng = Xorshift(unpredictableSeed);
+			rngSeeded = true;
+		}
+	}
+
+	/// Look up a key in the cache.
+	/// Returns: pointer to the value if found, null otherwise.
+	/// Note: increments hit count on access (cache is inherently mutable).
+	Value* opBinaryRight(string op : "in")(in Key key)
+	{
+		if (auto slotIdx = key in index)
+		{
+			slots[*slotIdx].hitCount++;
+			return &slots[*slotIdx].value;
+		}
+		return null;
+	}
+
+	/// Get value for key, or return default
+	Value get(in Key key, lazy Value defaultValue = Value.init)
+	{
+		if (auto p = key in this)
+			return *p;
+		return defaultValue;
+	}
+
+	/// Insert or update a key-value pair.
+	/// If the cache is full, may evict an existing entry.
+	/// Returns: true if the entry was added, false if eviction was skipped
+	bool put(Key key, Value value)
+	{
+		// Check if key already exists
+		if (auto slotIdx = key in index)
+		{
+			// Update existing entry
+			slots[*slotIdx].value = value;
+			slots[*slotIdx].hitCount++;
+			return true;
+		}
+
+		// Check if we have room
+		if (slots.length < maxSlots)
+		{
+			// Have free space - add new entry
+			auto newIdx = slots.length;
+			slots ~= Slot(key, value, 1);
+			index[key] = newIdx;
+			return true;
+		}
+
+		// Cache is full - try to evict
+		return maybeEvictAndAdd(key, value);
+	}
+
+	/// Sample K random slots and potentially evict the lowest-frequency one.
+	/// Uses probabilistic admission: new entries must "earn" their place.
+	private bool maybeEvictAndAdd(Key key, Value value)
+	{
+		ensureSeeded();
+
+		// Sample sampleSize random slots to find eviction candidate
+		size_t minIdx = rng.front % slots.length;
+		rng.popFront();
+		uint minHits = slots[minIdx].hitCount;
+
+		foreach (_; 1 .. sampleSize)
+		{
+			auto idx = rng.front % slots.length;
+			rng.popFront();
+			if (slots[idx].hitCount < minHits)
+			{
+				minIdx = idx;
+				minHits = slots[idx].hitCount;
+			}
+		}
+
+		// Only evict if the victim has low hit count.
+		// This prevents thrashing when all entries are frequently accessed.
+		// Threshold of 2 means: entries accessed only once can be evicted.
+		if (minHits <= 2)
+		{
+			// Evict the victim
+			index.remove(slots[minIdx].key);
+
+			// Add new entry in its place
+			slots[minIdx] = Slot(key, value, 1);
+			index[key] = minIdx;
+			return true;
+		}
+
+		// All sampled entries are hot - don't cache this entry
+		return false;
+	}
+
+	/// Clear all entries from the cache
+	void clear()
+	{
+		slots = null;
+		index.clear();
+	}
+
+	/// Number of entries currently in the cache
+	@property size_t length() const
+	{
+		return slots.length;
+	}
+
+	/// Maximum capacity of the cache
+	enum capacity = maxSlots;
+}
+
 /// Memoization cache for GlobalPath → BrowserPath* lookups.
 /// Speeds up import/rebuild by avoiding repeated tree traversals
 /// for paths with shared prefixes.
+///
+/// Uses a bounded SampledLFUCache to limit memory usage while retaining
+/// frequently-accessed entries (typically short path prefixes that are
+/// traversed many times as part of longer paths).
 struct GlobalPathCache
 {
 	import std.typecons : Tuple;
-	import containers.internal.hash : generateHash;
+
 	alias CacheKey = Tuple!(GlobalPath, "path", BrowserPath*, "root");
-	// Disable GC registration - all pointers are managed by custom allocators
-	private HashMap!(CacheKey, BrowserPath*, CasualAllocator, generateHash!CacheKey, false) cache;
+	private SampledLFUCache!(CacheKey, BrowserPath*) cache;
 
 	/// Look up or create the BrowserPath for a GlobalPath, using memoization.
 	/// The root parameter is the BrowserPath to start traversal from.
@@ -699,13 +864,19 @@ struct GlobalPathCache
 			result = parentBP.appendName(gp.subPath.name);
 		}
 
-		cache[key] = result;
+		cache.put(key, result);
 		return result;
 	}
 
 	void clear()
 	{
 		cache.clear();
+	}
+
+	/// Number of entries currently in the cache
+	@property size_t length() const
+	{
+		return cache.length;
 	}
 }
 
