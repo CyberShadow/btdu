@@ -66,6 +66,7 @@ void program(
 	Option!(string, "Stop after running for this duration.", "DURATION") maxTime = null,
 	Option!(string, `Stop after achieving this resolution (e.g. "1MB" or "1%").`, "SIZE") minResolution = null,
 	Switch!hiddenOption exitOnLimit = false,
+	Switch!hiddenOption waitForSubprocesses = false,
 	Option!(string, "On exit, export the collected results to the given file.", "PATH", 'o', "export") exportPath = null,
 	Option!(string, "Export format (guessed from extension if not specified).", "FORMAT", 'F', "export-format") exportFormatStr = null,
 	Switch!("When exporting, include 'seenAs' data showing shared paths.") exportSeenAs = false,
@@ -385,6 +386,11 @@ Please report defects and enhancement requests to the GitHub issue tracker:
 
 	if (du)
 		exportData(null, ExportFormat.du);
+
+	// Wait for subprocesses to terminate (used by test suite to ensure clean unmount)
+	if (waitForSubprocesses)
+		foreach (ref subproc; subprocesses)
+			subproc.terminate();
 }
 
 void checkBtrfs(string fsPath)
