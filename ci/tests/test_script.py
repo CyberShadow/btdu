@@ -139,7 +139,8 @@ def get_file_size(data, path, sample_kind='represented'):
 def run_btdu(args, timeout=30):
     """Run btdu with given arguments and return output."""
     # Default seed is 0 which is deterministic, no need to override
-    cmd = f"timeout {timeout} btdu {args}"
+    # Use --wait-for-subprocesses to ensure clean unmount after btdu exits
+    cmd = f"timeout {timeout} btdu --wait-for-subprocesses {args}"
     return machine.succeed(cmd)
 
 
