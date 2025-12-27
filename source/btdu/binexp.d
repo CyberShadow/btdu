@@ -1258,6 +1258,9 @@ void importBinaryImpl(BinaryFormatVersion ver)(const(ubyte)[] data, DataSet targ
     visitSharingGroups(io, null);
     visitMarks(io, null);
 
+    // Print cache statistics
+    io.pathCache.printStats(target == DataSet.main ? "import main" : "import compare");
+
     debug(check) checkState();
 
     if (target == DataSet.main)

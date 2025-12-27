@@ -27,7 +27,6 @@ import std.array : array;
 import std.bitmanip;
 import std.exception : enforce;
 import std.experimental.allocator : makeArray, make;
-import std.random : unpredictableSeed, Xorshift;
 import std.range;
 import std.range.primitives;
 import std.string;
@@ -659,59 +658,59 @@ struct GlobalPath
 	mixin PathCmp;
 }
 
-/// A fixed-size cache with sampled LFU (Least Frequently Used) eviction.
+/// A fixed-size cache using open addressing with linear probing.
 ///
-/// This cache maintains a fixed number of slots to bound memory usage.
-/// When the cache is full, new entries may evict existing ones based on
-/// access frequency. Eviction uses random sampling (similar to Redis):
-/// sample K random slots and evict the one with the lowest hit count.
+/// This cache uses a simple hash table with linear probing over a small
+/// window (probeWindow slots). When inserting and no empty slot is found
+/// in the window, the entry with the lowest hit count is evicted.
 ///
-/// This is effective for workloads where some keys are accessed much more
-/// frequently than others (e.g., path prefixes vs. full paths).
+/// This design provides:
+/// - O(1) lookups with excellent cache locality (consecutive memory access)
+/// - No separate index structure overhead
+/// - Simple LFU-style eviction within the probe window
 ///
 /// Params:
 ///   Key = The key type for cache lookups
 ///   Value = The value type stored in the cache
 ///   Hasher = Hash function for keys (defaults to generateHash)
-///   maxSlots = Maximum number of entries in the cache
-///   sampleSize = Number of random slots to sample during eviction (K)
+///   numSlots = Number of slots in the cache (should be prime or power of 2)
+///   probeWindow = Number of consecutive slots to check for lookups/eviction
 struct SampledLFUCache(
 	Key,
 	Value,
 	alias Hasher = generateHash!Key,
-	size_t maxSlots = 100_000,
-	size_t sampleSize = 5,
+	size_t numSlots = 100_003,  // Prime number for better distribution
+	size_t probeWindow = 5,
 )
 {
-	/// A slot in the cache containing key, value, and access metadata
+	/// A slot in the cache containing key, value, and occupancy/access metadata
 	private struct Slot
 	{
 		Key key;
 		Value value;
-		uint hitCount;  /// Number of times this entry has been accessed
+		uint hitCount;  /// 0 = empty, >0 = occupied with hit count
 	}
 
-	/// Storage for cache entries. We use a dynamic array that grows up to maxSlots.
-	private Slot[] slots;
+	/// Fixed-size storage for cache entries
+	private Slot[numSlots] slots;
 
-	/// Index from key to slot position for O(1) lookups.
-	/// Disable GC registration - keys may contain pointers managed by custom allocators.
-	private HashMap!(Key, size_t, CasualAllocator, Hasher, false) index;
+	/// Number of occupied slots
+	private size_t occupied;
 
-	/// Random number generator for sampling
-	private Xorshift rng;
-
-	/// Whether RNG has been seeded
-	private bool rngSeeded = false;
-
-	/// Ensure RNG is seeded (lazy initialization)
-	private void ensureSeeded()
+	/// Cache statistics
+	struct Stats
 	{
-		if (!rngSeeded)
-		{
-			rng = Xorshift(unpredictableSeed);
-			rngSeeded = true;
-		}
+		ulong hits;           /// Number of cache hits
+		ulong misses;         /// Number of cache misses
+		ulong evictions;      /// Number of entries evicted
+		ulong inserts;        /// Number of new entries inserted
+	}
+	private Stats stats;
+
+	/// Compute starting slot index for a key
+	private size_t hashIndex(in Key key) const
+	{
+		return Hasher(key) % numSlots;
 	}
 
 	/// Look up a key in the cache.
@@ -719,11 +718,20 @@ struct SampledLFUCache(
 	/// Note: increments hit count on access (cache is inherently mutable).
 	Value* opBinaryRight(string op : "in")(in Key key)
 	{
-		if (auto slotIdx = key in index)
+		auto startIdx = hashIndex(key);
+
+		// Must scan all slots in window - evictions can create holes
+		foreach (i; 0 .. probeWindow)
 		{
-			slots[*slotIdx].hitCount++;
-			return &slots[*slotIdx].value;
+			auto idx = (startIdx + i) % numSlots;
+			if (slots[idx].hitCount > 0 && slots[idx].key == key)
+			{
+				slots[idx].hitCount++;
+				stats.hits++;
+				return &slots[idx].value;
+			}
 		}
+		stats.misses++;
 		return null;
 	}
 
@@ -736,88 +744,92 @@ struct SampledLFUCache(
 	}
 
 	/// Insert or update a key-value pair.
-	/// If the cache is full, may evict an existing entry.
-	/// Returns: true if the entry was added, false if eviction was skipped
+	/// If no empty slot in probe window, evicts the lowest-frequency entry.
+	/// Returns: true if the entry was added/updated
 	bool put(Key key, Value value)
 	{
-		// Check if key already exists
-		if (auto slotIdx = key in index)
+		auto startIdx = hashIndex(key);
+
+		// Track the best eviction candidate (lowest hit count)
+		size_t minHitIdx = startIdx;
+		uint minHits = uint.max;
+		size_t emptyIdx = size_t.max;
+
+		foreach (i; 0 .. probeWindow)
 		{
-			// Update existing entry
-			slots[*slotIdx].value = value;
-			slots[*slotIdx].hitCount++;
-			return true;
-		}
+			auto idx = (startIdx + i) % numSlots;
 
-		// Check if we have room
-		if (slots.length < maxSlots)
-		{
-			// Have free space - add new entry
-			auto newIdx = slots.length;
-			slots ~= Slot(key, value, 1);
-			index[key] = newIdx;
-			return true;
-		}
-
-		// Cache is full - try to evict
-		return maybeEvictAndAdd(key, value);
-	}
-
-	/// Sample K random slots and potentially evict the lowest-frequency one.
-	/// Uses probabilistic admission: new entries must "earn" their place.
-	private bool maybeEvictAndAdd(Key key, Value value)
-	{
-		ensureSeeded();
-
-		// Sample sampleSize random slots to find eviction candidate
-		size_t minIdx = rng.front % slots.length;
-		rng.popFront();
-		uint minHits = slots[minIdx].hitCount;
-
-		foreach (_; 1 .. sampleSize)
-		{
-			auto idx = rng.front % slots.length;
-			rng.popFront();
-			if (slots[idx].hitCount < minHits)
+			if (slots[idx].hitCount == 0)
 			{
-				minIdx = idx;
-				minHits = slots[idx].hitCount;
+				// Found empty slot
+				if (emptyIdx == size_t.max)
+					emptyIdx = idx;
+				// Continue scanning to check if key exists later in window
+			}
+			else if (slots[idx].key == key)
+			{
+				// Key already exists - update it
+				slots[idx].value = value;
+				slots[idx].hitCount++;
+				return true;
+			}
+			else
+			{
+				// Track minimum for potential eviction
+				if (slots[idx].hitCount < minHits)
+				{
+					minHits = slots[idx].hitCount;
+					minHitIdx = idx;
+				}
 			}
 		}
 
-		// Only evict if the victim has low hit count.
-		// This prevents thrashing when all entries are frequently accessed.
-		// Threshold of 2 means: entries accessed only once can be evicted.
-		if (minHits <= 2)
+		// Key not found - need to insert
+		if (emptyIdx != size_t.max)
 		{
-			// Evict the victim
-			index.remove(slots[minIdx].key);
-
-			// Add new entry in its place
-			slots[minIdx] = Slot(key, value, 1);
-			index[key] = minIdx;
+			// Use empty slot
+			slots[emptyIdx] = Slot(key, value, 1);
+			occupied++;
+			stats.inserts++;
 			return true;
 		}
 
-		// All sampled entries are hot - don't cache this entry
-		return false;
+		// No empty slot - evict the entry with lowest hit count
+		stats.evictions++;
+		slots[minHitIdx] = Slot(key, value, 1);
+		stats.inserts++;
+		return true;
 	}
 
 	/// Clear all entries from the cache
 	void clear()
 	{
-		slots = null;
-		index.clear();
+		slots[] = Slot.init;
+		occupied = 0;
+		stats = Stats.init;
 	}
 
 	/// Number of entries currently in the cache
 	@property size_t length() const
 	{
-		return slots.length;
+		return occupied;
 	}
 
 	/// Maximum capacity of the cache
-	enum capacity = maxSlots;
+	enum capacity = numSlots;
+
+	/// Get current statistics
+	Stats getStats() const
+	{
+		return stats;
+	}
+
+	/// Compute hit rate as a percentage (0-100)
+	double hitRate() const
+	{
+		auto total = stats.hits + stats.misses;
+		return total > 0 ? 100.0 * stats.hits / total : 0.0;
+	}
 }
 
 /// Memoization cache for GlobalPath → BrowserPath* lookups.
@@ -827,6 +839,9 @@ struct SampledLFUCache(
 /// Uses a bounded SampledLFUCache to limit memory usage while retaining
 /// frequently-accessed entries (typically short path prefixes that are
 /// traversed many times as part of longer paths).
+///
+/// Only caches paths up to maxCacheDepth to avoid polluting the cache
+/// with unique leaf paths that are only accessed once.
 struct GlobalPathCache
 {
 	import std.typecons : Tuple;
@@ -834,13 +849,26 @@ struct GlobalPathCache
 	alias CacheKey = Tuple!(GlobalPath, "path", BrowserPath*, "root");
 	private SampledLFUCache!(CacheKey, BrowserPath*) cache;
 
+	/// Minimum recursion depth to cache (only cache entries near root, not leaves)
+	/// Recursion goes leaf(depth=0) → root(depth=N), so higher depth = closer to root
+	enum minCacheDepth = 4;
+
 	/// Look up or create the BrowserPath for a GlobalPath, using memoization.
 	/// The root parameter is the BrowserPath to start traversal from.
 	BrowserPath* lookup(GlobalPath gp, BrowserPath* root)
 	{
+		return lookupImpl(gp, root, 0);
+	}
+
+	private BrowserPath* lookupImpl(GlobalPath gp, BrowserPath* root, uint depth)
+	{
+		// Check cache first (only for paths close to root, i.e., high recursion depth)
 		auto key = CacheKey(gp, root);
-		if (auto cached = key in cache)
-			return *cached;
+		if (depth >= minCacheDepth)
+		{
+			if (auto cached = key in cache)
+				return *cached;
+		}
 
 		BrowserPath* result;
 
@@ -854,17 +882,20 @@ struct GlobalPathCache
 		{
 			// SubPath is a root but we have a parent GlobalPath - just use parent's result
 			// (root SubPaths have no name to append)
-			result = lookup(*gp.parent, root);
+			result = lookupImpl(*gp.parent, root, depth + 1);
 		}
 		else
 		{
 			// Normal case: look up parent and append this component's name
 			auto parentGP = GlobalPath(gp.parent, gp.subPath.parent);
-			auto parentBP = lookup(parentGP, root);
+			auto parentBP = lookupImpl(parentGP, root, depth + 1);
 			result = parentBP.appendName(gp.subPath.name);
 		}
 
-		cache.put(key, result);
+		// Only cache if close to root (high recursion depth)
+		if (depth >= minCacheDepth)
+			cache.put(key, result);
+
 		return result;
 	}
 
@@ -877,6 +908,28 @@ struct GlobalPathCache
 	@property size_t length() const
 	{
 		return cache.length;
+	}
+
+	/// Get cache statistics
+	auto getStats() const
+	{
+		return cache.getStats();
+	}
+
+	/// Get hit rate as percentage
+	double hitRate() const
+	{
+		return cache.hitRate();
+	}
+
+	/// Print cache statistics to stderr
+	void printStats(string context) const
+	{
+		import std.stdio : stderr;
+		auto s = cache.getStats();
+		auto total = s.hits + s.misses;
+		stderr.writefln("Path cache (%s): %d entries, %d lookups (%.1f%% hit rate), %d inserts, %d evictions",
+			context, cache.length, total, cache.hitRate(), s.inserts, s.evictions);
 	}
 }
 

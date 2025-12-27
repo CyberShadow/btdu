@@ -777,10 +777,14 @@ bool processRebuildStep()
 		return rebuildInProgress();
 	}
 
-	// Clear caches when rebuild is complete to free memory
+	// Print cache stats and clear caches when rebuild is complete to free memory
+	states[DataSet.main].rebuildState.pathCache.printStats("rebuild main");
 	states[DataSet.main].rebuildState.pathCache.clear();
 	if (compareMode)
+	{
+		states[DataSet.compare].rebuildState.pathCache.printStats("rebuild compare");
 		states[DataSet.compare].rebuildState.pathCache.clear();
+	}
 
 	return false;  // All done
 }
