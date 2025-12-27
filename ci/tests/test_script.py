@@ -8,9 +8,18 @@ import time
 
 def cleanup_btrfs():
     """Unmount all btrfs devices."""
-    # Unmount by device instead of mount point
-    machine.succeed("umount /dev/vdb 2>/dev/null || true")
-    machine.succeed("umount /dev/vdc 2>/dev/null || true")
+    # Unmount all mount points that tests may use
+    mount_points = [
+        "/mnt/btrfs",
+        "/mnt/btrfs2",
+        "/mnt/ext4",
+        "/mnt/multidev",
+        "/mnt/raid0",
+        "/mnt/raid1",
+        "/mnt/mixed",
+    ]
+    for mp in mount_points:
+        machine.execute(f"mountpoint -q {mp} && umount {mp}")
 
 
 def setup_btrfs_basic():
