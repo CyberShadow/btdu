@@ -75,10 +75,14 @@ void program(
 	Switch!("On exit, export represented size estimates in 'du' format to standard output.") du = false,
 	Switch!("Instead of analyzing a btrfs filesystem, read previously collected results saved with --export from PATH.", 'f', "import") doImport = false,
 	Option!(string, "Compare against a baseline from a previously exported file.", "PATH", 'c', "compare") comparePath = null,
+	Switch!("Auto-mount top-level subvolume if needed.", 'A', "auto-mount") autoMount = false,
 )
 {
 	if (exportFormatStr && !exportPath)
 		throw new Exception("--export-format requires --export to be specified");
+
+	if (autoMount && (prefer.length || ignore.length))
+		throw new Exception("--prefer and --ignore options are not available with --auto-mount");
 
 	if (man)
 	{
@@ -137,7 +141,7 @@ Please report defects and enhancement requests to the GitHub issue tracker:
 		if (subprocess)
 			return subprocessMain(path, physical);
 
-		checkBtrfs(fsPath);
+		checkBtrfs(fsPath, autoMount);
 
 		if (procs == 0)
 			procs = totalCPUs;
@@ -393,27 +397,50 @@ Please report defects and enhancement requests to the GitHub issue tracker:
 			subproc.terminate();
 }
 
-void checkBtrfs(string fsPath)
+// System call bindings for mount namespace operations
+private extern (C) nothrow @nogc
+{
+	int unshare(int flags);
+	int mount(const(char)* source, const(char)* target,
+	          const(char)* filesystemtype, ulong mountflags, const(void)* data);
+}
+private enum CLONE_NEWNS = 0x00020000;
+private enum MS_REC = 0x4000;
+private enum MS_PRIVATE = 1 << 18;
+
+/// Result of checking btrfs filesystem
+private struct BtrfsCheckResult
+{
+	bool needsAutoMount;   /// True if path is btrfs but not top-level subvolume
+	string device;         /// Block device path
+	MountInfo[] mounts;    /// Mount info for error message
+}
+
+/// Check if path is btrfs and return info about whether auto-mount is needed
+private BtrfsCheckResult checkBtrfsStatus(string fsPath)
 {
 	import core.sys.posix.fcntl : open, O_RDONLY;
-	import std.file : exists;
+	import core.sys.posix.unistd : close;
 	import std.string : toStringz;
 	import std.algorithm.searching : canFind;
 	import btrfs : isBTRFS, isSubvolume, getSubvolumeID;
 	import btrfs.c.kernel_shared.ctree : BTRFS_FS_TREE_OBJECTID;
 
+	BtrfsCheckResult result;
+
 	int fd = open(fsPath.toStringz, O_RDONLY);
 	errnoEnforce(fd >= 0, "open");
+	scope(exit) close(fd);
 
 	enforce(fd.isBTRFS,
 		fsPath ~ " is not a btrfs filesystem");
 
-	MountInfo[] mounts;
 	try
-		mounts = getMounts().array;
+		result.mounts = getMounts().array;
 	catch (Exception e) {}
+
 	enforce(fd.isSubvolume, {
-		auto rootPath = mounts.getPathMountInfo(fsPath).file;
+		auto rootPath = result.mounts.getPathMountInfo(fsPath).file;
 		if (!rootPath)
 			rootPath = "/";
 		return format(
@@ -426,8 +453,79 @@ void checkBtrfs(string fsPath)
 		);
 	}());
 
-	enforce(fd.getSubvolumeID() == BTRFS_FS_TREE_OBJECTID,
-		formatSubvolumeError(fsPath, mounts));
+	if (fd.getSubvolumeID() != BTRFS_FS_TREE_OBJECTID)
+	{
+		result.needsAutoMount = true;
+		auto mountInfo = result.mounts.getPathMountInfo(fsPath);
+		result.device = mountInfo.spec;
+	}
+
+	return result;
+}
+
+/// Set up auto-mount: create mount namespace, temporary directory, and mount top-level subvolume
+private string setupAutoMount(string device)
+{
+	import core.stdc.errno : errno, EPERM, EINVAL;
+	import std.file : mkdirRecurse, tempDir;
+	import std.string : toStringz;
+
+	// Create mount namespace
+	if (unshare(CLONE_NEWNS) != 0)
+	{
+		if (errno == EPERM)
+			throw new Exception(
+				"Cannot create mount namespace: permission denied.\n" ~
+				"Try running with sudo.");
+		errnoEnforce(false, "unshare(CLONE_NEWNS)");
+	}
+
+	// Make all mounts private so they don't propagate to parent namespace
+	errnoEnforce(mount(null, "/".toStringz, null, MS_REC | MS_PRIVATE, null) == 0,
+		"mount(MS_PRIVATE)");
+
+	// Create mount point directory. We share the same path across
+	// instances since the mount is private to each instance.
+	auto mountPoint = tempDir.buildPath("btdu-auto-mount");
+	mkdirRecurse(mountPoint);
+
+	// Mount top-level subvolume
+	if (mount(device.toStringz, mountPoint.toStringz,
+	          "btrfs".toStringz, 0, "subvol=/".toStringz) != 0)
+	{
+		auto mountErrno = errno;
+
+		import std.file : rmdir;
+		try rmdir(mountPoint); catch (Exception) {}
+
+		if (mountErrno == EPERM)
+			throw new Exception("Cannot mount " ~ device ~ ": permission denied.");
+		if (mountErrno == EINVAL)
+			throw new Exception(device ~ " does not appear to be a valid btrfs filesystem.");
+
+		errno = mountErrno;
+		errnoEnforce(false, "mount(top-level subvolume at " ~ mountPoint ~ ")");
+	}
+
+	return mountPoint;
+}
+
+void checkBtrfs(string fsPath, bool autoMount)
+{
+	auto status = checkBtrfsStatus(fsPath);
+
+	if (status.needsAutoMount)
+	{
+		if (autoMount)
+		{
+			.autoMountMode = true;
+			.fsPath = setupAutoMount(status.device);
+		}
+		else
+		{
+			throw new Exception(formatSubvolumeError(fsPath, status.mounts));
+		}
+	}
 }
 
 private string formatSubvolumeError(string fsPath, MountInfo[] mounts)
@@ -519,9 +617,14 @@ private string formatSubvolumeError(string fsPath, MountInfo[] mounts)
 
 	// Add hint about what they'll see
 	if (currentSubvol.canFind("@"))
-		msg ~= "  From there, you'll see all subvolumes such as @, @home, snapshots, etc.";
+		msg ~= "  From there, you'll see all subvolumes such as @, @home, snapshots, etc.\n\n";
 	else
-		msg ~= "  From there, you'll see all subvolumes and snapshots on this filesystem.";
+		msg ~= "  From there, you'll see all subvolumes and snapshots on this filesystem.\n\n";
+
+	msg ~= "  Alternatively, use --auto-mount to let btdu handle this automatically\n" ~
+		"  (some features will be disabled):\n\n" ~
+		format("     sudo %s",
+			[Runtime.args[0], "--auto-mount", fsPath].escapeShellCommand);
 
 	return msg;
 }

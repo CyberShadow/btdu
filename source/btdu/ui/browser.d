@@ -566,6 +566,11 @@ struct Browser
 						indicatorPos -= 11;
 						at(indicatorPos, 0, { write(" [CHECKED] "); });
 					}
+					if (autoMountMode)
+					{
+						indicatorPos -= 14;
+						at(indicatorPos, 0, { write(" [AUTO-MOUNT] "); });
+					}
 
 					// Bottom bar
 					at(0, height - 1, {
@@ -1106,7 +1111,8 @@ struct Browser
 					write(endl);
 
 					auto fullPath = getFullPath(p);
-					if (fullPath) xOverflowChars({ write("Full path: ", fullPath, endl); });
+					if (fullPath && !autoMountMode)
+						xOverflowChars({ write("Full path: ", fullPath, endl); });
 
 					write("Average query duration: ");
 					if (p.getSamples(SampleType.represented) > 0)
@@ -2556,6 +2562,11 @@ struct Browser
 						popup = Popup.exportFormat;
 						break;
 					case 'y':
+						if (autoMountMode)
+						{
+							showMessage("Clipboard copy not available in auto-mount mode");
+							break;
+						}
 						if (!selection)
 						{
 							showMessage("Nothing selected to copy.");

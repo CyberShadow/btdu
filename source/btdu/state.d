@@ -124,6 +124,7 @@ IndexedSlabAllocator!SubPath subPathAllocator;
 // Other global state (not per-dataset)
 bool imported;
 bool exportSeenAs;
+bool autoMountMode; /// True when using --auto-mount with a temporary mount point
 string fsPath;
 btrfs_ioctl_dev_info_args[] devices;
 SubPath subPathRoot;

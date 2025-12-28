@@ -702,6 +702,82 @@ def test_conflicting_options():
     print("  ✓ --import with --physical rejected")
 
 
+def test_auto_mount_with_subvolume():
+    """Verify btdu --auto-mount works with non-top-level subvolume mount."""
+    # Create btrfs filesystem with a subvolume
+    machine.succeed("mkfs.btrfs -f /dev/vdb")
+    machine.succeed("mkdir -p /mnt/btrfs")
+    machine.succeed("mount /dev/vdb /mnt/btrfs")
+
+    # Create a subvolume with some data
+    machine.succeed("btrfs subvolume create /mnt/btrfs/@")
+    machine.succeed("dd if=/dev/urandom of=/mnt/btrfs/@/testfile.dat bs=1M count=5")
+    machine.succeed("sync")
+    machine.succeed("umount /mnt/btrfs")
+
+    # Mount the non-top-level subvolume (like Ubuntu does)
+    machine.succeed("mount -o subvol=@ /dev/vdb /mnt/btrfs")
+
+    # Verify btdu fails without --auto-mount and suggests the flag
+    result = machine.fail("btdu --headless /mnt/btrfs 2>&1")
+    assert "not mounted from the btrfs top-level" in result.lower(), f"Expected subvolume error, got: {result}"
+    assert "--auto-mount" in result, f"Expected --auto-mount suggestion in error, got: {result}"
+    print("  ✓ Error message suggests --auto-mount")
+
+    # Verify btdu works with --auto-mount
+    run_btdu("--headless --export=/tmp/auto-mount.json --max-samples=100 --auto-mount /mnt/btrfs")
+
+    data = verify_json_export("/tmp/auto-mount.json")
+    root = data.get("root", {})
+    samples = root.get("data", {}).get("represented", {}).get("samples", 0)
+    assert samples > 0, f"Should have collected samples, got {samples}"
+
+    # Verify totalSize is reported correctly
+    assert data.get("totalSize", 0) > 0, "totalSize should be > 0"
+    print(f"  ✓ --auto-mount collected {samples} samples")
+
+
+def test_auto_mount_prefer_ignore_rejected():
+    """Verify --prefer/--ignore options are rejected with --auto-mount."""
+    # Setup: mount non-top-level subvolume
+    # First, ensure device is unmounted (might still be busy from previous test)
+    machine.execute("umount /mnt/btrfs 2>/dev/null || true")
+    machine.execute("umount /dev/vdb 2>/dev/null || true")
+    time.sleep(0.5)  # Give kernel time to finish any pending operations
+
+    machine.succeed("mkfs.btrfs -f /dev/vdb")
+    machine.succeed("mkdir -p /mnt/btrfs")
+    machine.succeed("mount /dev/vdb /mnt/btrfs")
+    machine.succeed("btrfs subvolume create /mnt/btrfs/@")
+    machine.succeed("umount /mnt/btrfs")
+    machine.succeed("mount -o subvol=@ /dev/vdb /mnt/btrfs")
+
+    # Verify --prefer is rejected with --auto-mount
+    result = machine.fail("btdu --headless --auto-mount --prefer=/mnt/btrfs /mnt/btrfs 2>&1")
+    assert "not available with --auto-mount" in result.lower(), f"Expected rejection, got: {result}"
+    print("  ✓ --prefer rejected with --auto-mount")
+
+    # Verify --ignore is rejected with --auto-mount
+    result = machine.fail("btdu --headless --auto-mount --ignore=/mnt/btrfs /mnt/btrfs 2>&1")
+    assert "not available with --auto-mount" in result.lower(), f"Expected rejection, got: {result}"
+    print("  ✓ --ignore rejected with --auto-mount")
+
+
+def test_auto_mount_with_top_level():
+    """Verify --auto-mount works normally when already on top-level subvolume."""
+    # Mount top-level directly
+    setup_btrfs_basic()
+    create_test_files()
+
+    # --auto-mount should work fine (it's a no-op when already top-level)
+    run_btdu("--headless --export=/tmp/toplevel.json --max-samples=100 --auto-mount /mnt/btrfs")
+    data = verify_json_export("/tmp/toplevel.json")
+    root = data.get("root", {})
+    samples = root.get("data", {}).get("represented", {}).get("samples", 0)
+    assert samples > 0, f"Should have collected samples, got {samples}"
+    print(f"  ✓ --auto-mount works on top-level (no-op), collected {samples} samples")
+
+
 def test_paths_with_spaces():
     """Verify btdu correctly handles paths with spaces in directory and file names."""
     setup_btrfs_basic()
@@ -1729,6 +1805,9 @@ def execute_all_tests():
         test_seed_reproducibility,
         test_non_btrfs_error,
         test_conflicting_options,
+        test_auto_mount_with_subvolume,
+        test_auto_mount_prefer_ignore_rejected,
+        test_auto_mount_with_top_level,
         test_paths_with_spaces,
         test_absolute_paths,
         test_relative_paths,
