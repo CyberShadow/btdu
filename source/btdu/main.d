@@ -413,16 +413,14 @@ private struct BtrfsCheckResult
 {
 	bool needsAutoMount;   /// True if path is btrfs but not top-level subvolume
 	string device;         /// Block device path
-	MountInfo[] mounts;    /// Mount info for error message
 }
 
 /// Check if path is btrfs and return info about whether auto-mount is needed
-private BtrfsCheckResult checkBtrfsStatus(string fsPath)
+private BtrfsCheckResult checkBtrfsStatus(string fsPath, MountInfo[] mounts)
 {
 	import core.sys.posix.fcntl : open, O_RDONLY;
 	import core.sys.posix.unistd : close;
 	import std.string : toStringz;
-	import std.algorithm.searching : canFind;
 	import btrfs : isBTRFS, isSubvolume, getSubvolumeID;
 	import btrfs.c.kernel_shared.ctree : BTRFS_FS_TREE_OBJECTID;
 
@@ -435,12 +433,8 @@ private BtrfsCheckResult checkBtrfsStatus(string fsPath)
 	enforce(fd.isBTRFS,
 		fsPath ~ " is not a btrfs filesystem");
 
-	try
-		result.mounts = getMounts().array;
-	catch (Exception e) {}
-
 	enforce(fd.isSubvolume, {
-		auto rootPath = result.mounts.getPathMountInfo(fsPath).file;
+		auto rootPath = mounts.getPathMountInfo(fsPath).file;
 		if (!rootPath)
 			rootPath = "/";
 		return format(
@@ -456,7 +450,7 @@ private BtrfsCheckResult checkBtrfsStatus(string fsPath)
 	if (fd.getSubvolumeID() != BTRFS_FS_TREE_OBJECTID)
 	{
 		result.needsAutoMount = true;
-		auto mountInfo = result.mounts.getPathMountInfo(fsPath);
+		auto mountInfo = mounts.getPathMountInfo(fsPath);
 		result.device = mountInfo.spec;
 	}
 
@@ -512,7 +506,13 @@ private string setupAutoMount(string device)
 
 void checkBtrfs(string fsPath, bool autoMount)
 {
-	auto status = checkBtrfsStatus(fsPath);
+	// Get mount info early so it's available for both code paths
+	MountInfo[] mounts;
+	try
+		mounts = getMounts().array;
+	catch (Exception) {}
+
+	auto status = checkBtrfsStatus(fsPath, mounts);
 
 	if (status.needsAutoMount)
 	{
@@ -523,7 +523,7 @@ void checkBtrfs(string fsPath, bool autoMount)
 		}
 		else
 		{
-			throw new Exception(formatSubvolumeError(fsPath, status.mounts));
+			throw new Exception(formatSubvolumeError(fsPath, mounts));
 		}
 	}
 }
