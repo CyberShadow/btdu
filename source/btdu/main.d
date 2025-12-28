@@ -528,10 +528,21 @@ void checkBtrfs(string fsPath, bool autoMount)
 	}
 }
 
+/// Pick a suitable mount root directory
+private string pickMountRoot(MountInfo[] mounts = null)
+{
+	import std.file : exists;
+	import std.algorithm.searching : canFind;
+
+	return
+		"/mnt".exists && (mounts is null || !mounts.canFind!(m => m.file == "/mnt")) ? "/mnt" :
+		"/media".exists ? "/media" :
+		"/mnt";
+}
+
 private string formatSubvolumeError(string fsPath, MountInfo[] mounts)
 {
 	import std.algorithm.searching : canFind;
-	import std.file : exists;
 
 	string msg = "The specified path is not mounted from the btrfs top-level subvolume.\n\n";
 
@@ -597,12 +608,7 @@ private string formatSubvolumeError(string fsPath, MountInfo[] mounts)
 	auto device = mountInfo.spec;
 	if (!device)
 		device = "<your-btrfs-device>"; // More descriptive placeholder
-	auto mountRoot =
-		"/mnt".exists && !mounts.canFind!(m => m.file == "/mnt") ? "/mnt" :
-		"/media".exists ? "/media" :
-		"/mnt"
-	;
-	auto tmpName = mountRoot ~ "/btrfs-root";
+	auto tmpName = pickMountRoot(mounts) ~ "/btrfs-root";
 
 	msg ~= "> WHAT TO DO:\n\n" ~
 		"  Mount the top-level subvolume and run btdu there:\n\n" ~
