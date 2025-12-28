@@ -426,49 +426,104 @@ void checkBtrfs(string fsPath)
 		);
 	}());
 
-	enforce(fd.getSubvolumeID() == BTRFS_FS_TREE_OBJECTID, {
-		string msg = format(
-			"The mount point you specified, \"%s\", " ~
-			"is not the top-level btrfs subvolume (\"subvolid=%d,subvol=/\").\n",
-			fsPath, BTRFS_FS_TREE_OBJECTID);
+	enforce(fd.getSubvolumeID() == BTRFS_FS_TREE_OBJECTID,
+		formatSubvolumeError(fsPath, mounts));
+}
 
-		auto mountInfo = mounts.getPathMountInfo(fsPath);
-		auto options = mountInfo.mntops
-			.split(",")
-			.map!(o => o.findSplit("="))
-			.map!(p => tuple(p[0], p[2]))
-			.assocArray;
-		if ("subvol" in options && "subvolid" in options)
-			msg ~= format(
-				"It is the btrfs subvolume \"subvolid=%s,subvol=%s\".\n",
-				options["subvolid"], options["subvol"],
-			);
+private string formatSubvolumeError(string fsPath, MountInfo[] mounts)
+{
+	import std.algorithm.searching : canFind;
+	import std.file : exists;
 
-		auto device = mountInfo.spec;
-		if (!device)
-			device = "/dev/sda1"; // placeholder
-		auto mountRoot =
-			"/mnt".exists && !mounts.canFind!(m => m.file == "/mnt") ? "/mnt" :
-			"/media".exists ? "/media" :
-			"..."
-		;
-		auto tmpName = mountRoot ~ "/" ~ device.baseName;
-		msg ~= format(
-			"Please specify the path to a mountpoint mounted with subvol=/ or subvolid=%d." ~
-			"\n" ~
-			"E.g.: %s && %s && %s",
-			BTRFS_FS_TREE_OBJECTID,
-			["mkdir", tmpName].escapeShellCommand,
-			["mount", "-o", "subvol=/", device, tmpName].escapeShellCommand,
-			[Runtime.args[0], tmpName].escapeShellCommand,
-		);
-		if (fsPath == "/")
-			msg ~= format(
-				"\n\nNote that the top-level btrfs subvolume (\"subvolid=%d,subvol=/\") " ~
-				"is not the same as the root of the filesystem (\"/\").",
-				BTRFS_FS_TREE_OBJECTID);
-		return msg;
-	}());
+	string msg = "The specified path is not mounted from the btrfs top-level subvolume.\n\n";
+
+	// Get mount info and detect common layouts
+	auto mountInfo = mounts.getPathMountInfo(fsPath);
+	auto options = mountInfo.mntops
+		.split(",")
+		.map!(o => o.findSplit("="))
+		.map!(p => tuple(p[0], p[2]))
+		.assocArray;
+
+	string currentSubvol;
+	if ("subvol" in options)
+		currentSubvol = options["subvol"];
+
+	msg ~= "> WHAT WENT WRONG:\n\n";
+	if (fsPath == "/")
+		msg ~= "  Your root filesystem \"/\" is a btrfs subvolume, but not the top-level one.\n";
+	else
+		msg ~= "  The path you specified (\"" ~ fsPath ~ "\") is a btrfs subvolume, but not the top-level one.\n";
+	if (currentSubvol.length > 0)
+		msg ~= format("  It is mounted from the \"%s\" subvolume (subvol=%s), but\n", currentSubvol, currentSubvol);
+	msg ~= "  btdu requires the top-level subvolume (subvol=/).\n\n";
+
+	msg ~= "> WHY THIS MATTERS:\n\n" ~
+		"  btdu needs access to the top-level subvolume to analyze all subvolumes\n" ~
+		"  and snapshots. Your current path only shows part of the filesystem.\n\n";
+
+	msg ~= "> HOW THIS HAPPENED:\n\n";
+	if (currentSubvol.canFind("@"))
+		msg ~=
+			"  Your system uses the common \"@\" subvolume layout (Ubuntu, Fedora, etc.).\n" ~
+			"  This layout was probably created automatically during installation.\n";
+	else
+		msg ~=
+			"  Your system was configured to mount a subvolume rather than the\n" ~
+			"  top-level filesystem. This is common for systems using btrfs snapshots.\n";
+
+	// Check if this is configured in /etc/fstab
+	bool inFstab = {
+		try
+		{
+			import std.stdio : File;
+			foreach (line; File("/etc/fstab").byLine)
+			{
+				auto l = line.idup.strip;
+				if (l.length == 0 || l[0] == '#')
+					continue;
+				auto fields = l.split;
+				if (fields.length >= 2 && fields[1] == fsPath)
+					return true;
+			}
+		}
+		catch (Exception) {}
+		return false;
+	}();
+
+	if (inFstab)
+		msg ~= "  This configuration is set in /etc/fstab.\n";
+	msg ~= "\n";
+
+	// Provide step-by-step fix
+	auto device = mountInfo.spec;
+	if (!device)
+		device = "<your-btrfs-device>"; // More descriptive placeholder
+	auto mountRoot =
+		"/mnt".exists && !mounts.canFind!(m => m.file == "/mnt") ? "/mnt" :
+		"/media".exists ? "/media" :
+		"/mnt"
+	;
+	auto tmpName = mountRoot ~ "/btrfs-root";
+
+	msg ~= "> WHAT TO DO:\n\n" ~
+		"  Mount the top-level subvolume and run btdu there:\n\n" ~
+		format("  1. Create a mount point:\n     sudo %s\n\n",
+			["mkdir", "-p", tmpName].escapeShellCommand) ~
+		format("  2. Mount the top-level subvolume:\n     sudo %s\n\n",
+			["mount", "-o", "subvol=/", device, tmpName].escapeShellCommand) ~
+		format("  3. Run btdu:\n     sudo %s\n\n",
+			[Runtime.args[0], tmpName].escapeShellCommand) ~
+		"  This is safe: mounting the same filesystem at a second location is a normal\n" ~
+		"  operation and won't affect your existing mounts or data.\n\n";
+
+	// Add hint about what they'll see
+	if (currentSubvol.canFind("@"))
+		msg ~= "  From there, you'll see all subvolumes such as @, @home, snapshots, etc.";
+	else
+		msg ~= "  From there, you'll see all subvolumes and snapshots on this filesystem.";
+
+	return msg;
 }
 
 private string escapeShellCommand(string[] args)
