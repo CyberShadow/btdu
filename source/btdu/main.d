@@ -408,6 +408,18 @@ private enum CLONE_NEWNS = 0x00020000;
 private enum MS_REC = 0x4000;
 private enum MS_PRIVATE = 1 << 18;
 
+/// Check if path is a block device
+private bool isBlockDevice(string path)
+{
+	import core.sys.posix.sys.stat : stat_t, stat, S_IFMT, S_IFBLK;
+	import std.string : toStringz;
+
+	stat_t st;
+	if (stat(path.toStringz, &st) != 0)
+		return false;
+	return (st.st_mode & S_IFMT) == S_IFBLK;
+}
+
 /// Result of checking btrfs filesystem
 private struct BtrfsCheckResult
 {
@@ -512,6 +524,21 @@ void checkBtrfs(string fsPath, bool autoMount)
 		mounts = getMounts().array;
 	catch (Exception) {}
 
+	// Check if the path is a block device
+	if (isBlockDevice(fsPath))
+	{
+		if (autoMount)
+		{
+			.autoMountMode = true;
+			.fsPath = setupAutoMount(fsPath);
+		}
+		else
+		{
+			throw new Exception(formatBlockDeviceError(fsPath, mounts));
+		}
+		return;
+	}
+
 	auto status = checkBtrfsStatus(fsPath, mounts);
 
 	if (status.needsAutoMount)
@@ -538,6 +565,27 @@ private string pickMountRoot(MountInfo[] mounts = null)
 		"/mnt".exists && (mounts is null || !mounts.canFind!(m => m.file == "/mnt")) ? "/mnt" :
 		"/media".exists ? "/media" :
 		"/mnt";
+}
+
+private string formatBlockDeviceError(string device, MountInfo[] mounts)
+{
+	import std.format : format;
+
+	string msg = format("'%s' is a block device, not a mounted filesystem.\n\n", device);
+
+	auto tmpName = pickMountRoot(mounts) ~ "/btrfs-root";
+
+	msg ~= "To analyze this device, either:\n\n" ~
+		"  1. Mount it first and run btdu on the mount point:\n\n" ~
+		format("     sudo %s\n", ["mkdir", "-p", tmpName].escapeShellCommand) ~
+		format("     sudo %s\n", ["mount", "-o", "subvol=/", device, tmpName].escapeShellCommand) ~
+		format("     sudo %s\n\n", [Runtime.args[0], tmpName].escapeShellCommand) ~
+		"  2. Or use --auto-mount to let btdu mount it temporarily\n" ~
+		"     (some features will be disabled):\n\n" ~
+		format("     sudo %s\n",
+			[Runtime.args[0], "--auto-mount", device].escapeShellCommand);
+
+	return msg;
 }
 
 private string formatSubvolumeError(string fsPath, MountInfo[] mounts)

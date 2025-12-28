@@ -778,6 +778,37 @@ def test_auto_mount_with_top_level():
     print(f"  ✓ --auto-mount works on top-level (no-op), collected {samples} samples")
 
 
+def test_auto_mount_with_block_device():
+    """Verify btdu --auto-mount works when given a block device directly."""
+    # Ensure device is unmounted
+    machine.execute("umount /mnt/btrfs 2>/dev/null || true")
+    machine.execute("umount /dev/vdb 2>/dev/null || true")
+    time.sleep(0.5)
+
+    # Create btrfs filesystem with some data
+    machine.succeed("mkfs.btrfs -f /dev/vdb")
+    machine.succeed("mkdir -p /mnt/btrfs")
+    machine.succeed("mount /dev/vdb /mnt/btrfs")
+    machine.succeed("dd if=/dev/urandom of=/mnt/btrfs/testfile.dat bs=1M count=5")
+    machine.succeed("sync")
+    machine.succeed("umount /mnt/btrfs")
+
+    # Verify btdu fails without --auto-mount on block device
+    result = machine.fail("btdu --headless /dev/vdb 2>&1")
+    assert "block device" in result.lower(), f"Expected block device error, got: {result}"
+    assert "--auto-mount" in result, f"Expected --auto-mount suggestion, got: {result}"
+    print("  ✓ Error message for block device suggests --auto-mount")
+
+    # Verify btdu works with --auto-mount on block device
+    run_btdu("--headless --export=/tmp/blockdev.json --max-samples=100 --auto-mount /dev/vdb")
+
+    data = verify_json_export("/tmp/blockdev.json")
+    root = data.get("root", {})
+    samples = root.get("data", {}).get("represented", {}).get("samples", 0)
+    assert samples > 0, f"Should have collected samples, got {samples}"
+    print(f"  ✓ --auto-mount with block device collected {samples} samples")
+
+
 def test_paths_with_spaces():
     """Verify btdu correctly handles paths with spaces in directory and file names."""
     setup_btrfs_basic()
@@ -1808,6 +1839,7 @@ def execute_all_tests():
         test_auto_mount_with_subvolume,
         test_auto_mount_prefer_ignore_rejected,
         test_auto_mount_with_top_level,
+        test_auto_mount_with_block_device,
         test_paths_with_spaces,
         test_absolute_paths,
         test_relative_paths,
