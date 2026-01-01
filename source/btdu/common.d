@@ -36,7 +36,7 @@ const(char)[] errorString(int errno)
 	import core.stdc.string : strlen, strerror_r;
 	import std.traits : ReturnType;
 
-	char[1024] buf = void;
+	static char[1024] buf = void;
 	const(char)* s;
 	static if (is(ReturnType!strerror_r == int))
 	{
