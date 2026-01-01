@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020, 2021, 2022, 2023, 2024, 2025  Vladimir Panteleev <btdu@cy.md>
+ * Copyright (C) 2020, 2021, 2022, 2023, 2024, 2025, 2026  Vladimir Panteleev <btdu@cy.md>
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public
@@ -906,14 +906,14 @@ struct BrowserPath
 	ulong getSamples(SampleType type) const
 	{
 		return getData!ulong(
-			fromAggregate: () => aggregateData.data[type].samples,
-			fromSharingGroups: {
+			/*fromAggregate:*/ () => aggregateData.data[type].samples,
+			/*fromSharingGroups:*/ {
 				ulong sum = 0;
 				for (const(SharingGroup)* group = firstSharingGroup; group !is null; group = group.getNext(&this))
 					sum += group.data.samples * relevantOccurrences(group, type);
 				return sum;
 			},
-			fromChildren: {
+			/*fromChildren:*/ {
 				ulong sum = 0;
 				for (const(BrowserPath)* child = firstChild; child; child = child.nextSibling)
 					sum += child.getSamples(type);
@@ -926,14 +926,14 @@ struct BrowserPath
 	ulong getDuration(SampleType type) const
 	{
 		return getData!ulong(
-			fromAggregate: () => aggregateData.data[type].duration,
-			fromSharingGroups: {
+			/*fromAggregate:*/ () => aggregateData.data[type].duration,
+			/*fromSharingGroups:*/ {
 				ulong sum = 0;
 				for (const(SharingGroup)* group = firstSharingGroup; group !is null; group = group.getNext(&this))
 					sum += group.data.duration * relevantOccurrences(group, type);
 				return sum;
 			},
-			fromChildren: {
+			/*fromChildren:*/ {
 				ulong sum = 0;
 				for (const(BrowserPath)* child = firstChild; child; child = child.nextSibling)
 					sum += child.getDuration(type);
@@ -946,8 +946,8 @@ struct BrowserPath
 	const(Offset[historySize]) getOffsets(SampleType type) const
 	{
 		return getData!(Offset[historySize])(
-			fromAggregate: () => aggregateData.data[type].offsets,
-			fromSharingGroups: {
+			/*fromAggregate:*/ () => aggregateData.data[type].offsets,
+			/*fromSharingGroups:*/ {
 				// Keep track of the most recent offsets (sorted by lastSeen ascending)
 				Offset[historySize] result;
 				ulong[historySize] resultLastSeen;
@@ -988,7 +988,7 @@ struct BrowserPath
 
 				return result;
 			},
-			fromChildren: {
+			/*fromChildren:*/ {
 				// Merge offsets from all children
 				Offset[historySize] result;
 				foreach (i; 0 .. historySize)
@@ -1013,8 +1013,8 @@ struct BrowserPath
 	double getDistributedSamples() const
 	{
 		return getData!double(
-			fromAggregate: () => aggregateData.distributedSamples,
-			fromSharingGroups: {
+			/*fromAggregate:*/ () => aggregateData.distributedSamples,
+			/*fromSharingGroups:*/ {
 				double sum = 0;
 				for (const(SharingGroup)* group = firstSharingGroup; group !is null; group = group.getNext(&this))
 				{
@@ -1025,7 +1025,7 @@ struct BrowserPath
 				}
 				return sum;
 			},
-			fromChildren: {
+			/*fromChildren:*/ {
 				double sum = 0;
 				for (const(BrowserPath)* child = firstChild; child; child = child.nextSibling)
 					sum += child.getDistributedSamples();
@@ -1038,8 +1038,8 @@ struct BrowserPath
 	double getDistributedDuration() const
 	{
 		return getData!double(
-			fromAggregate: () => aggregateData.distributedDuration,
-			fromSharingGroups: {
+			/*fromAggregate:*/ () => aggregateData.distributedDuration,
+			/*fromSharingGroups:*/ {
 				double sum = 0;
 				for (const(SharingGroup)* group = firstSharingGroup; group !is null; group = group.getNext(&this))
 				{
@@ -1050,7 +1050,7 @@ struct BrowserPath
 				}
 				return sum;
 			},
-			fromChildren: {
+			/*fromChildren:*/ {
 				double sum = 0;
 				for (const(BrowserPath)* child = firstChild; child; child = child.nextSibling)
 					sum += child.getDistributedDuration();

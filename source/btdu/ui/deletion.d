@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2023, 2024  Vladimir Panteleev <btdu@cy.md>
+ * Copyright (C) 2023, 2024, 2026  Vladimir Panteleev <btdu@cy.md>
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public
@@ -215,7 +215,7 @@ struct Deleter
 			this.state.stopping = true;
 			this.state.status = Status.progress;
 		}
-		this.subvolumeResume.setIfInitialized();
+		this.subvolumeResume.set();
 	}
 
 	void stop()
