@@ -877,7 +877,7 @@ def test_version_display():
     # Run btdu --help and check for version pattern
     result = run_btdu("--help 2>&1", timeout=5)
     # Check for the specific version from flake.nix
-    assert "0.6" in result, "Version 0.6 not found in help output"
+    assert "0.7.0" in result, "Version 0.7.0 not found in help output"
     print("  ✓ Version display verified")
 
 
