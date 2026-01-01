@@ -779,9 +779,15 @@ struct Curses
 		.beep();
 	}
 
+	enum ClipboardResult
+	{
+		system,   /// Copied via system clipboard tool (xclip, xsel, wl-copy)
+		terminal, /// Copied via OSC 52 terminal escape sequence
+	}
+
 	/// Copy text to the system clipboard.
 	/// Tries xclip, xsel, wl-copy in order, then falls back to OSC 52.
-	void copyToClipboard(const(char)[] text)
+	ClipboardResult copyToClipboard(const(char)[] text)
 	{
 		import std.process : spawnProcess, wait, environment, pipe;
 
@@ -805,16 +811,16 @@ struct Curses
 		if ("WAYLAND_DISPLAY" in environment)
 		{
 			if (tryCommand(["wl-copy"]))
-				return;
+				return ClipboardResult.system;
 		}
 
 		// Try X11 clipboard tools
 		if ("DISPLAY" in environment)
 		{
 			if (tryCommand(["xclip", "-selection", "clipboard"]))
-				return;
+				return ClipboardResult.system;
 			if (tryCommand(["xsel", "--clipboard", "--input"]))
-				return;
+				return ClipboardResult.system;
 		}
 
 		// Fall back to OSC 52 escape sequence
@@ -823,6 +829,7 @@ struct Curses
 		outputFile.write(Base64.encode(cast(const(ubyte)[])text));
 		outputFile.write("\007");
 		outputFile.flush();
+		return ClipboardResult.terminal;
 	}
 
 private:
