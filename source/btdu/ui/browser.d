@@ -2575,8 +2575,15 @@ struct Browser
 						auto fullPath = getFullPath(selection);
 						if (fullPath)
 						{
-							curses.copyToClipboard(fullPath);
-							showMessage("Path copied to clipboard");
+							final switch (curses.copyToClipboard(fullPath))
+							{
+							case Curses.ClipboardResult.system:
+								showMessage("Path copied to system clipboard");
+								break;
+							case Curses.ClipboardResult.terminal:
+								showMessage("Path copied to terminal clipboard");
+								break;
+							}
 						}
 						else
 							showMessage("Cannot copy special node path");
