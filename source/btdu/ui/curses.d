@@ -783,16 +783,19 @@ struct Curses
 	/// Tries xclip, xsel, wl-copy in order, then falls back to OSC 52.
 	void copyToClipboard(const(char)[] text)
 	{
-		import std.process : pipeProcess, Redirect, wait, environment;
+		import std.process : spawnProcess, wait, environment, pipe;
 
 		bool tryCommand(string[] cmd)
 		{
 			try
 			{
-				auto pipes = pipeProcess(cmd, Redirect.stdin);
-				pipes.stdin.write(text);
-				pipes.stdin.close();
-				return wait(pipes.pid) == 0;
+				auto devNull = File("/dev/null", "w");
+				auto stdinPipe = pipe();
+				auto pid = spawnProcess(cmd, stdinPipe.readEnd, devNull, devNull);
+				stdinPipe.readEnd.close();
+				stdinPipe.writeEnd.write(text);
+				stdinPipe.writeEnd.close();
+				return wait(pid) == 0;
 			}
 			catch (Exception)
 				return false;
