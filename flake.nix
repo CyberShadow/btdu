@@ -146,7 +146,10 @@
             };
 
             # Build ncurses with Clang LTO for the target
-            # Use unwrapped clang to avoid cc-wrapper adding incompatible flags for cross-compilation
+            # Note: We build from scratch rather than overriding nixpkgs' ncurses because
+            # the cross-compilation stdenv uses gcc, and swapping to clang for LTO conflicts
+            # with nixpkgs' cross-compilation infrastructure.
+            # terminfo-dirs matches nixpkgs' static ncurses configuration for portability.
             ncursesLto = pkgs.stdenv.mkDerivation {
               pname = "ncurses-lto-${arch}";
               version = pkgs.ncurses.version;
@@ -177,7 +180,8 @@
                   --without-tests \
                   --without-manpages \
                   --host=${targetTriple} \
-                  --build=${pkgs.stdenv.buildPlatform.config}
+                  --build=${pkgs.stdenv.buildPlatform.config} \
+                  --with-terminfo-dirs="/etc/terminfo:/lib/terminfo:/usr/share/terminfo:/run/current-system/sw/share/terminfo"
               '';
 
               buildPhase = ''
