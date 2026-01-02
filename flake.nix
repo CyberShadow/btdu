@@ -265,12 +265,13 @@
 
               # Use the cross-compiler's gcc wrapper for linking
               # Note: -I for patched druntime must come first to override host LDC's includes
+              # -P passes flags to the C preprocessor for ImportC
               ${pkgs.ldc}/bin/ldc2 \
                 -mtriple ${targetTriple} \
                 --gcc=${crossCC}/bin/${crossCC.targetPrefix}cc \
                 --linker=lld \
                 -i \
-                -i=-deimos \
+                -P-I${ncursesLto}/include/ncursesw \
                 -of btdu \
                 -I${ldcSrc}/runtime/druntime/src \
                 -L-L${ldcRuntime}/lib \

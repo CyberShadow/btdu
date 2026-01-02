@@ -36,7 +36,7 @@ import ae.utils.text.functor : stringifiable, fmtSeq;
 import ae.utils.functor.primitives : functor;
 import ae.utils.typecons : require;
 
-import deimos.ncurses;
+import btdu.ui.ncurses;
 
 struct Curses
 {

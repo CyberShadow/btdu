@@ -7,8 +7,11 @@ toolchainRequirements frontend=">=2.097"
 
 dependency "ae" version="==0.0.3701"
 dependency "btrfs" version="~>0.0.21"
-dependency "ncurses" version="~>1.0.0"
 dependency "emsi_containers" version="==0.9.0"
+
+// ImportC ncurses shim - captures system ncurses configuration automatically
+sourceFiles "source/btdu_ncurses_importc.c"
+libs "ncursesw"
 
 // Custom build type for integration tests with extra runtime checks
 buildType "checked" {
