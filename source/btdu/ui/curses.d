@@ -46,7 +46,7 @@ struct Curses
 
 	void start()
 	{
-		setlocale(LC_CTYPE, "");
+		initLocale();
 
 		// Smarter alternative to initscr()
 		{
@@ -842,6 +842,69 @@ private:
 // TODO: upstream into Druntime
 extern (C) int wcwidth(wchar_t c);
 
+/// Replacement character used when wcwidth returns -1 (non-printable or invalid).
+/// Must be ASCII to guarantee it works in any locale.
+enum safeReplacementChar = '?';
+
+/// Unicode characters used in the btdu UI that must be renderable.
+/// These should all have wcwidth == 1 in a proper UTF-8 locale.
+immutable dchar[] uiTestChars = [
+	'│', '├', '└', '─', '┼', '┬', '┴',  // Box drawing
+	'↑', '↓', '←', '→', '↵',            // Arrows
+	'█', '▓', '▒', '░',                  // Block elements
+];
+
+/// A CJK character to verify wcwidth returns 2 (not just 1 for everything).
+enum cjkTestChar = '漢';  // U+6F22, should be width 2
+
+/// Initialize locale for UTF-8 support.
+/// Tries user's locale first, then falls back to explicit UTF-8 locales.
+/// Throws if no working UTF-8 locale can be found.
+void initLocale()
+{
+	import std.exception : enforce;
+
+	// Locales to try in order of preference
+	static immutable locales = ["", "C.UTF-8", "en_US.UTF-8"];
+
+	foreach (locale; locales)
+	{
+		if (tryLocale(locale.ptr))
+			return;
+	}
+
+	throw new Exception(
+		"Cannot initialize a UTF-8 locale for rendering the UI.\n" ~
+		"Tried: (default), C.UTF-8, en_US.UTF-8\n" ~
+		"Please ensure a UTF-8 locale is available and try setting LANG=C.UTF-8 or LANG=en_US.UTF-8"
+	);
+}
+
+/// Try to set the given locale and verify wcwidth works correctly.
+/// Returns true if the locale is usable, false otherwise.
+bool tryLocale(scope const(char)* locale)
+{
+	if (setlocale(LC_CTYPE, locale) is null)
+		return false;
+
+	// Verify wcwidth works for all UI characters (should return 1)
+	foreach (c; uiTestChars)
+	{
+		if (wcwidth(c) != 1)
+			return false;
+	}
+
+	// Verify CJK character returns width 2 (confirms wcwidth is truly working)
+	if (wcwidth(cjkTestChar) != 2)
+		return false;
+
+	// Verify our safe replacement character has width 1
+	if (wcwidth(safeReplacementChar) != 1)
+		return false;
+
+	return true;
+}
+
 void ncenforce(int value, string message = "ncurses call failed")
 {
 	enforce(value == OK, message);
@@ -875,19 +938,29 @@ void toCChars(const(char)[] str, scope void delegate(cchar_t, int) sink, uint at
 		// Discard leading nonspacing characters. ncurses cannot accept them anyway.
 		while (!dchars.empty && wcwidth(dchars.front) == 0)
 			dchars.popFront();
-		// Copy one spacing and up to CCHARW_MAX-1 nonspacing characters
 		if (dchars.empty)
 			break;
 		auto width = wcwidth(dchars.front);
-		assert(width > 0);
 		wchar_t[CCHARW_MAX + /*nul-terminator*/ 1] wchars;
 		size_t i = 0;
-		wchars[i++] = dchars.front;
-		dchars.popFront();
-		while (i < CCHARW_MAX && !dchars.empty && wcwidth(dchars.front) == 0)
+		if (width == -1)
 		{
+			// Non-printable character - replace with visible marker
+			wchars[i++] = safeReplacementChar;
+			width = 1;
+			dchars.popFront();
+		}
+		else
+		{
+			// Copy one spacing and up to CCHARW_MAX-1 nonspacing characters
+			assert(width > 0);
 			wchars[i++] = dchars.front;
 			dchars.popFront();
+			while (i < CCHARW_MAX && !dchars.empty && wcwidth(dchars.front) == 0)
+			{
+				wchars[i++] = dchars.front;
+				dchars.popFront();
+			}
 		}
 		wchars[i] = 0;
 		sink(toCChar(wchars.ptr, attr, color), width);
