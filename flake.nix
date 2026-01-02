@@ -155,7 +155,11 @@
               version = pkgs.ncurses.version;
               src = pkgs.ncurses.src;
 
-              nativeBuildInputs = [ pkgs.llvmPackages.clang-unwrapped pkgs.lld ];
+              nativeBuildInputs = [
+                pkgs.llvmPackages.clang-unwrapped
+                pkgs.lld
+                pkgs.ncurses  # for tic/infocmp needed to compile fallback terminal entries
+              ];
 
               configurePhase = ''
                 # Use musl headers and disable glibc's FORTIFY_SOURCE
@@ -181,7 +185,8 @@
                   --without-manpages \
                   --host=${targetTriple} \
                   --build=${pkgs.stdenv.buildPlatform.config} \
-                  --with-terminfo-dirs="/etc/terminfo:/lib/terminfo:/usr/share/terminfo:/run/current-system/sw/share/terminfo"
+                  --with-terminfo-dirs="/etc/terminfo:/lib/terminfo:/usr/share/terminfo:/run/current-system/sw/share/terminfo" \
+                  --with-fallbacks="xterm,xterm-256color,vt100,vt102,linux,dumb,screen,screen-256color,tmux,tmux-256color"
               '';
 
               buildPhase = ''
