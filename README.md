@@ -88,15 +88,19 @@ Or from a local clone:
 
 The binary will be available at `./result/bin/btdu`.
 
-For development, use `nix develop` to enter a shell with all dependencies available, then build with `dub build`.
+For development, use `nix develop` to enter a shell with all dependencies available, then build with `dub build`:
+
+    nix develop -c dub build
 
 ### Manual build
 
-1. Install [a D compiler](https://dlang.org/download.html).  
-   Note that you will need a compiler supporting D v2.097 or newer - the compiler in your distribution's repositories might be too old.
+1. Install [a D compiler](https://dlang.org/download.html).
 2. Install [Dub](https://github.com/dlang/dub), if it wasn't included with your D compiler.
 3. Install `libncursesw5-dev`, or your distribution's equivalent package.
 4. Run `dub build -b release`
+
+Note: not all software distributions package a compatible version of all necessary dependencies.
+Success is not guaranteed; please use the Nix build method if you encounter issues.
 
 
 Usage
