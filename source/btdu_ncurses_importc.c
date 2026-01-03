@@ -3,21 +3,55 @@
 //
 // This file is compiled by ImportC to extract ncurses declarations.
 // C enums export macro constants as D manifest constants.
+//
+// Note: dub.sdl passes -P-std=c11 to force C11 mode, which ensures
+// stdbool.h defines bool as _Bool (GCC 15+ defaults to C23 where bool
+// is a keyword that ImportC doesn't implement). This workaround can be
+// removed after requiring DMD >= 2.112.0 (adds -std=c11 automatically).
 
-// Disable glibc inline functions that cause infinite recursion with ImportC
-// These inlines (like wctob) shadow libc functions and call themselves
-// __NO_INLINE__ prevents features.h from defining __USE_EXTERN_INLINES
+// Disable glibc inline functions that cause infinite recursion with ImportC.
+// These inlines (like wctob) shadow libc functions and call themselves.
+// __NO_INLINE__ prevents features.h from defining __USE_EXTERN_INLINES.
 #define __NO_INLINE__ 1
+
+// Feature test macros - pkg-config recommends these for ncursesw
+#define _DEFAULT_SOURCE 1
+#define _XOPEN_SOURCE 600
+#define _XOPEN_SOURCE_EXTENDED 1
 
 #undef _FORTIFY_SOURCE
 #define _FORTIFY_SOURCE 0
-#define _XOPEN_SOURCE_EXTENDED 1
+
+// Try ncursesw first (wide character support), fall back to ncurses
+// Note: dub's "libs" uses pkg-config only for linking, not for C preprocessing,
+// so we use __has_include to find the correct header path
+// TODO: Fix dub to pass pkg-config cflags to ImportC preprocessor
+#if __has_include(<ncursesw/ncurses.h>)
+#include <ncursesw/ncurses.h>
+#else
 #include <ncurses.h>
+#endif
+
+// Wrapper for stdscr - on reentrant ncurses builds, stdscr is a macro
+// that expands to a function call which ImportC may not handle correctly
+static inline WINDOW* _nc_get_stdscr(void) { return stdscr; }
 
 // Export macro constants as C enums (become D manifest constants)
 // Using _NC_ prefix; D wrapper aliases these to original names
+
+// Return codes - separate enum to handle negative ERR value
 enum {
-    // Attributes
+    _NC_OK = 0,
+    _NC_ERR = -1,
+};
+
+// Configuration
+enum {
+    _NC_CCHARW_MAX = CCHARW_MAX,
+};
+
+// Attributes
+enum {
     _NC_A_NORMAL = A_NORMAL,
     _NC_A_STANDOUT = A_STANDOUT,
     _NC_A_UNDERLINE = A_UNDERLINE,
@@ -35,15 +69,10 @@ enum {
     _NC_A_TOP = A_TOP,
     _NC_A_VERTICAL = A_VERTICAL,
     _NC_A_ITALIC = A_ITALIC,
+};
 
-    // Return codes
-    _NC_OK = OK,
-    _NC_ERR = ERR,
-
-    // Configuration (from autoconf)
-    _NC_CCHARW_MAX = CCHARW_MAX,
-
-    // Key codes - basic navigation
+// Key codes
+enum {
     _NC_KEY_DOWN = KEY_DOWN,
     _NC_KEY_UP = KEY_UP,
     _NC_KEY_LEFT = KEY_LEFT,

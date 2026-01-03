@@ -12,6 +12,10 @@ dependency "emsi_containers" version="==0.9.0"
 // ImportC ncurses shim - captures system ncurses configuration automatically
 sourceFiles "source/btdu_ncurses_importc.c"
 libs "ncursesw"
+// Force C11 mode for ImportC preprocessor - GCC 15+ defaults to C23 where
+// bool/true/false/nullptr are keywords, but ImportC doesn't implement them.
+// TODO: Remove after requiring DMD >= 2.112.0 (adds -std=c11 automatically)
+dflags "-P-std=c11"
 
 // Custom build type for integration tests with extra runtime checks
 buildType "checked" {
