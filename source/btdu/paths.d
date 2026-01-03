@@ -304,6 +304,9 @@ mixin template SimplePath()
 			if (!path.parent) // root
 				return base;
 			base = recurse(base, path.parent);
+			static if (existingOnly)
+				if (base is null)
+					return null;
 			return base.appendName!existingOnly(path.name);
 		}
 
@@ -317,6 +320,9 @@ mixin template SimplePath()
 		{
 			if (path.parent)
 				base = recurse(base, path.parent);
+			static if (existingOnly)
+				if (base is null)
+					return null;
 			return base.appendPath!existingOnly(path.subPath);
 		}
 
