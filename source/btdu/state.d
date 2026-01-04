@@ -835,17 +835,23 @@ void populateOrUnpopulateBrowserPathsFromSharingGroup(IngestDirection direction)
 			markTotalSamples -= samples;
 
 		// Check marks and update marked node (expert mode only)
-		if (expert)
+		// Only during ingest - uningest skips this because invalidateMark() is called
+		// after deletion which resets marked.exclusive to 0. This avoids needing to
+		// track whether allMarked was true at ingest time.
+		static if (direction == IngestDirection.ingest)
 		{
-			foreach (i, ref path; paths)
-				if (!group.pathData[i].path.getEffectiveMark())
-				{
-					allMarked = false;
-					break;
-				}
+			if (expert)
+			{
+				foreach (i, ref path; paths)
+					if (!group.pathData[i].path.getEffectiveMark())
+					{
+						allMarked = false;
+						break;
+					}
 
-			if (allMarked)
-				applySamples(&marked, SampleType.exclusive);
+				if (allMarked)
+					applySamples(&marked, SampleType.exclusive);
+			}
 		}
 	}
 
