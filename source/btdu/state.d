@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020, 2021, 2022, 2023, 2025  Vladimir Panteleev <btdu@cy.md>
+ * Copyright (C) 2020, 2021, 2022, 2023, 2025, 2026  Vladimir Panteleev <btdu@cy.md>
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public
@@ -284,6 +284,10 @@ static this()
 	marked.forceAggregateData();
 }
 
+/// Set to true when a deletion has occurred, relaxing certain invariant checks.
+/// Guarded by debug(check) since it's only used for assertions.
+debug(check) bool deletionOccurred;
+
 debug(check) void checkState()
 {
 	browserRoot.checkState();
@@ -499,16 +503,170 @@ auto toFilesystemPath(BrowserPath* path)
 		.stringifiable;
 }
 
-/// Populate BrowserPath tree from a sharing group.
+/// Remove a path at the given index from a sharing group.
+/// Shifts remaining paths and pathData down to fill the gap.
+/// The paths slice is shrunk by 1; pathData length is tracked via paths.length.
+private void removePathFromGroup(SharingGroup* group, size_t index)
+{
+	auto len = group.paths.length;
+	assert(index < len, "Index out of bounds");
+
+	// Shift paths down
+	foreach (i; index .. len - 1)
+		group.paths[i] = group.paths[i + 1];
+	group.paths = group.paths[0 .. len - 1];
+
+	// Shift pathData down
+	// Note: pathData[i].path and pathData[i].next pointers remain valid
+	// (they point to BrowserPaths/groups, not indices)
+	foreach (i; index .. len - 1)
+		group.pathData[i] = group.pathData[i + 1];
+}
+
+/// Evict a path from all its sharing groups using un-ingest/edit/re-ingest.
+/// This modifies sharing groups in-place to remove this path, redistributing
+/// samples to remaining paths or to a <DELETED> node if the group becomes empty.
+void evictPathFromSharingGroups(BrowserPath* path)
+{
+	import std.traits : EnumMembers;
+
+	if (path.firstSharingGroup is null)
+		return;  // Directory node - children already handled
+
+	// Process each sharing group that contains this path
+	for (auto group = path.firstSharingGroup; group !is null; )
+	{
+		// Find ALL occurrences of this path (may appear multiple times if same extent used multiple times)
+		auto ourIndex = group.findIndex(path);
+		assert(ourIndex != size_t.max, "Could not find path in sharing group");
+		if (ourIndex == size_t.max)
+			break;
+
+		// Save next pointer before modifying group (use the first occurrence's next pointer)
+		auto nextGroup = group.pathData[ourIndex].next;
+
+		// 1. Un-ingest: Remove this group's sample contribution
+		unpopulateBrowserPathsFromSharingGroup(
+			group,
+			false,  // needsLinking = false
+			group.data.samples,
+			group.data.offsets[],
+			group.data.duration
+		);
+
+		// 2. Unhash: Remove from the sharingGroups global HashMap before modifying paths
+		sharingGroups.remove(SharingGroup.Paths(group));
+
+		// 3. In-place delete ALL occurrences of this path
+		// (occurrences are adjacent, so keep removing at the same index)
+		while (ourIndex < group.paths.length &&
+		       group.pathData[ourIndex].path is path)
+		{
+			removePathFromGroup(group, ourIndex);
+		}
+
+		// 4. Handle empty group or recalculate representative
+		bool needsLinking = false;
+		if (group.paths.length == 0)
+		{
+			// The group is now empty.
+			// Replace the path list with a <DELETED> GlobalPath.
+			// Follow the same pattern as other special nodes (see subproc.d).
+			group.paths = group.paths.ptr[0 .. 1];  // Reuse array memory
+			group.paths[0] = GlobalPath(null, subPathRoot.appendName("\0DELETED"));
+			group.pathData[0].path = null;  // Will be created by Phase 1 of re-ingestion
+			group.pathData[0].next = null;
+			group.representativeIndex = 0;
+			needsLinking = true;  // New path needs to be linked and created
+		}
+		else
+		{
+			// Recalculate representative
+			group.representativeIndex = selectRepresentativeIndex(group.paths);
+
+			// In non-expert mode, only the representative has a path pointer set.
+			// If the new representative doesn't have one, re-ingestion will create it.
+			// Note: when the representative changes, the group remains linked in the
+			// old representative's firstSharingGroup chain (we don't unlink it because
+			// that would require traversing the singly-linked list). This is harmless:
+			// relevantOccurrences() returns 0 for the old representative since it checks
+			// group.pathData[group.representativeIndex].path, which no longer matches.
+			// Similar to tombstones, it's dead weight in the chain but not incorrect.
+			if (!expert && group.pathData[group.representativeIndex].path is null)
+				needsLinking = true;
+		}
+
+		// 5. Check for merge with existing group
+		auto existingGroupPtr = SharingGroup.Paths(group) in sharingGroups;
+		if (existingGroupPtr)
+		{
+			// Merge into existing group (including offsets based on lastSeen)
+			auto existingGroup = existingGroupPtr.group;
+			existingGroup.mergeFrom(group);
+			// Re-ingest existing group with additional samples
+			populateBrowserPathsFromSharingGroup(
+				existingGroup,
+				false,  // needsLinking = false (existingGroup is already linked)
+				group.data.samples,
+				group.data.offsets[],
+				group.data.duration
+			);
+			// Leave the original group in place as a tombstone.
+			// It remains in paths' firstSharingGroup chains (via pathData[i].next),
+			// but setting data to SampleData.init makes it inert: getSamples() etc.
+			// multiply by group.data.samples which is now 0, so tombstones contribute
+			// nothing. See BrowserPath.relevantOccurrences for details.
+			// The reason for using a tombstone is that properly unlinking the sharing
+			// group is expensive: sharing group linkage for browser paths is a
+			// singly-linked list, so we would need to iterate over the full chain of
+			// every path in the sharing group in order to unlink it.
+			group.data = SampleData.init;
+		}
+		else
+		{
+			// 6. Rehash and re-ingest
+			sharingGroups.insert(SharingGroup.Paths(group));
+			// Need linking if we created a new representative path that isn't in any chain yet
+			populateBrowserPathsFromSharingGroup(
+				group,
+				needsLinking,
+				group.data.samples,
+				group.data.offsets[],
+				group.data.duration
+			);
+		}
+
+		group = nextGroup;
+	}
+
+	// After processing all sharing groups, this node should have zero samples
+	// because each group's un-ingest removed its contribution.
+	debug
+	{
+		static foreach (sampleType; EnumMembers!SampleType)
+			assert(path.getSamples(sampleType) == 0,
+				"Node still has samples after eviction");
+	}
+}
+
+/// Direction for populating/unpopulating BrowserPaths from sharing groups.
+enum IngestDirection
+{
+	ingest,    /// Add samples to BrowserPaths
+	uningest,  /// Remove samples from BrowserPaths
+}
+
+/// Populate or unpopulate BrowserPath tree from a sharing group.
 /// Params:
+///   direction = Whether to add (ingest) or remove (uningest) samples
 ///   group = The sharing group to process
 ///   needsLinking = Whether to link the group to BrowserPaths' firstSharingGroup lists
 ///                  (true for new groups and for rebuild after reset)
-///   samples = Number of samples to add
+///   samples = Number of samples to add or remove
 ///   offsets = Sample offsets to record
 ///   duration = Total duration for these samples
 ///   target = Which dataset to populate (main or compare)
-void populateBrowserPathsFromSharingGroup(
+void populateOrUnpopulateBrowserPathsFromSharingGroup(IngestDirection direction)(
 	SharingGroup* group,
 	bool needsLinking,
 	ulong samples,
@@ -538,18 +696,25 @@ void populateBrowserPathsFromSharingGroup(
 	{
 		// Create BrowserPath nodes and store path pointers
 		// We don't link sharing groups yet - that happens after updateStructure
+		// Skip paths where pathData[i].path is already set (e.g., eviction already set it)
 		if (expert)
 		{
 			foreach (i, ref path; paths)
 			{
-				auto pathBrowserPath = root.appendPath(&path);
-				group.pathData[i].path = pathBrowserPath;
+				if (group.pathData[i].path is null)
+				{
+					auto pathBrowserPath = root.appendPath(&path);
+					group.pathData[i].path = pathBrowserPath;
+				}
 			}
 		}
 		else
 		{
-			auto representativeBrowserPath = root.appendPath(&paths[representativeIndex]);
-			group.pathData[representativeIndex].path = representativeBrowserPath;
+			if (group.pathData[representativeIndex].path is null)
+			{
+				auto representativeBrowserPath = root.appendPath(&paths[representativeIndex]);
+				group.pathData[representativeIndex].path = representativeBrowserPath;
+			}
 		}
 	}
 
@@ -560,15 +725,19 @@ void populateBrowserPathsFromSharingGroup(
 	// because they'll get sharing groups in Phase 3.
 	// If new aggregateData is allocated, it captures current values from children
 	// (which may already have samples from earlier groups during rebuild).
+	// Skip this phase during uningest - nodes already have correct structure.
 	// ============================================================
-	if (expert)
+	static if (direction == IngestDirection.ingest)
 	{
-		foreach (i, ref path; paths)
-			group.pathData[i].path.updateStructure();
-	}
-	else
-	{
-		group.pathData[representativeIndex].path.updateStructure();
+		if (expert)
+		{
+			foreach (i, ref path; paths)
+				group.pathData[i].path.updateStructure();
+		}
+		else
+		{
+			group.pathData[representativeIndex].path.updateStructure();
+		}
 	}
 
 	// ============================================================
@@ -605,11 +774,20 @@ void populateBrowserPathsFromSharingGroup(
 	}
 
 	// ============================================================
-	// Phase 4: Add samples to aggregateData
+	// Phase 4: Add/remove samples to/from aggregateData
 	// ============================================================
 
-	// Add represented samples to the representative path
-	group.pathData[representativeIndex].path.addSamples(SampleType.represented, samples, offsets, duration);
+	// Helper to add or remove samples based on direction
+	void applySamples(BrowserPath* bp, SampleType type)
+	{
+		static if (direction == IngestDirection.ingest)
+			bp.addSamples(type, samples, offsets, duration);
+		else
+			bp.removeSamples(type, samples, offsets, duration);
+	}
+
+	// Add/remove represented samples to/from the representative path
+	applySamples(group.pathData[representativeIndex].path, SampleType.represented);
 
 	if (expert)
 	{
@@ -619,8 +797,11 @@ void populateBrowserPathsFromSharingGroup(
 		foreach (i, ref path; paths)
 		{
 			auto browserPath = group.pathData[i].path;
-			browserPath.addSamples(SampleType.shared_, samples, offsets, duration);
-			browserPath.addDistributedSample(distributedSamples, distributedDuration);
+			applySamples(browserPath, SampleType.shared_);
+			static if (direction == IngestDirection.ingest)
+				browserPath.addDistributedSample(distributedSamples, distributedDuration);
+			else
+				browserPath.addDistributedSample(-distributedSamples, -distributedDuration);
 		}
 
 		static FastAppender!(BrowserPath*) browserPaths;
@@ -629,15 +810,18 @@ void populateBrowserPathsFromSharingGroup(
 			browserPaths.put(group.pathData[i].path);
 
 		auto exclusiveBrowserPath = BrowserPath.commonPrefix(browserPaths.peek());
-		exclusiveBrowserPath.addSamples(SampleType.exclusive, samples, offsets, duration);
+		applySamples(exclusiveBrowserPath, SampleType.exclusive);
 	}
 
 	// Update global marked state (only for main dataset)
 	if (target == DataSet.main)
 	{
-		markTotalSamples += samples;
+		static if (direction == IngestDirection.ingest)
+			markTotalSamples += samples;
+		else
+			markTotalSamples -= samples;
 
-		// Check marks and update marked node
+		// Check marks and update marked node (expert mode only)
 		if (expert)
 		{
 			foreach (i, ref path; paths)
@@ -648,7 +832,7 @@ void populateBrowserPathsFromSharingGroup(
 				}
 
 			if (allMarked)
-				marked.addSamples(SampleType.exclusive, samples, offsets, duration);
+				applySamples(&marked, SampleType.exclusive);
 		}
 	}
 
@@ -657,6 +841,12 @@ void populateBrowserPathsFromSharingGroup(
 			if (group.pathData[i].path)
 				group.pathData[i].path.checkState();
 }
+
+/// Convenience alias for ingesting samples into BrowserPaths
+alias populateBrowserPathsFromSharingGroup = populateOrUnpopulateBrowserPathsFromSharingGroup!(IngestDirection.ingest);
+
+/// Convenience alias for removing samples from BrowserPaths
+alias unpopulateBrowserPathsFromSharingGroup = populateOrUnpopulateBrowserPathsFromSharingGroup!(IngestDirection.uningest);
 
 /// Check if any rebuild is in progress
 bool rebuildInProgress()

@@ -757,6 +757,12 @@ struct Browser
 									"More precisely, this node represents samples in physical device space which are greater than btrfs_ioctl_dev_info_args::total_bytes ",
 									"but less than the size of the file or block device at btrfs_ioctl_dev_info_args::path."
 								);
+							case "DELETED":
+								return write(
+									"This node holds samples for data that was exclusively owned by a file or directory deleted from within btdu.",
+									endl, endl,
+									"On a fresh scan, these samples would likely appear under <UNUSED>."
+								);
 							default:
 								if (name.skipOver("TREE_"))
 									return write(

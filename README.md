@@ -158,7 +158,7 @@ See [CONCEPTS.md](CONCEPTS.md) for more information about btdu / btrfs concepts,
 
 You can delete the selected file or directory from the filesystem by pressing <kbd>d</kbd> then <kbd>⇧ Shift</kbd><kbd>Y</kbd>. This will recursively delete the file or directory shown as "Full path".
 
-Deleting files during a btdu run (whether via btdu or externally) skews the results. When deleting files from btdu, it will make a best-effort attempt to adjust the results to match. Statistics such as exclusive size may be inaccurate. Re-run btdu to obtain fresh results.
+When deleting files from btdu, the displayed statistics are updated to reflect the deletion accurately. However, deleting files externally during a btdu run will skew the displayed metrics; re-run btdu to obtain fresh results.
 
 ### Marking
 

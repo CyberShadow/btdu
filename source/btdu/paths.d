@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020, 2021, 2022, 2023, 2024, 2025  Vladimir Panteleev <btdu@cy.md>
+ * Copyright (C) 2020, 2021, 2022, 2023, 2024, 2025, 2026  Vladimir Panteleev <btdu@cy.md>
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public
@@ -180,6 +180,43 @@ struct SharingGroup
 			if (this.pathData[i].path is browserPath)
 				count++;
 		return count;
+	}
+
+	/// Merge another group's sample data into this one.
+	/// Offsets are merged based on lastSeen timestamps, keeping the most recent ones.
+	void mergeFrom(const(SharingGroup)* other)
+	{
+		this.data.samples += other.data.samples;
+		this.data.duration += other.data.duration;
+
+		// Merge offsets based on lastSeen timestamps
+		foreach (i; 0 .. historySize)
+		{
+			if (other.data.offsets[i] == Offset.init)
+				continue;
+
+			auto otherLastSeen = other.lastSeen[i];
+			// Check if this is more recent than our oldest (index 0)
+			if (otherLastSeen > this.lastSeen[0])
+			{
+				// Find insertion point (keep sorted ascending by lastSeen)
+				size_t insertAt = 0;
+				foreach (j; 1 .. historySize)
+					if (otherLastSeen > this.lastSeen[j])
+						insertAt = j;
+
+				// Shift older entries down
+				foreach_reverse (j; 0 .. insertAt)
+				{
+					this.data.offsets[j] = this.data.offsets[j + 1];
+					this.lastSeen[j] = this.lastSeen[j + 1];
+				}
+
+				// Insert new entry
+				this.data.offsets[insertAt] = other.data.offsets[i];
+				this.lastSeen[insertAt] = otherLastSeen;
+			}
+		}
 	}
 
 	/// Wrapper type for hashing/equality based on root and paths
@@ -794,6 +831,10 @@ struct BrowserPath
 
 	/// Returns the number of relevant occurrences for a given sample type.
 	/// Returns 0 if the group is not relevant for this sample type.
+	/// Note: Tombstone sharing groups (with data.samples == 0, created by deletion/eviction)
+	/// are automatically handled because callers either multiply by group.data.samples
+	/// (making the result 0), or check truthiness (making tombstone sharing groups
+	/// synonymous with irrelevant groups).
 	private size_t relevantOccurrences(const(SharingGroup)* group, SampleType type) const
 	{
 		// Count how many times this path appears in the sharing group
@@ -816,7 +857,7 @@ struct BrowserPath
 
 	debug(check) void checkState() const
 	{
-		import btdu.state : rebuildInProgress, compareMode;
+		import btdu.state : rebuildInProgress, compareMode, deletionOccurred;
 
 		// Check children first (because our validity depends on theirs)
 		for (const(BrowserPath)* p = firstChild; p; p = p.nextSibling)
@@ -838,7 +879,9 @@ struct BrowserPath
 			// In compare mode, placeholder nodes (created by the browser to enforce
 			// tree symmetry) may exist for items only in the compare baseline -
 			// these legitimately have no sharing groups.
-			if (!rebuildInProgress() && !compareMode)
+			// After deletion, empty directories may remain with no children and no
+			// sharing groups - skip this check if deletion has occurred.
+			if (!rebuildInProgress() && !compareMode && !deletionOccurred)
 			{
 				// Non-root nodes must have either children or sharing groups
 				assert(firstChild || firstSharingGroup,
@@ -1283,6 +1326,13 @@ struct BrowserPath
 
 		// Delete the subtree recursively.
 		doDelete();
+
+		// Mark that deletion has occurred, relaxing certain invariant checks
+		debug(check)
+		{
+			import btdu.state : deletionOccurred;
+			deletionOccurred = true;
+		}
 	}
 
 	// Mark this subtree for deletion, to aid the rebalancing below.
@@ -1317,131 +1367,13 @@ struct BrowserPath
 		}
 	}
 
-	/// Clear all samples or move them elsewhere.
+	/// Clear all samples or move them elsewhere using un-ingest/edit/re-ingest.
+	/// This modifies sharing groups in-place to remove this path.
 	private void evict()
 	{
 		assert(parent);
-
-		// Save this node's remaining stats before we remove them.
-		auto aggData = aggregateData ? *aggregateData : AggregateData.init;
-
-		// Remove sample data from this node and its parents.
-		// After recursion, for non-leaf nodes, most of these should now be at zero (as far as we can estimate).
-		static foreach (sampleType; EnumMembers!SampleType)
-			if (aggData.data[sampleType].samples) // avoid quadratic complexity
-				removeSamples(sampleType, aggData.data[sampleType].samples, aggData.data[sampleType].offsets[], aggData.data[sampleType].duration);
-		if (aggData.distributedSamples) // avoid quadratic complexity
-			removeDistributedSample(aggData.distributedSamples, aggData.distributedDuration);
-
-		if (firstSharingGroup is null)
-			return;  // Directory (non-leaf) node - nothing else to do here.
-
-		// Determine if we are the representative path (have represented samples)
-		// in at least one situation
-		bool isRepresentative = aggData.data[SampleType.represented].samples > 0;
-
-		// Get the root BrowserPath from one of our sharing groups
-		// (This is always the same as `btdu.state.browserRoot`.)
-		BrowserPath* root = firstSharingGroup.root;
-		debug assert(root);
-		if (!root)
-			return;
-
-		// Process each sharing group separately
-		for (auto group = firstSharingGroup; group !is null; )
-		{
-			// Find our index in this group
-			auto ourIndex = group.findIndex(this.elementRange);
-			assert(ourIndex != size_t.max, "Could not find self in sharing group");
-			if (ourIndex == size_t.max)
-				break;
-
-			// Collect remaining (non-deleted) paths in this group
-			SamplePath[] remainingPathsInGroup;
-			foreach (i, ref path; group.paths)
-			{
-				if (i != ourIndex)
-				{
-					auto bp = root.appendPath!true(&path);
-					if (bp && !bp.deleting)
-						remainingPathsInGroup ~= SamplePath(group.root, path);
-				}
-			}
-
-			// Check if we are the representative for this specific group
-			bool isRepresentativeForThisGroup = {
-				if (!isRepresentative)
-					return false; // We have never been representative.
-
-				// Check if we would be selected as representative from this group's paths
-				auto groupRepresentative = selectRepresentativePath(group.paths);
-				import std.algorithm.comparison : equal;
-				return equal(this.elementRange, groupRepresentative.elementRange);
-			}();
-
-			// Handle all redistributions for this group
-			if (remainingPathsInGroup.length > 0)
-			{
-				// Select the most representative path from this group's remaining members
-				auto newRepresentative = selectRepresentativePath(remainingPathsInGroup);
-				auto newRepBrowserPath = root.appendPath(&newRepresentative.globalPath);
-
-				// Represented samples: if we're representative for this group, transfer to new representative
-				if (isRepresentativeForThisGroup)
-				{
-					// Calculate this group's weighted share of duration from represented samples
-					auto groupDuration = (group.data.samples * aggData.data[SampleType.represented].duration) / aggData.data[SampleType.represented].samples;
-
-					// Transfer represented samples (without per-group offsets)
-					newRepBrowserPath.addSamples(
-						SampleType.represented,
-						group.data.samples,
-						[], // Skip offsets - we don't have them per-group
-						groupDuration,
-					);
-				}
-
-				// Distributed samples: redistribute our share in this group
-				// Our share in this group is: group.data.samples / group.paths.length
-				// We distribute this among the remaining members
-				auto ourShareSamples = group.data.samples / group.paths.length;
-				auto perPathSamples = ourShareSamples / remainingPathsInGroup.length;
-
-				// Calculate duration using shared samples as basis (sum of all group.data.samples = shared samples)
-				auto sharedSamples = aggData.data[SampleType.shared_].samples;
-				auto sharedDuration = aggData.data[SampleType.shared_].duration;
-				auto groupTotalDuration = sharedSamples > 0
-					? (group.data.samples * sharedDuration) / sharedSamples
-					: 0;
-				auto ourShareDuration = groupTotalDuration / group.paths.length;
-				auto perPathDuration = ourShareDuration / remainingPathsInGroup.length;
-
-				foreach (ref path; remainingPathsInGroup)
-					root.appendPath(&path.globalPath).addDistributedSample(perPathSamples, perPathDuration);
-
-				// Exclusive samples: if group drops to 1 member, that member becomes exclusive
-				if (remainingPathsInGroup.length == 1)
-				{
-					// Calculate this group's weighted share of duration from shared samples
-					auto groupDuration = sharedSamples > 0
-						? (group.data.samples * sharedDuration) / sharedSamples
-						: 0;
-
-					// Add exclusive samples (without per-group offsets)
-					newRepBrowserPath.addSamples(
-						SampleType.exclusive,
-						group.data.samples,
-						[], // Skip offsets - we don't have them per-group
-						groupDuration,
-					);
-				}
-			}
-
-			// Shared samples: no action needed (correct!)
-
-			// Move to next group following our chain
-			group = group.pathData[ourIndex].next;
-		}
+		import btdu.state : evictPathFromSharingGroups;
+		evictPathFromSharingGroups(&this);
 	}
 
 	/// Reset samples for a specific sample type on this node only
