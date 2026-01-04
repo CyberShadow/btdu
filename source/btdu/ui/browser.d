@@ -476,6 +476,9 @@ struct Browser
 			}
 			items = itemsBuf.peek();
 
+			// Clear selection if it's no longer in the items list (e.g., after deletion)
+			if (selection && !items.canFind(selection))
+				selection = null;
 			if (!selection && items.length)
 				selection = items[0];
 
