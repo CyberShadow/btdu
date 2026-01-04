@@ -162,6 +162,10 @@ struct Subprocess
 
 	void handleMessage(NewRootMessage m)
 	{
+		// Discard root info from before the last deletion
+		if (m.generation < currentGeneration)
+			return;
+
 		if (m.rootID in globalRoots)
 			return;
 
@@ -257,6 +261,10 @@ struct Subprocess
 
 	void handleMessage(ResultInodeStartMessage m)
 	{
+		// Skip processing if this sample will be discarded anyway
+		if (result.generation < currentGeneration)
+			return;
+
 		result.haveInode = true;
 		result.havePath = false;
 		result.inodeRoot = (m.rootID in globalRoots).enforce("Unknown inode root");
@@ -267,18 +275,24 @@ struct Subprocess
 
 	void handleMessage(ResultInodeErrorMessage m)
 	{
+		if (result.generation < currentGeneration)
+			return;
 		allPaths ~= GlobalPath(result.inodeRoot.path, subPathRoot.appendError(m.error));
 		result.category = DiskMap.SectorCategory.error;
 	}
 
 	void handleMessage(ResultMessage m)
 	{
+		if (result.generation < currentGeneration)
+			return;
 		result.havePath = true;
 		allPaths ~= GlobalPath(result.inodeRoot.path, subPathRoot.appendPath(m.path));
 	}
 
 	void handleMessage(ResultInodeEndMessage m)
 	{
+		if (result.generation < currentGeneration)
+			return;
 		cast(void) m; // empty message
 		if (!result.havePath)
 			allPaths ~= GlobalPath(result.inodeRoot.path, subPathRoot.appendPath("\0NO_PATH"));
@@ -286,6 +300,8 @@ struct Subprocess
 
 	void handleMessage(ResultErrorMessage m)
 	{
+		if (result.generation < currentGeneration)
+			return;
 		import core.stdc.errno : ENOENT;
 		allPaths ~= GlobalPath(null, subPathRoot.appendError(m.error));
 		result.haveInode = true;

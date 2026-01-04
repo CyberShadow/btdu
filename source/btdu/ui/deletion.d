@@ -33,6 +33,7 @@ import core.thread : Thread;
 import ae.sys.file : listDir, getMounts;
 
 import btrfs : getSubvolumeID, deleteSubvolume;
+import btrfs.c.kerncompat : u64;
 
 import btdu.paths : BrowserPath, Mark;
 import btdu.state : toFilesystemPath;
@@ -85,6 +86,9 @@ struct Deleter
 	}
 	Item[] items;
 
+	/// Subvolume IDs that were deleted (collected during deletion for cache purging)
+	u64[] deletedSubvolumeIDs;
+
 	void prepare(Item[] items)
 	{
 		assert(this.state.status == Status.none);
@@ -105,6 +109,7 @@ struct Deleter
 		assert(this.state.status == Status.ready);
 		this.state.stopping = false;
 		this.state.status = Status.progress;
+		this.deletedSubvolumeIDs = null;
 		this.subvolumeResume.initialize(false, false);
 		this.thread = new Thread(&threadFunc);
 		this.thread.start();
@@ -180,6 +185,10 @@ struct Deleter
 							errnoEnforce(fd >= 0, "openat");
 							auto subvolumeID = getSubvolumeID(fd);
 							deleteSubvolume(fd, subvolumeID);
+
+							// Track deleted subvolume for cache purging
+							synchronized (this.thread)
+								this.deletedSubvolumeIDs ~= subvolumeID;
 
 							this.state.status = Status.progress;
 							return; // The ioctl will also unlink the directory entry

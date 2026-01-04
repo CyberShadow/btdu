@@ -324,12 +324,15 @@ struct Root
 Root[u64] roots;
 uint generation;
 
-/// Set up SIGUSR1 handler to increment generation counter.
-/// This causes in-flight samples to be discarded by the main process.
+/// Set up SIGUSR1 handler to invalidate root cache and increment generation.
+/// This causes the subprocess to re-resolve roots and the main process to
+/// discard in-flight samples.
 void setupCacheInvalidationHandler()
 {
 	sigaction_t sa;
 	sa.sa_handler = (int) {
+		// Clear the roots cache - will be repopulated on next access
+		roots = null;
 		generation++;
 	};
 	sigemptyset(&sa.sa_mask);

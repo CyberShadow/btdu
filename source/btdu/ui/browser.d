@@ -402,6 +402,9 @@ struct Browser
 					showMessage(format!"Deleted %s."(deleter.items[0].browserPath.humanName));
 				else
 					showMessage(format!"Deleted %d item%s."(deleter.items.length, deleter.items.length > 1 ? "s" : ""));
+				// Purge deleted subvolumes from the root cache
+				foreach (subvolumeID; deleter.deletedSubvolumeIDs)
+					globalRoots.remove(subvolumeID);
 				foreach (item; deleter.items)
 					item.browserPath.remove(item.obeyMarks);
 				invalidateMark();
