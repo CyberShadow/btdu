@@ -19,7 +19,6 @@
 /// Global state definitions
 module btdu.state;
 
-import core.time : MonoTime;
 
 import std.format : format;
 import std.functional : memoize;
@@ -130,7 +129,7 @@ bool autoMountMode; /// True when using --auto-mount with a temporary mount poin
 string fsPath;
 btrfs_ioctl_dev_info_args[] devices;
 SubPath subPathRoot;
-MonoTime lastDeletionTime; /// When the last deletion completed; samples older than this are discarded
+uint currentGeneration; /// Incremented on deletion; samples with older generation are discarded
 
 // ============================================================
 // Compatibility shims - forward to states[DataSet.xxx]
@@ -464,6 +463,17 @@ CompareResult getCompareResult(BrowserPath* newPath, SampleType sampleType)
 Subprocess[] subprocesses;
 bool paused;
 debug bool importing;
+
+/// Increment generation counter and signal subprocesses.
+/// Samples from before this generation will be discarded.
+void incrementGeneration()
+{
+	import core.sys.posix.signal : kill, SIGUSR1;
+	currentGeneration++;
+	foreach (ref subproc; subprocesses)
+		if (subproc.pid !is typeof(subproc.pid).init)
+			kill(subproc.pid.processID, SIGUSR1);
+}
 
 bool toFilesystemPath(BrowserPath* path, void delegate(const(char)[]) sink)
 {

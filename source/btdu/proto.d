@@ -50,6 +50,7 @@ struct NewRootMessage
 {
 	__u64 rootID, parentRootID;
 	const(char)[] name;
+	uint generation;
 }
 
 struct Offset
@@ -66,12 +67,10 @@ enum u64 logicalOffsetSlack = -2;
 
 struct ResultStartMessage
 {
-	import core.time : MonoTime;
-
 	ulong chunkFlags;
 	Offset offset;
 	ulong sampleIndex;  /// 0-based index in [0, totalSize), uniformly sampled
-	MonoTime timestamp; /// When the sample query began
+	uint generation;    /// Generation counter for cache invalidation
 }
 
 // Retrying with BTRFS_LOGICAL_INO_ARGS_IGNORE_OFFSET
@@ -167,12 +166,16 @@ private void serialize(T)(ref T value)
 
 private void sendRaw(const(void)[] data)
 {
-	auto written = write(STDOUT_FILENO, data.ptr, data.length);
-	errnoEnforce(written > 0, "write");
-	data.shift(written);
-	if (!data.length)
-		return;
-	sendRaw(data);
+	import core.stdc.errno : errno, EINTR;
+	while (data.length)
+	{
+		auto written = write(STDOUT_FILENO, data.ptr, data.length);
+		if (written > 0)
+			data.shift(written);
+		else if (errno != EINTR)
+			errnoEnforce(false, "write");
+		// On EINTR, retry the write
+	}
 }
 
 /// Send a message from a subprocess to the main process.

@@ -1334,10 +1334,9 @@ struct BrowserPath
 			deletionOccurred = true;
 		}
 
-		// Record deletion time so samples from before this time can be discarded
-		import core.time : MonoTime;
-		import btdu.state : lastDeletionTime;
-		lastDeletionTime = MonoTime.currTime;
+		// Increment generation so in-flight samples are discarded
+		import btdu.state : incrementGeneration;
+		incrementGeneration();
 	}
 
 	// Mark this subtree for deletion, to aid the rebalancing below.

@@ -21,9 +21,9 @@ module btdu.sample;
 
 import core.stdc.errno;
 import core.sys.posix.fcntl;
+import core.sys.posix.signal : sigaction, sigaction_t, sigset_t, sigemptyset, SIGUSR1;
 import core.sys.posix.sys.ioctl : ioctl, _IOR;
 import core.sys.posix.unistd;
-import core.time : MonoTime;
 
 import std.algorithm.comparison : among;
 import std.algorithm.iteration;
@@ -59,6 +59,9 @@ void subprocessMain(string fsPath, bool physical)
 		// processes do, otherwise the main process doesn't know if the child exited due to an
 		// abrupt failure or simply because it received and processed the signal before it did.
 		addShutdownHandler((reason) {});
+
+		// Set up SIGUSR1 handler to invalidate root cache on deletion
+		setupCacheInvalidationHandler();
 
 		// stderr.writeln("Opening filesystem...");
 		int fd = open(fsPath.toStringz, O_RDONLY);
@@ -219,7 +222,7 @@ void subprocessMain(string fsPath, bool physical)
 						}
 					}
 
-					send(ResultStartMessage(chunk.type, Offset(logicalOffset, chunk.devID, physicalOffset), targetPos, MonoTime.currTime));
+					send(ResultStartMessage(chunk.type, Offset(logicalOffset, chunk.devID, physicalOffset), targetPos, generation));
 
 					if (chunk.type & BTRFS_BLOCK_GROUP_DATA)
 					{
@@ -319,6 +322,20 @@ struct Root
 	string path;
 }
 Root[u64] roots;
+uint generation;
+
+/// Set up SIGUSR1 handler to increment generation counter.
+/// This causes in-flight samples to be discarded by the main process.
+void setupCacheInvalidationHandler()
+{
+	sigaction_t sa;
+	sa.sa_handler = (int) {
+		generation++;
+	};
+	sigemptyset(&sa.sa_mask);
+	sa.sa_flags = 0;
+	sigaction(SIGUSR1, &sa, null);
+}
 
 /// Performs memoized resolution of the path for a btrfs root object.
 Root getRoot(int fd, __u64 rootID)
@@ -357,7 +374,7 @@ Root getRoot(int fd, __u64 rootID)
 	if (result !is Root.init)
 		cast(void)getRoot(fd, result.parent);
 
-	send(NewRootMessage(rootID, result.parent, result.path));
+	send(NewRootMessage(rootID, result.parent, result.path, generation));
 
 	roots[rootID] = result;
 	return result;

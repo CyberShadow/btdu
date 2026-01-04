@@ -21,7 +21,6 @@ module btdu.subproc;
 
 import core.sys.posix.signal;
 import core.sys.posix.unistd;
-import core.time : MonoTime;
 
 import std.algorithm.iteration;
 import std.algorithm.mutation;
@@ -191,7 +190,7 @@ struct Subprocess
 	{
 		Offset offset;
 		ulong sampleIndex;  /// 0-based index in [0, totalSize)
-		MonoTime timestamp; /// When the sample query began
+		uint generation;    /// Generation counter for cache invalidation
 		BrowserPath* browserPath;
 		RootInfo* inodeRoot;
 		bool haveInode, havePath;
@@ -206,7 +205,7 @@ struct Subprocess
 	{
 		result.offset = m.offset;
 		result.sampleIndex = m.sampleIndex;
-		result.timestamp = m.timestamp;
+		result.generation = m.generation;
 		result.browserPath = browserRootPtr;
 		static immutable flagNames = [
 			"DATA",
@@ -369,9 +368,9 @@ struct Subprocess
 
 	private void processResult(ulong duration)
 	{
-		// Discard samples that began before the last deletion completed.
+		// Discard samples from before the last deletion.
 		// Such samples may contain paths that no longer exist.
-		if (result.timestamp < lastDeletionTime)
+		if (result.generation < currentGeneration)
 			return;
 
 		if (result.ignoringOffset)
