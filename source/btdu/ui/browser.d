@@ -303,7 +303,7 @@ struct Browser
 	/// Start an incremental rebuild of the BrowserPath tree from SharingGroups.
 	private void doRebuild()
 	{
-		assert(popup == Popup.none);
+		assert(popup == Popup.none, "Cannot start rebuild while popup is active");
 		popup = Popup.rebuild;
 		rebuildProgress = "Starting...";
 		startRebuild();
@@ -489,7 +489,7 @@ struct Browser
 			{
 				if (mode == Mode.browser && currentPath is &marked)
 				{
-					assert(previousPath);
+					assert(previousPath, "No previous path to return to from marks view");
 					currentPath = previousPath;
 					previousPath = null;
 					showMessage("No more marks");
@@ -815,7 +815,7 @@ struct Browser
 								switch (name)
 								{
 									case "ENOENT":
-										assert(false); // Should have been rewritten into UNUSED
+										assert(false, "ENOENT should have been rewritten into UNUSED");
 									case "ENOTTY":
 										return write(
 											"An ENOTTY (\"Inappropriate ioctl for device\" error means that btdu issued an ioctl which the kernel btrfs code does not understand.",
@@ -1293,17 +1293,17 @@ struct Browser
 					while (x < textStart)
 						write("• "d[x % 2]);
 					write(text);
-					assert(x == textEnd);
+					assert(x == textEnd, format!"Title text position mismatch: x=%d, expected=%d"(x, textEnd));
 					while (x < width)
 						write("• "d[(width - x - 1) % 2]);
 				}
-				assert(x == width);
+				assert(x == width, format!"Title did not fill width: x=%d, width=%d"(x, width));
 			};
 
 			// Draws a panel with some content, including top frame / title, margins, and overflow text.
 			alias drawPanel = (title, topOverflowText, bottomOverflowText, ref ScrollContext c, leftMargin, rightMargin, drawContents)
 			{
-				assert(x == 0 && y == 0); // Should be done in a fresh window
+				assert(x == 0 && y == 0, format!"drawPanel not in fresh window: x=%d, y=%d"(x, y));
 
 				// Frame and title
 				write("═══"); // TODO: use WACS_... instead?
@@ -2355,7 +2355,7 @@ struct Browser
 							goto exitSpecialPath;
 						break;
 					exitSpecialPath:
-						assert(previousPath);
+						assert(previousPath, "No previous path to return to");
 						currentPath = previousPath;
 						previousPath = null;
 						break;
@@ -2867,7 +2867,7 @@ string estimateUndiscoveredStr(BrowserPath* path)
 
 auto durationAsDecimalString(Duration d) @nogc
 {
-	assert(d >= Duration.zero);
+	assert(d >= Duration.zero, "Duration is negative");
 	auto ticks = d.stdTime;
 	enum secondsPerTick = 1.seconds / 1.stdDur;
 	static assert(secondsPerTick == 10L ^^ 7);

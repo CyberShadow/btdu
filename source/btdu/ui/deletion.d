@@ -23,6 +23,7 @@ import std.algorithm.comparison;
 import std.algorithm.searching;
 import std.conv : to;
 import std.exception;
+import std.format : format;
 import std.path;
 import std.typecons;
 
@@ -91,7 +92,7 @@ struct Deleter
 
 	void prepare(Item[] items)
 	{
-		assert(this.state.status == Status.none);
+		assert(this.state.status == Status.none, format!"prepare called in invalid state: %s"(this.state.status));
 
 		this.items = items;
 		this.state.current = items.length ? items[0].browserPath.toFilesystemPath.to!string : null;
@@ -100,13 +101,13 @@ struct Deleter
 
 	void cancel()
 	{
-		assert(this.state.status == Status.ready);
+		assert(this.state.status == Status.ready, format!"cancel called in invalid state: %s"(this.state.status));
 		this.state.status = Status.none;
 	}
 
 	void start()
 	{
-		assert(this.state.status == Status.ready);
+		assert(this.state.status == Status.ready, format!"start called in invalid state: %s"(this.state.status));
 		this.state.stopping = false;
 		this.state.status = Status.progress;
 		this.deletedSubvolumeIDs = null;
@@ -120,7 +121,7 @@ struct Deleter
 		foreach (item; items)
 		{
 			auto fsPath = item.browserPath.toFilesystemPath.to!string;
-			assert(fsPath && fsPath.isAbsolute);
+			assert(fsPath && fsPath.isAbsolute, "Filesystem path is null or not absolute: " ~ fsPath);
 
 			ulong initialDeviceID;
 			listDir!((
@@ -216,7 +217,7 @@ struct Deleter
 
 	void confirm(Flag!"proceed" proceed)
 	{
-		assert(this.state.status == Status.subvolumeConfirm);
+		assert(this.state.status == Status.subvolumeConfirm, format!"confirm called in invalid state: %s"(this.state.status));
 		if (proceed)
 			this.state.status = Status.subvolumeProgress;
 		else
@@ -234,7 +235,7 @@ struct Deleter
 
 	void finish()
 	{
-		assert(this.state.status.among(Status.success, Status.error));
+		assert(this.state.status.among(Status.success, Status.error), format!"finish called in invalid state: %s"(this.state.status));
 		this.state.status = Status.none;
 	}
 

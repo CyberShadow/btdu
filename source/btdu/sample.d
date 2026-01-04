@@ -176,7 +176,8 @@ void subprocessMain(string fsPath, bool physical)
 			}
 
 			// The sum of sizes of all chunks should be equal to the sum of sizes of all devices plus the total slack.
-			debug assert(chunks.map!((ref chunk) => chunk.I!length).sum == devices.map!((ref device) => device.total_bytes).sum + totalSlack);
+			debug assert(chunks.map!((ref chunk) => chunk.I!length).sum == devices.map!((ref device) => device.total_bytes).sum + totalSlack,
+				"Total chunk size does not equal total device size plus slack");
 		}
 
 		u64 totalSize = chunks.map!((ref chunk) => chunk.I!length).sum;

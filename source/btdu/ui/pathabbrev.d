@@ -9,6 +9,7 @@ module btdu.ui.pathabbrev;
 import std.algorithm;
 import std.array : Appender;
 import std.conv;
+import std.format : format;
 import std.functional : memoize;
 import std.typecons;
 
@@ -210,7 +211,7 @@ bool[] findMatchingSegments(const dstring[] a, const dstring[] b) {
     foreach (op; path) {
         final switch (op) {
             case EditOp.none:
-                assert(aIdx < a.length);
+                assert(aIdx < a.length, format!"aIdx (%d) out of bounds for array of length %d"(aIdx, a.length));
                 matches[aIdx] = true;
                 aIdx++;
                 break;

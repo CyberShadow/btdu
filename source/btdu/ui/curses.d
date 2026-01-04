@@ -27,6 +27,7 @@ import core.sys.posix.stdio : FILE;
 import std.algorithm.comparison : min, max;
 import std.conv;
 import std.exception;
+import std.format : format;
 import std.meta;
 import std.socket;
 import std.stdio : File;
@@ -211,7 +212,7 @@ struct Curses
 		/// Low-level write primitive
 		void poke(xy_t x, xy_t y, cchar_t c)
 		{
-			assert(inMask(x, y));
+			assert(inMask(x, y), format!"poke position (%d, %d) is outside drawable area"(x, y));
 			x += x0; y += y0;
 			mvwadd_wchnstr(stdscr, y.to!int, x.to!int, &c, 1).ncenforce("mvwadd_wchnstr");
 		}
@@ -219,7 +220,7 @@ struct Curses
 		/// Low-level read primitive
 		cchar_t peek(xy_t x, xy_t y)
 		{
-			assert(inMask(x, y));
+			assert(inMask(x, y), format!"peek position (%d, %d) is outside drawable area"(x, y));
 			cchar_t wch;
 			x += x0; y += y0;
 			mvwin_wch(stdscr, y.to!int, x.to!int, &wch).ncenforce("mvwin_wch");
@@ -249,7 +250,7 @@ struct Curses
 			auto space = " "d.ptr.toCChar(attr, color);
 			if (lastSpaceY == origY)
 			{
-				assert(lastSpaceX < origX);
+				assert(lastSpaceX < origX, format!"lastSpaceX (%d) is not before origX (%d)"(lastSpaceX, origX));
 				// There is a space at X coordinate `lastSpaceX`.
 				// Move everything after it to a new line.
 				xy_t startX = lastSpaceX + 1;
@@ -556,7 +557,7 @@ struct Curses
 				yOverflowHidden({
 					fn();
 				});
-				assert(y >= height);
+				assert(y >= height, format!"measure y (%d) is less than height (%d)"(y, height));
 				if (x != xMargin) y++;
 				auto localMaxX = maxX - xMargin;
 				auto localMaxY = y - height;
@@ -608,7 +609,7 @@ struct Curses
 								auto cellSize = measure({ writeCell(column, row); });
 								x += width - cellSize[0];
 								writeCell(column, row);
-								assert(x == width);
+								assert(x == width, format!"Right-aligned cell did not fill width: x=%d, width=%d"(x, width));
 								break;
 						}
 					});
@@ -622,10 +623,10 @@ struct Curses
 		void middleTruncate(scope void delegate() fn)
 		{
 			// This should be used in a fresh window, and will span the entire width
-			assert(x == 0 && maxX == 0);
+			assert(x == 0 && maxX == 0, format!"middleTruncate not in fresh window: x=%d, maxX=%d"(x, maxX));
 			xOverflowHidden({
 				fn();
-				assert(maxX >= x);
+				assert(maxX >= x, format!"maxX (%d) is less than x (%d)"(maxX, x));
 				auto totalWidth = maxX;
 				if (totalWidth > width)
 				{
@@ -953,7 +954,7 @@ void toCChars(const(char)[] str, scope void delegate(cchar_t, int) sink, uint at
 		else
 		{
 			// Copy one spacing and up to CCHARW_MAX-1 nonspacing characters
-			assert(width > 0);
+			assert(width > 0, "Character has non-positive width");
 			wchars[i++] = dchars.front;
 			dchars.popFront();
 			while (i < CCHARW_MAX && !dchars.empty && wcwidth(dchars.front) == 0)

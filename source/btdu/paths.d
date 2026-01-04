@@ -509,7 +509,7 @@ mixin template PathCommon()
 	/// Slicing off the ** and matching checks for exact path match.
 	bool matchesExactly(PathPattern pattern) const @nogc
 	{
-		assert(pattern.length > 0 && pattern[0] is doubleGlob);
+		assert(pattern.length > 0 && pattern[0] is doubleGlob, "Pattern is empty or does not start with double glob");
 		return pattern.isLiteral() && this.matches(pattern[1 .. $]);
 	}
 
@@ -766,7 +766,9 @@ struct SampleData
 	void remove(ulong samples, const(Offset)[] offsets, ulong duration)
 	{
 		import std.algorithm.searching : canFind;
-		assert(samples <= this.samples && duration <= this.duration);
+		assert(samples <= this.samples && duration <= this.duration,
+			format!"Removing more samples/duration than present: %d/%d samples, %d/%d duration"(
+				samples, this.samples, duration, this.duration));
 		this.samples -= samples;
 		this.duration -= duration;
 		foreach (i; 0 .. this.offsets.length)
@@ -1319,7 +1321,7 @@ struct BrowserPath
 		if (deleting)
 			return; // already deleted
 
-		assert(parent);
+		assert(parent, "Cannot remove root node");
 
 		// Mark this subtree for deletion, to aid the rebalancing below.
 		markForDeletion(obeyMarks);
@@ -1366,7 +1368,7 @@ struct BrowserPath
 		// Unlink this node, removing it from the tree.
 		{
 			auto pp = parent.find(this.name[]);
-			assert(*pp == &this);
+			assert(*pp == &this, "Child/parent mismatch during unlink");
 			*pp = this.nextSibling;
 		}
 	}
@@ -1375,7 +1377,7 @@ struct BrowserPath
 	/// This modifies sharing groups in-place to remove this path.
 	private void evict()
 	{
-		assert(parent);
+		assert(parent, "Cannot evict root node");
 		import btdu.state : evictPathFromSharingGroups;
 		evictPathFromSharingGroups(&this);
 	}
@@ -1477,7 +1479,7 @@ struct BrowserPath
 	void setMark(bool marked)
 	{
 		clearMark();
-		assert(mark == Mark.parent);
+		assert(mark == Mark.parent, "clearMark did not reset mark to parent");
 		setMarkWithoutChildren(marked);
 	}
 

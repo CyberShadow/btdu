@@ -193,7 +193,7 @@ Please report defects and enhancement requests to the GitHub issue tracker:
 	@property real parsedMinResolution()
 	{
 		static Nullable!real value;
-		assert(minResolution && totalSize);
+		assert(minResolution && totalSize, "minResolution or totalSize is not set");
 		return value.require({
 			if (minResolution.value.endsWith("%"))
 				return minResolution[0 .. $-1].to!real / 100 * totalSize;
