@@ -19,6 +19,8 @@
 /// Global state definitions
 module btdu.state;
 
+import core.time : MonoTime;
+
 import std.format : format;
 import std.functional : memoize;
 import std.traits : EnumMembers;
@@ -128,6 +130,7 @@ bool autoMountMode; /// True when using --auto-mount with a temporary mount poin
 string fsPath;
 btrfs_ioctl_dev_info_args[] devices;
 SubPath subPathRoot;
+MonoTime lastDeletionTime; /// When the last deletion completed; samples older than this are discarded
 
 // ============================================================
 // Compatibility shims - forward to states[DataSet.xxx]

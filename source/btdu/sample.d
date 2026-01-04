@@ -23,6 +23,7 @@ import core.stdc.errno;
 import core.sys.posix.fcntl;
 import core.sys.posix.sys.ioctl : ioctl, _IOR;
 import core.sys.posix.unistd;
+import core.time : MonoTime;
 
 import std.algorithm.comparison : among;
 import std.algorithm.iteration;
@@ -218,7 +219,7 @@ void subprocessMain(string fsPath, bool physical)
 						}
 					}
 
-					send(ResultStartMessage(chunk.type, Offset(logicalOffset, chunk.devID, physicalOffset), targetPos));
+					send(ResultStartMessage(chunk.type, Offset(logicalOffset, chunk.devID, physicalOffset), targetPos, MonoTime.currTime));
 
 					if (chunk.type & BTRFS_BLOCK_GROUP_DATA)
 					{

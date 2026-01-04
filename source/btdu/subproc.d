@@ -21,6 +21,7 @@ module btdu.subproc;
 
 import core.sys.posix.signal;
 import core.sys.posix.unistd;
+import core.time : MonoTime;
 
 import std.algorithm.iteration;
 import std.algorithm.mutation;
@@ -190,6 +191,7 @@ struct Subprocess
 	{
 		Offset offset;
 		ulong sampleIndex;  /// 0-based index in [0, totalSize)
+		MonoTime timestamp; /// When the sample query began
 		BrowserPath* browserPath;
 		RootInfo* inodeRoot;
 		bool haveInode, havePath;
@@ -204,6 +206,7 @@ struct Subprocess
 	{
 		result.offset = m.offset;
 		result.sampleIndex = m.sampleIndex;
+		result.timestamp = m.timestamp;
 		result.browserPath = browserRootPtr;
 		static immutable flagNames = [
 			"DATA",
@@ -358,6 +361,19 @@ struct Subprocess
 		debug(check) checkState();
 		scope(success) debug(check) checkState();
 
+		processResult(m.duration);
+
+		result = Result.init;
+		allPaths.clear();
+	}
+
+	private void processResult(ulong duration)
+	{
+		// Discard samples that began before the last deletion completed.
+		// Such samples may contain paths that no longer exist.
+		if (result.timestamp < lastDeletionTime)
+			return;
+
 		if (result.ignoringOffset)
 		{
 			if (!result.haveInode)
@@ -406,13 +422,13 @@ struct Subprocess
 			isNewGroup,
 			1,  // Adding 1 sample
 			(&result.offset)[0..1],
-			m.duration
+			duration
 		);
 
 		// Update sharing group's own sample counter.
 		// This happens after populateBrowserPathsFromSharingGroup so that
 		// group.data reflects the final state when the function returns.
-		group.data.add(1, (&result.offset)[0..1], m.duration);
+		group.data.add(1, (&result.offset)[0..1], duration);
 
 		// Record sample in disk map for visualization
 		diskMap.recordSample(result.sampleIndex, result.category);
@@ -423,9 +439,6 @@ struct Subprocess
 			group.lastSeen[i] = i + 1 == group.lastSeen.length
 				? currentCounter
 				: group.lastSeen[i + 1];
-
-		result = Result.init;
-		allPaths.clear();
 	}
 
 	void handleMessage(FatalErrorMessage m)

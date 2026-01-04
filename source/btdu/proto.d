@@ -66,9 +66,12 @@ enum u64 logicalOffsetSlack = -2;
 
 struct ResultStartMessage
 {
+	import core.time : MonoTime;
+
 	ulong chunkFlags;
 	Offset offset;
 	ulong sampleIndex;  /// 0-based index in [0, totalSize), uniformly sampled
+	MonoTime timestamp; /// When the sample query began
 }
 
 // Retrying with BTRFS_LOGICAL_INO_ARGS_IGNORE_OFFSET
