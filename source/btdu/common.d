@@ -25,7 +25,7 @@ import std.format : format, formattedWrite;
 import std.random : Random;
 import std.traits;
 
-enum btduVersion = "0.7.1";
+enum btduVersion = "0.7.2";
 
 alias Seed = typeof(Random.defaultSeed);
 
