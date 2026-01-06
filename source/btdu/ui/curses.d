@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2023, 2024, 2025  Vladimir Panteleev <btdu@cy.md>
+ * Copyright (C) 2023, 2024, 2025, 2026  Vladimir Panteleev <btdu@cy.md>
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public
@@ -778,6 +778,12 @@ struct Curses
 	void beep()
 	{
 		.beep();
+	}
+
+	void forceRedraw()
+	{
+		clearok(stdscr, true);
+		refresh();
 	}
 
 	enum ClipboardResult

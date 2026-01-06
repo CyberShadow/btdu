@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020, 2021, 2022, 2023, 2024, 2025  Vladimir Panteleev <btdu@cy.md>
+ * Copyright (C) 2020, 2021, 2022, 2023, 2024, 2025, 2026  Vladimir Panteleev <btdu@cy.md>
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public
@@ -1756,6 +1756,7 @@ struct Browser
 									printKey("View all marks", button("⇧ Shift"), "+", button("M"));
 									printKey("Delete all marked items", button("⇧ Shift"), "+", button("D"));
 									printKey("Export results to file", button("⇧ Shift"), "+", button("O"));
+									printKey("Clear and redraw the screen", button("Ctrl"), "+", button("l"));
 									printKey("Close information panel or quit btdu", button("q"));
 									write(
 										endl,
@@ -2172,10 +2173,15 @@ struct Browser
 		else
 			message = null;
 
+		static char ctrl(char letter) in(letter >= 'a' && letter <= 'z') { return cast(char)(letter - 'a' + 1); }
+
 		switch (ch)
 		{
 			case 'p':
 				togglePause();
+				return true;
+			case ctrl('l'):
+				curses.forceRedraw();
 				return true;
 			default:
 				// Proceed according to mode
