@@ -55,7 +55,9 @@ template allocatorFor(T)
 struct RootInfo
 {
 	GlobalPath* path;
-	bool isOrphan;  /// True if this is a TREE_%d (deleted subvolume)
+	bool isOrphan;   /// True if this is a TREE_%d (deleted subvolume)
+	long otime;      /// Creation time (seconds since epoch), or 0 if unknown
+	bool isReadOnly; /// True if subvolume is read-only (typically a snapshot)
 }
 
 /// Index for accessing different sampling states
