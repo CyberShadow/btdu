@@ -321,6 +321,8 @@ struct Root
 {
 	u64 parent;
 	string path;
+	long otime;      /// Creation time (seconds since epoch), or 0 if unknown
+	bool isReadOnly; /// True if subvolume is read-only (typically a snapshot)
 }
 Root[u64] roots;
 uint generation;
@@ -374,11 +376,17 @@ Root getRoot(int fd, __u64 rootID)
 		}
 	);
 
+	// Query root item for snapshot metadata (otime, flags)
+	auto rootItemInfo = findRootItem(fd, rootID);
+	result.otime = rootItemInfo.otime;
+	result.isReadOnly = (rootItemInfo.flags & BTRFS_ROOT_SUBVOL_RDONLY) != 0;
+
 	// Ensure parents are written first
 	if (result.path !is null)
 		cast(void)getRoot(fd, result.parent);
 
-	send(NewRootMessage(rootID, result.parent, result.path, generation));
+	send(NewRootMessage(rootID, result.parent, result.path, generation,
+		result.otime, result.isReadOnly));
 
 	roots[rootID] = result;
 	return result;
