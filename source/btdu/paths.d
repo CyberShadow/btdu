@@ -1535,7 +1535,7 @@ bool pathMatches(R)(R r, PathPattern pattern) @nogc
 /// Returns true if path 'a' is more representative than path 'b'
 /// This is the full comparison logic for representativeness ordering
 /// Works with both GlobalPath and BrowserPath
-bool isMoreRepresentative(A, B)(ref A a, ref B b)
+bool isMoreRepresentative(ref GlobalPath a, ref GlobalPath b)
 {
 	// Process path rules sequentially in order
 	foreach (rule; pathRules)
@@ -1567,7 +1567,7 @@ bool isMoreRepresentative(A, B)(ref A a, ref B b)
 	return a < b;
 }
 
-Path selectRepresentativePath(Path)(Path[] paths)
+GlobalPath selectRepresentativePath(GlobalPath[] paths)
 {
 	return paths.fold!((a, b) {
 		return isMoreRepresentative(a, b) ? a : b;
@@ -1576,7 +1576,7 @@ Path selectRepresentativePath(Path)(Path[] paths)
 
 /// Find the index of the most representative path in an array.
 /// Returns size_t.max if the array is empty.
-size_t selectRepresentativeIndex(Path)(Path[] paths)
+size_t selectRepresentativeIndex(GlobalPath[] paths)
 {
 	if (paths.length == 0)
 		return size_t.max;
