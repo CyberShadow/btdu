@@ -51,6 +51,10 @@ struct NewRootMessage
 	__u64 rootID, parentRootID;
 	const(char)[] name;
 	uint generation;
+	/// Creation time (seconds since epoch), or 0 if unknown
+	long otime;
+	/// True if subvolume is read-only (typically a snapshot)
+	bool isReadOnly;
 }
 
 struct Offset
