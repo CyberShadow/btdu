@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020, 2021, 2022, 2023  Vladimir Panteleev <btdu@cy.md>
+ * Copyright (C) 2020, 2021, 2022, 2023, 2026  Vladimir Panteleev <btdu@cy.md>
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public
@@ -254,7 +254,7 @@ void subprocessMain(string fsPath, bool physical)
 											void putRoot(u64 rootID)
 											{
 												auto root = getRoot(fd, rootID);
-												if (root is Root.init)
+												if (root.path is null)
 													enforce(rootID == BTRFS_FS_TREE_OBJECTID, "Unresolvable root");
 												else
 													putRoot(root.parent);
@@ -375,7 +375,7 @@ Root getRoot(int fd, __u64 rootID)
 	);
 
 	// Ensure parents are written first
-	if (result !is Root.init)
+	if (result.path !is null)
 		cast(void)getRoot(fd, result.parent);
 
 	send(NewRootMessage(rootID, result.parent, result.path, generation));
