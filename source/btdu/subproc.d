@@ -191,6 +191,8 @@ struct Subprocess
 		}
 
 		globalRoots[m.rootID] = info;
+		// Register in reverse lookup table for getRootInfo()
+		rootInfoByRootPath[globalRoots[m.rootID].path] = &globalRoots[m.rootID];
 	}
 
 	private struct Result
