@@ -1744,6 +1744,85 @@ def test_lexicographic_path_selection():
     print(f"  ✓ Lexicographic path selection verified: aaa.dat={aaa_samples} samples (zzz.dat not in tree)")
 
 
+def test_snapshot_preferred_over_original():
+    """Test that read-only snapshots are preferred over read-write originals.
+
+    When data is shared between a read-only snapshot and a read-write subvolume,
+    the snapshot should be selected as representative (for chronological ordering).
+    """
+    setup_btrfs_basic()
+
+    # Create a read-write subvolume with data
+    machine.succeed("btrfs subvolume create /mnt/btrfs/original")
+    machine.succeed("dd if=/dev/urandom of=/mnt/btrfs/original/data.dat bs=1M count=5")
+    machine.succeed("sync")
+
+    # Create a read-only snapshot (snapshots are read-only by default with -r)
+    machine.succeed("btrfs subvolume snapshot -r /mnt/btrfs/original /mnt/btrfs/snapshot")
+    machine.succeed("sync")
+
+    # Run btdu with many samples
+    run_btdu("--headless --export=/tmp/snapshot_pref.json --max-samples=10000 /mnt/btrfs", timeout=180)
+    data = verify_json_export("/tmp/snapshot_pref.json")
+
+    # Find both paths
+    original_node = get_node(data['root'], [SINGLE, DATA, 'original', 'data.dat'])
+    snapshot_node = get_node(data['root'], [SINGLE, DATA, 'snapshot', 'data.dat'])
+
+    # The snapshot (read-only) should be selected as representative
+    assert snapshot_node is not None, "snapshot/data.dat not found (should be representative)"
+    snapshot_samples = snapshot_node['data']['represented']['samples']
+    assert snapshot_samples > 0, "snapshot/data.dat should have samples as representative"
+
+    # The original (read-write) should not appear in tree
+    assert original_node is None, "original/data.dat should not appear in tree (snapshot is representative)"
+
+    print(f"  ✓ Snapshot preferred over original: snapshot/data.dat={snapshot_samples} samples")
+
+
+def test_older_snapshot_preferred():
+    """Test that older snapshots are preferred over newer ones.
+
+    When data is shared between multiple read-only snapshots,
+    the older one (smaller creation time) should be selected as representative.
+    """
+    setup_btrfs_basic()
+
+    # Create a read-write subvolume with data
+    machine.succeed("btrfs subvolume create /mnt/btrfs/source")
+    machine.succeed("dd if=/dev/urandom of=/mnt/btrfs/source/data.dat bs=1M count=5")
+    machine.succeed("sync")
+
+    # Create first snapshot (older) - use zzz prefix so lexicographic would pick wrong one
+    machine.succeed("btrfs subvolume snapshot -r /mnt/btrfs/source /mnt/btrfs/zzz_snap_old")
+    machine.succeed("sync")
+
+    # Small delay to ensure different creation times
+    machine.succeed("sleep 1")
+
+    # Create second snapshot (newer) - use aaa prefix so lexicographic would pick this one
+    machine.succeed("btrfs subvolume snapshot -r /mnt/btrfs/source /mnt/btrfs/aaa_snap_new")
+    machine.succeed("sync")
+
+    # Run btdu with many samples
+    run_btdu("--headless --export=/tmp/older_snap.json --max-samples=10000 /mnt/btrfs", timeout=180)
+    data = verify_json_export("/tmp/older_snap.json")
+
+    # Find both snapshot paths
+    old_snap_node = get_node(data['root'], [SINGLE, DATA, 'zzz_snap_old', 'data.dat'])
+    new_snap_node = get_node(data['root'], [SINGLE, DATA, 'aaa_snap_new', 'data.dat'])
+
+    # The older snapshot should be selected as representative (despite zzz > aaa lexicographically)
+    assert old_snap_node is not None, "zzz_snap_old/data.dat not found (should be representative as older)"
+    old_samples = old_snap_node['data']['represented']['samples']
+    assert old_samples > 0, "zzz_snap_old/data.dat should have samples as representative"
+
+    # The newer snapshot should not appear in tree
+    assert new_snap_node is None, "aaa_snap_new/data.dat should not appear in tree (older snapshot is representative)"
+
+    print(f"  ✓ Older snapshot preferred: zzz_snap_old/data.dat={old_samples} samples (newer aaa_snap_new not in tree)")
+
+
 def test_seenas_for_nonrepresentative_paths():
     """Test that seenAs data is available for non-representative paths with 0 represented samples.
 
@@ -1882,6 +1961,8 @@ def execute_all_tests():
         test_exclusive_size_clones,
         test_shared_size_reflinks,
         test_lexicographic_path_selection,
+        test_snapshot_preferred_over_original,
+        test_older_snapshot_preferred,
         test_seenas_for_nonrepresentative_paths,
     ]
 
