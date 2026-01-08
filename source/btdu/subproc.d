@@ -170,6 +170,9 @@ struct Subprocess
 			return;
 
 		RootInfo info;
+		info.otime = m.otime;
+		info.isReadOnly = m.isReadOnly;
+
 		if (m.parentRootID || m.name.length)
 			info.path = new GlobalPath(
 				(m.parentRootID in globalRoots).enforce("Unknown parent root").path,
