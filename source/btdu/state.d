@@ -124,6 +124,9 @@ bool compareMode;
 // Allocators (shared across all state instances)
 IndexedSlabAllocator!SubPath subPathAllocator;
 
+// Reverse lookup: root-level GlobalPath* -> RootInfo*
+RootInfo*[GlobalPath*] rootInfoByRootPath;
+
 // Other global state (not per-dataset)
 bool imported;
 bool exportSeenAs;
@@ -136,6 +139,23 @@ uint currentGeneration; /// Incremented on deletion; samples with older generati
 // ============================================================
 // Compatibility shims - forward to states[DataSet.xxx]
 // ============================================================
+
+/// Get RootInfo for a GlobalPath.
+/// For file paths, returns the RootInfo of the containing subvolume.
+/// For subvolume paths (in globalRoots), returns their own RootInfo.
+/// Returns null if the path has no associated RootInfo.
+const(RootInfo)* getRootInfo(const(GlobalPath)* path)
+{
+	if (path is null)
+		return null;
+	// Check if this path itself is a root (subvolume) path
+	if (auto info = cast(GlobalPath*) path in rootInfoByRootPath)
+		return *info;
+	// Otherwise check the parent (containing subvolume for file paths)
+	if (auto info = cast(GlobalPath*) path.parent in rootInfoByRootPath)
+		return *info;
+	return null;
+}
 
 // Main state shims
 @property ref totalSize() { return states[DataSet.main].totalSize; }
