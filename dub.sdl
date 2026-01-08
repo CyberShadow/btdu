@@ -6,7 +6,7 @@ targetType "executable"
 toolchainRequirements frontend=">=2.097"
 
 dependency "ae" version="==0.0.3701"
-dependency "btrfs" version="~>0.0.21"
+dependency "btrfs" version="~>0.0.22"
 dependency "ncurses" version="~>1.0.0"
 dependency "emsi_containers" version="==0.9.0"
 

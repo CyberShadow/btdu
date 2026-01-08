@@ -5,8 +5,8 @@
       "sha256": "0vf458cvr8mmvjr87g2i6yhn7yyz1cg4lbixf62b9qnszd88j2q2"
     },
     "btrfs": {
-      "version": "0.0.21",
-      "sha256": "0j7ksngwn8kilbql6p7hh5jvmrxqsr7pniw2n1qlrwdsms6qv72m"
+      "version": "0.0.22",
+      "sha256": "1rsv493pkldsxqrjy1kadwkcwm4cinh21v8b5f651a51f54sdkpn"
     },
     "ncurses": {
       "version": "1.0.0",
