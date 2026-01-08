@@ -43,7 +43,7 @@ import ae.utils.meta;
 import ae.utils.path.glob;
 
 import btdu.alloc;
-import btdu.state : allocatorFor;
+import btdu.state : allocatorFor, RootInfo, getRootInfo;
 
 public import btdu.proto : Offset;
 
@@ -1558,11 +1558,34 @@ bool isMoreRepresentative(ref GlobalPath a, ref GlobalPath b)
 	auto bResolved = b.isResolved();
 	if (aResolved != bResolved)
 		return aResolved;
-	// Shortest path always wins
+
+	// Snapshot-aware selection (for GlobalPath with rootInfo)
+	{
+		// Get root info via state module's lookup table
+		auto aRootInfo = getRootInfo(&a);
+		auto bRootInfo = getRootInfo(&b);
+
+		// Prefer read-only (snapshot) over read-write (original)
+		// This puts data under snapshots, showing chronological usage
+		auto aReadOnly = aRootInfo ? aRootInfo.isReadOnly : false;
+		auto bReadOnly = bRootInfo ? bRootInfo.isReadOnly : false;
+		if (aReadOnly != bReadOnly)
+			return aReadOnly;
+
+		// If both have same read-only status, prefer older (smaller otime)
+		// This shows data under the earliest snapshot containing it
+		auto aOtime = aRootInfo ? aRootInfo.otime : 0;
+		auto bOtime = bRootInfo ? bRootInfo.otime : 0;
+		if (aOtime != bOtime && aOtime != 0 && bOtime != 0)
+			return aOtime < bOtime;
+	}
+
+	// Shortest path wins
 	auto aLength = a.length;
 	auto bLength = b.length;
 	if (aLength != bLength)
 		return aLength < bLength;
+
 	// If the length is the same, pick the lexicographically smallest one
 	return a < b;
 }
