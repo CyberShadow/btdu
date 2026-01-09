@@ -298,6 +298,10 @@ struct DiskMap
 }
 DiskMap diskMap;
 
+// ============================================================
+// Marks upkeep
+// ============================================================
+
 BrowserPath marked;  /// A fake `BrowserPath` used to represent all marked nodes.
 ulong markTotalSamples; /// Number of seen samples since the mark was invalidated.
 
