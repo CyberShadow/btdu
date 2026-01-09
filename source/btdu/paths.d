@@ -639,6 +639,15 @@ struct GlobalPath
 		subPath.toString(sink);
 	}
 
+	/// Output path suitable for filesystem access (skips special components).
+	void toFilesystemPath(scope void delegate(const(char)[]) sink) const
+	{
+		if (parent)
+			parent.toFilesystemPath(sink);
+		if (subPath)
+			subPath.toFilesystemPath(sink);
+	}
+
 	size_t length() const
 	{
 		size_t length = 0;
