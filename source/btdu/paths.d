@@ -596,6 +596,25 @@ struct SubPath
 	{
 		return cmp(name[], b.name[]);
 	}
+
+	/// Output path suitable for filesystem access (skips special components).
+	/// Uses recursion to output in root-to-leaf order.
+	void toFilesystemPath(scope void delegate(const(char)[]) sink) const
+	{
+		if (parent is null)
+			return;
+
+		// Recurse to parent first (root-to-leaf order)
+		parent.toFilesystemPath(sink);
+
+		// Output this component (skip special components starting with '\0')
+		auto n = name[];
+		if (n.length > 0 && n[0] != '\0')
+		{
+			sink("/");
+			sink(n);
+		}
+	}
 }
 
 /// Global path (spanning multiple trees)
