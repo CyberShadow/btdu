@@ -500,10 +500,15 @@ def test_compression_support():
 
 
 def test_representative_path_selection():
-    """Verify btdu correctly selects representative paths for reflinked files."""
+    """Verify btdu correctly selects representative paths for reflinked files.
+
+    With default settings (chronological=false), newer files are preferred over older ones,
+    regardless of path length. This test verifies that birthtime-based selection works.
+    """
     setup_btrfs_basic()
     # Use 1MB file with many samples to ensure we hit it reliably
     # (1MB on 1GB = 0.1%, so 10000 samples gives ~10 expected hits)
+    # Create short.dat first (older), then reflink to longer path (newer)
     machine.succeed("dd if=/dev/urandom of=/mnt/btrfs/short.dat bs=1M count=1")
     machine.succeed("cp --reflink=always /mnt/btrfs/short.dat /mnt/btrfs/much_longer_path.dat")
     machine.succeed("sync")
@@ -517,15 +522,15 @@ def test_representative_path_selection():
     short_node = get_node(root, [SINGLE, DATA, 'short.dat'])
     longer_node = get_node(root, [SINGLE, DATA, 'much_longer_path.dat'])
 
-    # With --seed, shorter path should be selected as representative deterministically
-    assert short_node is not None, "short.dat not found in export tree (should be selected as representative)"
-    short_samples = short_node['data']['represented']['samples']
-    assert short_samples > 0, "short.dat selected as representative but has no samples"
+    # With default settings, newer file (much_longer_path.dat) should be representative
+    assert longer_node is not None, "much_longer_path.dat not found (should be representative as newer file)"
+    longer_samples = longer_node['data']['represented']['samples']
+    assert longer_samples > 0, "much_longer_path.dat selected as representative but has no samples"
 
-    # The longer path should not appear in tree (btdu doesn't export nodes with 0 samples)
-    assert longer_node is None, "Longer path should not appear in tree (shorter path is representative)"
+    # The older path should not appear in tree (btdu doesn't export nodes with 0 samples)
+    assert short_node is None, "short.dat should not appear in tree (newer file is representative)"
 
-    print(f"  ✓ Representative path selection verified: short.dat has {short_samples} samples (longer path not in tree)")
+    print(f"  ✓ Representative path selection verified: much_longer_path.dat has {longer_samples} samples (older short.dat not in tree)")
 
 
 # =============================================================================
@@ -1165,6 +1170,7 @@ def test_distributed_size_reflinks():
     """Test distributed size is split evenly among reflinks."""
     setup_btrfs_basic()
     # Create files with 10MB each to have clear sizes
+    # Nanosecond-precision birthtimes ensure correct ordering
     machine.succeed("dd if=/dev/urandom of=/mnt/btrfs/original.dat bs=1M count=10")
     machine.succeed("cp --reflink=always /mnt/btrfs/original.dat /mnt/btrfs/reflink1.dat")
     machine.succeed("cp --reflink=always /mnt/btrfs/original.dat /mnt/btrfs/reflink2.dat")
@@ -1185,15 +1191,17 @@ def test_distributed_size_reflinks():
     assert reflink2 is not None, "reflink2.dat not found"
 
     # Get represented samples (only one path is representative)
-    orig_repr = original['data']['represented']['samples']
+    # With default (chronological=false), the newest file should be representative
+    # reflink2.dat was created last, so it should be representative
+    orig_repr = original['data'].get('represented', {}).get('samples', 0)
     ref1_repr = reflink1['data'].get('represented', {}).get('samples', 0)
-    ref2_repr = reflink2['data'].get('represented', {}).get('samples', 0)
+    ref2_repr = reflink2['data']['represented']['samples']
 
-    # For 3 reflinks, only one should be representative (shorter path = original.dat)
-    assert orig_repr > 0, "original.dat should be representative (shortest path)"
+    # reflink2.dat should be representative (newest file)
+    assert ref2_repr > 0, "reflink2.dat should be representative (newest file)"
     # The other two should have 0 or very few represented samples
-    total_non_repr = ref1_repr + ref2_repr
-    assert total_non_repr < orig_repr * 0.2, f"reflink1 and reflink2 should not be representative, got {total_non_repr} vs {orig_repr}"
+    total_non_repr = orig_repr + ref1_repr
+    assert total_non_repr < ref2_repr * 0.2, f"original and reflink1 should not be representative, got {total_non_repr} vs {ref2_repr}"
 
     # Verify distributedSamples field exists on the files (this is the distributed metric)
     assert 'distributedSamples' in original['data'], "distributedSamples missing on original.dat"
@@ -1210,16 +1218,16 @@ def test_distributed_size_reflinks():
 
     # The sum should approximately equal the represented samples (allowing for rounding)
     total_dist = orig_dist + ref1_dist + ref2_dist
-    assert 0.8 * orig_repr <= total_dist <= 1.2 * orig_repr, \
-        f"Sum of distributed samples {total_dist} should ≈ represented {orig_repr}"
+    assert 0.8 * ref2_repr <= total_dist <= 1.2 * ref2_repr, \
+        f"Sum of distributed samples {total_dist} should ≈ represented {ref2_repr}"
 
     # Each reflink should get roughly 1/3 of the distributed samples (allow ±50% variance)
-    expected_per_file = orig_repr / 3
+    expected_per_file = ref2_repr / 3
     for name, dist in [("original", orig_dist), ("reflink1", ref1_dist), ("reflink2", ref2_dist)]:
         assert 0.5 * expected_per_file <= dist <= 1.5 * expected_per_file, \
-            f"{name} distributed={dist} not close to expected ~{expected_per_file:.0f} (1/3 of {orig_repr})"
+            f"{name} distributed={dist} not close to expected ~{expected_per_file:.0f} (1/3 of {ref2_repr})"
 
-    print(f"  ✓ Distributed size verified: represented={orig_repr}, distributed evenly: {orig_dist}, {ref1_dist}, {ref2_dist} (~{expected_per_file:.0f} each)")
+    print(f"  ✓ Distributed size verified: represented={ref2_repr}, distributed evenly: {orig_dist}, {ref1_dist}, {ref2_dist} (~{expected_per_file:.0f} each)")
 
 
 def test_exclusive_size_unique():
@@ -1673,7 +1681,7 @@ def test_exclusive_size_clones():
     assert unique_repr > 0, "Unique file should have represented samples"
     assert unique_excl > 0, "Unique file should have exclusive samples > 0"
 
-    # Find the reflinked file (shorter name is representative)
+    # Find the reflinked file (cloned.dat is newer so it's representative with default settings)
     cloned = get_node(data['root'], [SINGLE, DATA, 'cloned.dat'])
     assert cloned is not None, "cloned.dat not found"
 
@@ -1705,9 +1713,10 @@ def test_shared_size_reflinks():
     # Verify shared size is present
     assert data.get('expert') == True, "Expert mode not enabled"
 
-    # With --seed, shortest path (base.dat) should be representative
+    # With default settings, link2.dat (newest) would be representative, but in expert mode
+    # all paths are in the tree with shared samples
     base = get_node(data['root'], [SINGLE, DATA, 'base.dat'])
-    assert base is not None, "base.dat not found (should be representative as shortest path)"
+    assert base is not None, "base.dat not found (expert mode should have all paths in tree)"
 
     # The representative file should have shared size samples
     assert 'shared' in base['data'], "Shared field missing in expert mode"
@@ -1716,39 +1725,48 @@ def test_shared_size_reflinks():
     print(f"  ✓ Shared size with reflinks verified: shared={shared_samples} samples")
 
 
-def test_lexicographic_path_selection():
-    """Test lexicographic ordering for same-length paths."""
+def test_newer_file_preferred_over_older():
+    """Test that newer files are preferred over older ones for reflinked data.
+
+    When data is shared between files created at different times,
+    the newer file should be selected as representative by default.
+    This complements test_newer_directory_preferred_within_subvolume by testing
+    at the file level rather than directory level.
+    """
     setup_btrfs_basic()
 
-    # Create reflinked files with same-length paths
-    machine.succeed("dd if=/dev/urandom of=/mnt/btrfs/zzz.dat bs=1M count=1")
-    machine.succeed("cp --reflink=always /mnt/btrfs/zzz.dat /mnt/btrfs/aaa.dat")
+    # Create aaa.dat first (older), then reflink to zzz.dat (newer)
+    # With default (chronological=false), the newer file (zzz.dat) is preferred
+    # Nanosecond-precision birthtimes ensure correct ordering
+    machine.succeed("dd if=/dev/urandom of=/mnt/btrfs/aaa.dat bs=1M count=1")
+    machine.succeed("cp --reflink=always /mnt/btrfs/aaa.dat /mnt/btrfs/zzz.dat")
     machine.succeed("sync")
 
     # Run btdu with many samples to ensure we hit the reflinked data
-    run_btdu("--headless --export=/tmp/lexico.json --max-samples=10000 /mnt/btrfs", timeout=180)
-    data = verify_json_export("/tmp/lexico.json")
+    run_btdu("--headless --export=/tmp/newer_file.json --max-samples=10000 /mnt/btrfs", timeout=180)
+    data = verify_json_export("/tmp/newer_file.json")
 
     # Find both paths
     aaa_node = get_node(data['root'], [SINGLE, DATA, 'aaa.dat'])
     zzz_node = get_node(data['root'], [SINGLE, DATA, 'zzz.dat'])
 
-    # The lexicographically smaller path (aaa.dat) should be selected as representative
-    assert aaa_node is not None, "aaa.dat not found (should be representative)"
-    aaa_samples = aaa_node['data']['represented']['samples']
-    assert aaa_samples > 0, "aaa.dat should have samples as representative"
+    # zzz.dat is newer, so it should be selected as representative (default: prefer newer)
+    assert zzz_node is not None, "zzz.dat not found (should be representative as newer file)"
+    zzz_samples = zzz_node['data']['represented']['samples']
+    assert zzz_samples > 0, "zzz.dat should have samples as representative"
 
-    # zzz.dat should not appear in tree (btdu doesn't export nodes with 0 samples)
-    assert zzz_node is None, "zzz.dat should not appear in tree (aaa.dat is representative)"
+    # aaa.dat should not appear in tree (btdu doesn't export nodes with 0 samples)
+    assert aaa_node is None, "aaa.dat should not appear in tree (zzz.dat is representative)"
 
-    print(f"  ✓ Lexicographic path selection verified: aaa.dat={aaa_samples} samples (zzz.dat not in tree)")
+    print(f"  ✓ Newer file preferred: zzz.dat={zzz_samples} samples (older aaa.dat not in tree)")
 
 
-def test_snapshot_preferred_over_original():
-    """Test that read-only snapshots are preferred over read-write originals.
+def test_original_preferred_over_snapshot():
+    """Test that read-write originals are preferred over read-only snapshots (default behavior).
 
     When data is shared between a read-only snapshot and a read-write subvolume,
-    the snapshot should be selected as representative (for chronological ordering).
+    the original (read-write) should be selected as representative by default.
+    This is the default behavior (chronological=false).
     """
     setup_btrfs_basic()
 
@@ -1761,30 +1779,54 @@ def test_snapshot_preferred_over_original():
     machine.succeed("btrfs subvolume snapshot -r /mnt/btrfs/original /mnt/btrfs/snapshot")
     machine.succeed("sync")
 
+    # Verify snapshot is read-only
+    result = machine.succeed("btrfs property get /mnt/btrfs/snapshot ro")
+    print(f"  Snapshot ro property: {result.strip()}")
+
     # Run btdu with many samples
     run_btdu("--headless --export=/tmp/snapshot_pref.json --max-samples=10000 /mnt/btrfs", timeout=180)
     data = verify_json_export("/tmp/snapshot_pref.json")
+
+    # Debug: print DATA node structure
+    data_node = get_node(data['root'], [SINGLE, DATA])
+    if data_node:
+        children = data_node.get('children', [])
+        print(f"  DATA children: {[c.get('name') for c in children]}")
+        for child in children:
+            if child.get('name') in ['original', 'snapshot']:
+                samples = child.get('data', {}).get('represented', {}).get('samples', 0)
+                print(f"    {child.get('name')}: {samples} samples")
+                for subchild in child.get('children', []):
+                    subsamp = subchild.get('data', {}).get('represented', {}).get('samples', 0)
+                    print(f"      {subchild.get('name')}: {subsamp} samples")
 
     # Find both paths
     original_node = get_node(data['root'], [SINGLE, DATA, 'original', 'data.dat'])
     snapshot_node = get_node(data['root'], [SINGLE, DATA, 'snapshot', 'data.dat'])
 
-    # The snapshot (read-only) should be selected as representative
-    assert snapshot_node is not None, "snapshot/data.dat not found (should be representative)"
-    snapshot_samples = snapshot_node['data']['represented']['samples']
-    assert snapshot_samples > 0, "snapshot/data.dat should have samples as representative"
+    # Debug output
+    if original_node:
+        print(f"  original/data.dat: {original_node.get('data', {}).get('represented', {}).get('samples', 0)} samples")
+    if snapshot_node:
+        print(f"  snapshot/data.dat: {snapshot_node.get('data', {}).get('represented', {}).get('samples', 0)} samples")
 
-    # The original (read-write) should not appear in tree
-    assert original_node is None, "original/data.dat should not appear in tree (snapshot is representative)"
+    # The original (read-write) should be selected as representative
+    assert original_node is not None, "original/data.dat not found (should be representative)"
+    original_samples = original_node['data']['represented']['samples']
+    assert original_samples > 0, "original/data.dat should have samples as representative"
 
-    print(f"  ✓ Snapshot preferred over original: snapshot/data.dat={snapshot_samples} samples")
+    # The snapshot (read-only) should not appear in tree
+    assert snapshot_node is None, "snapshot/data.dat should not appear in tree (original is representative)"
+
+    print(f"  ✓ Original preferred over snapshot: original/data.dat={original_samples} samples")
 
 
-def test_older_snapshot_preferred():
-    """Test that older snapshots are preferred over newer ones.
+def test_newer_snapshot_preferred():
+    """Test that newer snapshots are preferred over older ones (default behavior).
 
     When data is shared between multiple read-only snapshots,
-    the older one (smaller creation time) should be selected as representative.
+    the newer one (larger creation time) should be selected as representative.
+    This is the default behavior (chronological=false).
     """
     setup_btrfs_basic()
 
@@ -1793,34 +1835,104 @@ def test_older_snapshot_preferred():
     machine.succeed("dd if=/dev/urandom of=/mnt/btrfs/source/data.dat bs=1M count=5")
     machine.succeed("sync")
 
-    # Create first snapshot (older) - use zzz prefix so lexicographic would pick wrong one
-    machine.succeed("btrfs subvolume snapshot -r /mnt/btrfs/source /mnt/btrfs/zzz_snap_old")
+    # Create first snapshot (older) - use aaa prefix so lexicographic would pick this one
+    machine.succeed("btrfs subvolume snapshot -r /mnt/btrfs/source /mnt/btrfs/aaa_snap_old")
     machine.succeed("sync")
 
-    # Small delay to ensure different creation times
+    # Small delay to ensure different creation times (otime is second-granularity)
     machine.succeed("sleep 1")
 
-    # Create second snapshot (newer) - use aaa prefix so lexicographic would pick this one
-    machine.succeed("btrfs subvolume snapshot -r /mnt/btrfs/source /mnt/btrfs/aaa_snap_new")
+    # Create second snapshot (newer) - use zzz prefix so lexicographic would pick wrong one
+    machine.succeed("btrfs subvolume snapshot -r /mnt/btrfs/source /mnt/btrfs/zzz_snap_new")
+    machine.succeed("sync")
+
+    # Overwrite source data so it's no longer shared with snapshots
+    # This isolates the test to only compare the two snapshots
+    machine.succeed("dd if=/dev/urandom of=/mnt/btrfs/source/data.dat bs=1M count=5")
     machine.succeed("sync")
 
     # Run btdu with many samples
-    run_btdu("--headless --export=/tmp/older_snap.json --max-samples=10000 /mnt/btrfs", timeout=180)
-    data = verify_json_export("/tmp/older_snap.json")
+    run_btdu("--headless --export=/tmp/newer_snap.json --max-samples=10000 /mnt/btrfs", timeout=180)
+    data = verify_json_export("/tmp/newer_snap.json")
 
     # Find both snapshot paths
-    old_snap_node = get_node(data['root'], [SINGLE, DATA, 'zzz_snap_old', 'data.dat'])
-    new_snap_node = get_node(data['root'], [SINGLE, DATA, 'aaa_snap_new', 'data.dat'])
+    old_snap_node = get_node(data['root'], [SINGLE, DATA, 'aaa_snap_old', 'data.dat'])
+    new_snap_node = get_node(data['root'], [SINGLE, DATA, 'zzz_snap_new', 'data.dat'])
 
-    # The older snapshot should be selected as representative (despite zzz > aaa lexicographically)
-    assert old_snap_node is not None, "zzz_snap_old/data.dat not found (should be representative as older)"
-    old_samples = old_snap_node['data']['represented']['samples']
-    assert old_samples > 0, "zzz_snap_old/data.dat should have samples as representative"
+    # The newer snapshot should be selected as representative (despite zzz > aaa lexicographically)
+    assert new_snap_node is not None, "zzz_snap_new/data.dat not found (should be representative as newer)"
+    new_samples = new_snap_node['data']['represented']['samples']
+    assert new_samples > 0, "zzz_snap_new/data.dat should have samples as representative"
 
-    # The newer snapshot should not appear in tree
-    assert new_snap_node is None, "aaa_snap_new/data.dat should not appear in tree (older snapshot is representative)"
+    # The older snapshot should not appear in tree
+    assert old_snap_node is None, "aaa_snap_old/data.dat should not appear in tree (newer snapshot is representative)"
 
-    print(f"  ✓ Older snapshot preferred: zzz_snap_old/data.dat={old_samples} samples (newer aaa_snap_new not in tree)")
+    print(f"  ✓ Newer snapshot preferred: zzz_snap_new/data.dat={new_samples} samples (older aaa_snap_old not in tree)")
+
+
+def test_newer_directory_preferred_within_subvolume():
+    """Test that newer directories are preferred over older ones within the same subvolume.
+
+    When data is shared between directories within the same subvolume (same otime),
+    the newer directory (later birthtime) should be selected as representative.
+    This is the default behavior (chronological=false).
+    """
+    setup_btrfs_basic()
+
+    # Create a subvolume to test birthtime within it
+    machine.succeed("btrfs subvolume create /mnt/btrfs/mysubvol")
+
+    # Create older directory first - use aaa prefix so lexicographic would pick this one
+    machine.succeed("mkdir /mnt/btrfs/mysubvol/aaa_old_dir")
+    machine.succeed("dd if=/dev/urandom of=/mnt/btrfs/mysubvol/aaa_old_dir/data.dat bs=1M count=5")
+    machine.succeed("sync")
+
+    # Create newer directory - use zzz prefix so lexicographic would pick wrong one
+    # Nanosecond-precision birthtimes ensure correct ordering
+    machine.succeed("mkdir /mnt/btrfs/mysubvol/zzz_new_dir")
+
+    # Reflink the file to the newer directory (same data, different directory)
+    machine.succeed("cp --reflink=always /mnt/btrfs/mysubvol/aaa_old_dir/data.dat /mnt/btrfs/mysubvol/zzz_new_dir/data.dat")
+    machine.succeed("sync")
+
+    # Debug: Check directory birthtimes
+    old_stat = machine.succeed("stat /mnt/btrfs/mysubvol/aaa_old_dir 2>&1 || true")
+    new_stat = machine.succeed("stat /mnt/btrfs/mysubvol/zzz_new_dir 2>&1 || true")
+    print(f"  aaa_old_dir stat: {old_stat.strip()[:100]}")
+    print(f"  zzz_new_dir stat: {new_stat.strip()[:100]}")
+
+    # Run btdu with many samples
+    run_btdu("--headless --export=/tmp/birthtime_subvol.json --max-samples=10000 /mnt/btrfs", timeout=180)
+    data = verify_json_export("/tmp/birthtime_subvol.json")
+
+    # Debug: print structure
+    subvol_node = get_node(data['root'], [SINGLE, DATA, 'mysubvol'])
+    if subvol_node:
+        children = subvol_node.get('children', [])
+        print(f"  mysubvol children: {[c.get('name') for c in children]}")
+        for child in children:
+            samples = child.get('data', {}).get('represented', {}).get('samples', 0)
+            print(f"    {child.get('name')}: {samples} samples")
+
+    # Find both paths
+    old_dir_node = get_node(data['root'], [SINGLE, DATA, 'mysubvol', 'aaa_old_dir', 'data.dat'])
+    new_dir_node = get_node(data['root'], [SINGLE, DATA, 'mysubvol', 'zzz_new_dir', 'data.dat'])
+
+    # Debug output
+    if old_dir_node:
+        print(f"  aaa_old_dir/data.dat: {old_dir_node.get('data', {}).get('represented', {}).get('samples', 0)} samples")
+    if new_dir_node:
+        print(f"  zzz_new_dir/data.dat: {new_dir_node.get('data', {}).get('represented', {}).get('samples', 0)} samples")
+
+    # The newer directory should be selected as representative (despite zzz > aaa lexicographically)
+    assert new_dir_node is not None, "zzz_new_dir/data.dat not found (should be representative as newer)"
+    new_samples = new_dir_node['data']['represented']['samples']
+    assert new_samples > 0, "zzz_new_dir/data.dat should have samples as representative"
+
+    # The older directory should not appear in tree
+    assert old_dir_node is None, "aaa_old_dir/data.dat should not appear in tree (newer dir is representative)"
+
+    print(f"  ✓ Newer directory preferred within subvolume: zzz_new_dir/data.dat={new_samples} samples")
 
 
 def test_seenas_for_nonrepresentative_paths():
@@ -1960,9 +2072,10 @@ def execute_all_tests():
         test_represented_size_unique,
         test_exclusive_size_clones,
         test_shared_size_reflinks,
-        test_lexicographic_path_selection,
-        test_snapshot_preferred_over_original,
-        test_older_snapshot_preferred,
+        test_newer_file_preferred_over_older,
+        test_original_preferred_over_snapshot,
+        test_newer_snapshot_preferred,
+        test_newer_directory_preferred_within_subvolume,
         test_seenas_for_nonrepresentative_paths,
     ]
 
