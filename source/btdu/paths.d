@@ -1593,7 +1593,12 @@ bool isMoreRepresentative(ref GlobalPath a, ref GlobalPath b)
 	auto divergence = findDivergenceCreationInfo(&a, &b);
 	if (divergence.diverged)
 	{
+		// opCmp returns chronological order (older/read-only preferred)
+		// Negate if !chronological (default) to prefer newer/read-write
+		import btdu.state : chronological;
 		auto cmp = divergence.aInfo.opCmp(divergence.bInfo);
+		if (!chronological)
+			cmp = -cmp;
 		if (cmp != 0)
 			return cmp < 0;
 	}
