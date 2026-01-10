@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020, 2021, 2022, 2023, 2025  Vladimir Panteleev <btdu@cy.md>
+ * Copyright (C) 2020, 2021, 2022, 2023, 2025, 2026  Vladimir Panteleev <btdu@cy.md>
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public
@@ -76,6 +76,7 @@ void program(
 	Switch!("Instead of analyzing a btrfs filesystem, read previously collected results saved with --export from PATH.", 'f', "import") doImport = false,
 	Option!(string, "Compare against a baseline from a previously exported file.", "PATH", 'c', "compare") comparePath = null,
 	Switch!("Auto-mount top-level subvolume if needed.", 'A', "auto-mount") autoMount = false,
+	Switch!("Prefer older paths as representative.") chronological = false,
 )
 {
 	if (exportFormatStr && !exportPath)
@@ -119,6 +120,7 @@ Please report defects and enhancement requests to the GitHub issue tracker:
 		// For binary format: CLI controls view mode (data is always complete).
 		// For JSON format: importJson will override this based on data availability.
 		.expert = expert;
+		.chronological = chronological;
 
 		stderr.writeln("Loading results from file...");
 		importData(path);
@@ -131,6 +133,7 @@ Please report defects and enhancement requests to the GitHub issue tracker:
 		.expert = expert;
 		.physical = physical;
 		.exportSeenAs = exportSeenAs;
+		.chronological = chronological;
 
 		// TODO: respect CLI order (needs std.getopt and ae.utils.funopt changes)
 		PathRule[] rules;
