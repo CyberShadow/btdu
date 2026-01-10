@@ -299,6 +299,171 @@ struct DiskMap
 DiskMap diskMap;
 
 // ============================================================
+// Birthtime lookup for path-based creation time comparison
+// ============================================================
+
+import btdu.statx;
+
+// Birthtime cache: GlobalPath -> birthtime (nanoseconds since epoch)
+// GlobalPath is a lightweight struct (two pointers), so we use it directly as key.
+private long[GlobalPath] birthtimeCache;
+
+/// Creation time and read-only status for a path component.
+/// For subvolume roots, uses RootInfo (otime, isReadOnly).
+/// For regular directories/files, uses birthtime and assumes writable.
+struct CreationInfo
+{
+	long time;       /// Creation time (nanoseconds since epoch), 0 if unknown
+	bool isReadOnly; /// True if read-only (snapshots), false for regular dirs
+
+	/// Compare in chronological order. Writable paths are always considered
+	/// to be newer than read-only paths.
+	/// Returns -1 if `this` is older, +1 if `other` is older, 0 if equal.
+	int opCmp(ref const CreationInfo other) const
+	{
+		// Prefer read-only (snapshot) over read-write
+		if (isReadOnly != other.isReadOnly)
+			return isReadOnly ? -1 : 1;
+
+		// Prefer older (smaller time), but 0 means unknown (least preferred)
+		if (time != other.time && time != 0 && other.time != 0)
+			return time < other.time ? -1 : 1;
+
+		return 0; // Equal or both unknown
+	}
+}
+
+/// Result of finding where two paths diverge.
+struct DivergenceResult
+{
+	bool diverged;     /// True if paths diverge, false if identical or one is prefix of other
+	CreationInfo aInfo; /// Creation info for path A at divergence point
+	CreationInfo bInfo; /// Creation info for path B at divergence point
+}
+
+/// Find where two GlobalPaths diverge and return creation info at that point.
+/// Complexity: O(N) where N is the shorter path's depth.
+DivergenceResult findDivergenceCreationInfo(const(GlobalPath)* a, const(GlobalPath)* b)
+{
+	if (a is b)
+		return DivergenceResult(false, CreationInfo.init, CreationInfo.init);
+
+	DivergenceResult result;
+
+	// Get creation info for a path at divergence point.
+	// If the diverging GlobalPath is a registered subvolume, use RootInfo.
+	// Otherwise, use birthtime of the diverging directory.
+	CreationInfo getCreationInfo(const(GlobalPath)* gp, const(SubPath)* sp)
+	{
+		// Check if gp itself is a registered subvolume
+		if (auto rootInfo = cast(GlobalPath*) gp in rootInfoByRootPath)
+			// Convert otime from seconds to nanoseconds for consistent comparison
+			return CreationInfo((*rootInfo).otime * 1_000_000_000L, (*rootInfo).isReadOnly);
+		// Regular directory: construct path to diverging dir and get birthtime
+		return CreationInfo(getBirthtime(GlobalPath(cast(GlobalPath*) gp.parent, cast(SubPath*) sp)), false);
+	}
+
+	// Compare SubPath components in root-to-leaf order using synchronized recursion.
+	// Returns true to stop early (found divergence or one path ended).
+	bool compareSubPaths(const(SubPath)* spA, const(SubPath)* spB,
+		const(GlobalPath)* gpA, const(GlobalPath)* gpB)
+	{
+		bool aEnd = (spA is null || spA.parent is null);
+		bool bEnd = (spB is null || spB.parent is null);
+
+		if (aEnd && bEnd)
+			return false; // Both ended, continue to next GlobalPath
+
+		if (aEnd || bEnd)
+			return true; // One ended before the other - one is prefix of other
+
+		// Recurse to parents first (root-to-leaf order)
+		if (compareSubPaths(spA.parent, spB.parent, gpA, gpB))
+			return true;
+
+		// Compare this component on the way back
+		auto nameA = spA.name[];
+		auto nameB = spB.name[];
+
+		// Skip special components
+		bool specialA = nameA.length == 0 || nameA[0] == '\0';
+		bool specialB = nameB.length == 0 || nameB[0] == '\0';
+
+		if (specialA && specialB)
+			return false; // Both special, continue
+		if (specialA || specialB)
+			return true; // One special, one not - treat as prefix
+
+		// Both are regular components - check for divergence
+		if (nameA != nameB)
+		{
+			result.diverged = true;
+			result.aInfo = getCreationInfo(gpA, spA);
+			result.bInfo = getCreationInfo(gpB, spB);
+			return true;
+		}
+
+		// Components match, continue
+		return false;
+	}
+
+	// Compare GlobalPath chains in root-to-leaf order using synchronized recursion.
+	bool compareGlobalPaths(const(GlobalPath)* gpA, const(GlobalPath)* gpB)
+	{
+		bool aEnd = (gpA is null);
+		bool bEnd = (gpB is null);
+
+		if (aEnd && bEnd)
+			return false; // Both ended
+
+		if (aEnd || bEnd)
+			return true; // One ended - one is prefix of other
+
+		// Recurse to parents first (root-to-leaf order)
+		if (compareGlobalPaths(gpA.parent, gpB.parent))
+			return true;
+
+		// Compare this GlobalPath's SubPaths
+		return compareSubPaths(gpA.subPath, gpB.subPath, gpA, gpB);
+	}
+
+	compareGlobalPaths(a, b);
+	return result;
+}
+
+/// Get the birthtime of a GlobalPath.
+/// Complexity: O(N) where N is the path depth.
+long getBirthtime(GlobalPath path)
+{
+	if (path.subPath is null)
+		return 0;
+
+	// Check cache first (avoids building path string on hit)
+	if (auto cached = path in birthtimeCache)
+		return *cached;
+
+	// Build path string using static appender
+	static StaticAppender!char pathBuf;
+	pathBuf.clear();
+	pathBuf.put(fsPath);  // Prepend mount point
+	path.toFilesystemPath(&pathBuf.put!(const(char)[]));  // Append path components
+
+	// Call statx to get birthtime
+	pathBuf.put('\0');
+	statx_t stx;
+	int ret = statx(AT_FDCWD, pathBuf.peek.ptr, AT_SYMLINK_NOFOLLOW, STATX_BTIME, &stx);
+
+	long birthtime = 0;
+	if (ret == 0 && (stx.stx_mask & STATX_BTIME))
+		// Store as nanoseconds for full precision comparison
+		birthtime = stx.stx_btime.tv_sec * 1_000_000_000L + stx.stx_btime.tv_nsec;
+
+	// Cache result
+	birthtimeCache[path] = birthtime;
+	return birthtime;
+}
+
+// ============================================================
 // Marks upkeep
 // ============================================================
 
