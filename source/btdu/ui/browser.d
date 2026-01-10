@@ -300,6 +300,14 @@ struct Browser
 		doRebuild();
 	}
 
+	/// Toggle chronological mode and rebuild tree.
+	private void toggleChronological()
+	{
+		chronological = !chronological;
+		showMessage(chronological ? "Allocating representative samples in chronological order" : "Allocating representative samples in reverse-chronological order");
+		doRebuild();
+	}
+
 	/// Start an incremental rebuild of the BrowserPath tree from SharingGroups.
 	private void doRebuild()
 	{
@@ -1751,6 +1759,7 @@ struct Browser
 									printKey("Copy selected path to clipboard", button("y"));
 									printKey("Prefer selected path (toggle)", button("⇧ Shift"), "+", button("P"));
 									printKey("Ignore selected path (toggle)", button("⇧ Shift"), "+", button("I"));
+									printKey("Toggle chronological allocation", button("⇧ Shift"), "+", button("C"));
 									printKey("Mark / unmark selected item", button("    "));
 									printKey("Invert marks", button("*"));
 									printKey("View all marks", button("⇧ Shift"), "+", button("M"));
@@ -2412,6 +2421,9 @@ struct Browser
 						break;
 					case 'I':
 						togglePathRule(PathRule.Type.ignore);
+						break;
+					case 'C':
+						toggleChronological();
 						break;
 					default:
 						goto itemScroll;
