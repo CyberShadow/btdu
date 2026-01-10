@@ -131,6 +131,7 @@ RootInfo*[GlobalPath*] rootInfoByRootPath;
 bool imported;
 bool exportSeenAs;
 bool autoMountMode; /// True when using --auto-mount with a temporary mount point
+bool chronological; /// If true, prefer older paths; if false (default), prefer newer paths
 string fsPath;
 btrfs_ioctl_dev_info_args[] devices;
 SubPath subPathRoot;
