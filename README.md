@@ -40,7 +40,7 @@ Use cases
 
 - **Estimate snapshot size**
 
-  When an extent is in use by multiple files or snapshots, to decide where to place it in the browsable tree, btdu picks the path with the shortest length, or the lexicographically smaller path if the length is the same. An emergent effect of this property is that it can be used to estimate snapshot size, if your snapshots use a fixed-length lexicographically-ordered naming scheme (such as e.g. YYYY-MM-DD-HH-MM-SS): the size of snapshots displayed in btdu will thus indicate data that occurs in that snapshot or any later one, i.e. the amount of "new" data in that snapshot.
+  When an extent is shared between snapshots, btdu must choose one snapshot to represent that data. By default, btdu prefers the newest snapshot, which means each snapshot's size represents data which was last referenced by that snapshot.
 
 - **Estimate compressed data size**
 
@@ -149,6 +149,8 @@ For automated invocations or scripting, combine with `--export` to save results 
 `--expert` collects additional metrics; `--physical` switches the addressing mode from logical to physical, causing btdu to measure physical disk space.
 
 Use `--prefer=PATTERN` and `--ignore=PATTERN` to control which path represents shared extents. Patterns are absolute filesystem paths (supporting glob syntax: `*`, `**`, etc.) and must be under the sampled filesystem root. Example: `--prefer=/mnt/btrfs/data/.snapshots`. Interactively, you can do this by pressing <kbd>⇧ Shift</kbd><kbd>P</kbd> and <kbd>⇧ Shift</kbd><kbd>I</kbd> respectively.
+
+By default, btdu prefers newer paths as representative. For snapshots, this means each snapshot's size represents data which was last referenced by that snapshot (i.e. roughly, the amount of "dead weight" that would be freed if you deleted that snapshot, after also deleting all older snapshots). Use `--chronological` to reverse this, showing how much "new" data each snapshot added. Interactively, press <kbd>⇧ Shift</kbd><kbd>C</kbd> to toggle between these modes.
 
 `--max-samples`, `--max-time`, and `--min-resolution` control when btdu stops sampling (and, in headless mode, exits).
 

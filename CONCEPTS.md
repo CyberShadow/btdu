@@ -40,15 +40,35 @@ After picking a logical offset to sample, btdu asks btrfs what is located at tha
 Out of these locations, btdu picks one location where it should place the sample within its tree, to *represent* the space occupied by this data. We call this location the *representative* location.
 
 The way in which btdu selects the representative location aims to prefer better visualization of what the data is used for, i.e., the simplest explanation for what is using this disk space.
-For instance, if one location's filesystem path is longer than the other, then the shorter is chosen, as the longer is more likely to point at a snapshot or other redundant clone of the shorter one.
+For this purpose, when a sample is shared by multiple locations, their creation time is queried and the sample is allocated to the youngest location.
+
+The full order in which the selection criteria are applied is as follows:
+
+1. **Subvolume type**: Read-write subvolumes are preferred over read-only subvolumes (snapshots) by default.
+
+2. **Creation time**: Among paths with the same read-only status, the newer one (later creation time) is preferred by default. This shows data under the most recent location that references it.
+
+3. **Path length**: Shorter paths are preferred over longer ones, as they are more likely to be the simplest explanation for what is using this disk space.
+
+4. **Lexicographic order**: When paths have equal length, the lexicographically smaller path is chosen.
+
+The subvolume type and creation time criteria are evaluated at the first point where two paths diverge. For subvolumes at the divergence point, btdu uses the subvolume's creation time (otime) and read-only status. For regular directories, btdu uses the directory's birthtime (if available).
 
 Examples:
 
 - For data which is used exactly once, the representative location will be the path to the file which references that data.
-- For data which is used in `/@root/file.txt` and `/@root-20210203/file.txt`, the representative location will be `/@root/file.txt`, because it is shorter.
-- For data which is used in `/@root/file1.txt` and `/@root/file2.txt`, the representative location will be `/@root/file1.txt`, because it is lexicographically smaller.
+- For data shared between `/@root/file.txt` (read-write) and `/@root-20210203/file.txt` (read-only snapshot), the representative location will be `/@root/file.txt`, because read-write subvolumes are preferred.
+- For data shared between two read-only snapshots `/@snap-2021/file.txt` and `/@snap-2022/file.txt`, the representative location will be `/@snap-2022/file.txt`, because it is newer.
+- For data which is used in `/@root/file1.txt` and `/@root/file2.txt` (same subvolume), the representative location will be `/@root/file1.txt`, because it is lexicographically smaller.
+- For data shared between `/@subvol/dir-2023/file.txt` and `/@subvol/dir-2024/file.txt` (same subvolume, different directories), the representative location will be `/@subvol/dir-2024/file.txt` if `dir-2024` was created after `dir-2023`.
 
-The "shorter / lexicographically smaller path wins" rule can be overridden by selecting a node and pressing <kbd>⇧ Shift</kbd><kbd>P</kbd> to prefer this node when selecting a representative location, or <kbd>⇧ Shift</kbd><kbd>I</kbd> to avoid it. On the command line, you can use the `--prefer` and `--ignore` options, which accept absolute filesystem paths with shell-like pattern syntax (understanding `?`, `*`, `**`, `[a-z]`, `{this,that}`).
+These rules can be overridden by selecting a node and pressing <kbd>⇧ Shift</kbd><kbd>P</kbd> to prefer this node when selecting a representative location, or <kbd>⇧ Shift</kbd><kbd>I</kbd> to avoid it. On the command line, you can use the `--prefer` and `--ignore` options, which accept absolute filesystem paths with shell-like pattern syntax (understanding `?`, `*`, `**`, `[a-z]`, `{this,that}`).
+
+The temporal criteria can be reversed using `--chronological` on the command line, or by pressing <kbd>⇧ Shift</kbd><kbd>C</kbd> interactively. This changes how snapshot sizes are interpreted:
+
+- **Reverse-chronological** (default): Each snapshot's size represents data which was last referenced by that snapshot, i.e. data that would be freed if you deleted that snapshot, after also deleting all older snapshots.
+
+- **Chronological**: Each snapshot's size represents the "new" data that first appeared in that snapshot. This gives a chronological view of when disk space was consumed, useful for tracking down where data originally came from.
 
 Size metrics
 ------------
