@@ -443,6 +443,12 @@ long getBirthtime(GlobalPath path)
 	if (auto cached = path in birthtimeCache)
 		return *cached;
 
+	// When viewing imported data, we can't stat the original filesystem.
+	// Return 0 (unknown) for uncached paths - the cache should have been
+	// populated during import for all paths that were queried during sampling.
+	if (imported)
+		return 0;
+
 	// Build path string using static appender
 	static StaticAppender!char pathBuf;
 	pathBuf.clear();
