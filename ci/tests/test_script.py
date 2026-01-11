@@ -1730,35 +1730,46 @@ def test_newer_file_preferred_over_older():
 
     When data is shared between files created at different times,
     the newer file should be selected as representative by default.
-    This complements test_newer_directory_preferred_within_subvolume by testing
-    at the file level rather than directory level.
+
+    Uses four files to distinguish time-based ordering from lexicographic ordering:
+    - aaa.dat: lexicographically smallest (middle age)
+    - bbb.dat: oldest (created first)
+    - ccc.dat: newest (created last)
+    - ddd.dat: lexicographically largest (middle age)
+
+    Default mode should select ccc.dat (newest), not aaa.dat (lexicographic).
     """
     setup_btrfs_basic()
 
-    # Create aaa.dat first (older), then reflink to zzz.dat (newer)
-    # With default (chronological=false), the newer file (zzz.dat) is preferred
-    # Nanosecond-precision birthtimes ensure correct ordering
-    machine.succeed("dd if=/dev/urandom of=/mnt/btrfs/aaa.dat bs=1M count=1")
-    machine.succeed("cp --reflink=always /mnt/btrfs/aaa.dat /mnt/btrfs/zzz.dat")
+    # Create files in specific order to control birthtimes:
+    # bbb (oldest) -> aaa -> ddd -> ccc (newest)
+    machine.succeed("dd if=/dev/urandom of=/mnt/btrfs/bbb.dat bs=1M count=1")
+    machine.succeed("cp --reflink=always /mnt/btrfs/bbb.dat /mnt/btrfs/aaa.dat")
+    machine.succeed("cp --reflink=always /mnt/btrfs/bbb.dat /mnt/btrfs/ddd.dat")
+    machine.succeed("cp --reflink=always /mnt/btrfs/bbb.dat /mnt/btrfs/ccc.dat")
     machine.succeed("sync")
 
     # Run btdu with many samples to ensure we hit the reflinked data
     run_btdu("--headless --export=/tmp/newer_file.json --max-samples=10000 /mnt/btrfs", timeout=180)
     data = verify_json_export("/tmp/newer_file.json")
 
-    # Find both paths
+    # Find all paths
     aaa_node = get_node(data['root'], [SINGLE, DATA, 'aaa.dat'])
-    zzz_node = get_node(data['root'], [SINGLE, DATA, 'zzz.dat'])
+    bbb_node = get_node(data['root'], [SINGLE, DATA, 'bbb.dat'])
+    ccc_node = get_node(data['root'], [SINGLE, DATA, 'ccc.dat'])
+    ddd_node = get_node(data['root'], [SINGLE, DATA, 'ddd.dat'])
 
-    # zzz.dat is newer, so it should be selected as representative (default: prefer newer)
-    assert zzz_node is not None, "zzz.dat not found (should be representative as newer file)"
-    zzz_samples = zzz_node['data']['represented']['samples']
-    assert zzz_samples > 0, "zzz.dat should have samples as representative"
+    # ccc.dat is newest, so it should be selected as representative (default: prefer newer)
+    assert ccc_node is not None, "ccc.dat not found (should be representative as newest file)"
+    ccc_samples = ccc_node['data']['represented']['samples']
+    assert ccc_samples > 0, "ccc.dat should have samples as representative"
 
-    # aaa.dat should not appear in tree (btdu doesn't export nodes with 0 samples)
-    assert aaa_node is None, "aaa.dat should not appear in tree (zzz.dat is representative)"
+    # Other files should not appear in tree (btdu doesn't export nodes with 0 samples)
+    assert aaa_node is None, "aaa.dat should not appear (would indicate lexicographic ordering bug)"
+    assert bbb_node is None, "bbb.dat should not appear (oldest, not newest)"
+    assert ddd_node is None, "ddd.dat should not appear (would indicate reverse lexicographic bug)"
 
-    print(f"  ✓ Newer file preferred: zzz.dat={zzz_samples} samples (older aaa.dat not in tree)")
+    print(f"  ✓ Newer file preferred: ccc.dat={ccc_samples} samples (others not in tree)")
 
 
 def test_original_preferred_over_snapshot():
@@ -1827,6 +1838,14 @@ def test_newer_snapshot_preferred():
     When data is shared between multiple read-only snapshots,
     the newer one (larger creation time) should be selected as representative.
     This is the default behavior (chronological=false).
+
+    Uses four snapshots to distinguish time-based ordering from lexicographic ordering:
+    - aaa_snap: lexicographically smallest (middle age)
+    - bbb_snap: oldest (created first)
+    - ccc_snap: newest (created last)
+    - ddd_snap: lexicographically largest (middle age)
+
+    Default mode should select ccc_snap (newest), not aaa_snap (lexicographic).
     """
     setup_btrfs_basic()
 
@@ -1835,19 +1854,23 @@ def test_newer_snapshot_preferred():
     machine.succeed("dd if=/dev/urandom of=/mnt/btrfs/source/data.dat bs=1M count=5")
     machine.succeed("sync")
 
-    # Create first snapshot (older) - use aaa prefix so lexicographic would pick this one
-    machine.succeed("btrfs subvolume snapshot -r /mnt/btrfs/source /mnt/btrfs/aaa_snap_old")
-    machine.succeed("sync")
+    # Create snapshots in specific order to control otimes:
+    # bbb (oldest) -> aaa -> ddd -> ccc (newest)
+    # Use sleep 1 between each to ensure different otimes (second granularity)
+    machine.succeed("btrfs subvolume snapshot -r /mnt/btrfs/source /mnt/btrfs/bbb_snap")
+    machine.succeed("sync && sleep 1")
 
-    # Small delay to ensure different creation times (otime is second-granularity)
-    machine.succeed("sleep 1")
+    machine.succeed("btrfs subvolume snapshot -r /mnt/btrfs/source /mnt/btrfs/aaa_snap")
+    machine.succeed("sync && sleep 1")
 
-    # Create second snapshot (newer) - use zzz prefix so lexicographic would pick wrong one
-    machine.succeed("btrfs subvolume snapshot -r /mnt/btrfs/source /mnt/btrfs/zzz_snap_new")
+    machine.succeed("btrfs subvolume snapshot -r /mnt/btrfs/source /mnt/btrfs/ddd_snap")
+    machine.succeed("sync && sleep 1")
+
+    machine.succeed("btrfs subvolume snapshot -r /mnt/btrfs/source /mnt/btrfs/ccc_snap")
     machine.succeed("sync")
 
     # Overwrite source data so it's no longer shared with snapshots
-    # This isolates the test to only compare the two snapshots
+    # This isolates the test to only compare the snapshots
     machine.succeed("dd if=/dev/urandom of=/mnt/btrfs/source/data.dat bs=1M count=5")
     machine.succeed("sync")
 
@@ -1855,19 +1878,23 @@ def test_newer_snapshot_preferred():
     run_btdu("--headless --export=/tmp/newer_snap.json --max-samples=10000 /mnt/btrfs", timeout=180)
     data = verify_json_export("/tmp/newer_snap.json")
 
-    # Find both snapshot paths
-    old_snap_node = get_node(data['root'], [SINGLE, DATA, 'aaa_snap_old', 'data.dat'])
-    new_snap_node = get_node(data['root'], [SINGLE, DATA, 'zzz_snap_new', 'data.dat'])
+    # Find all snapshot paths
+    aaa_node = get_node(data['root'], [SINGLE, DATA, 'aaa_snap', 'data.dat'])
+    bbb_node = get_node(data['root'], [SINGLE, DATA, 'bbb_snap', 'data.dat'])
+    ccc_node = get_node(data['root'], [SINGLE, DATA, 'ccc_snap', 'data.dat'])
+    ddd_node = get_node(data['root'], [SINGLE, DATA, 'ddd_snap', 'data.dat'])
 
-    # The newer snapshot should be selected as representative (despite zzz > aaa lexicographically)
-    assert new_snap_node is not None, "zzz_snap_new/data.dat not found (should be representative as newer)"
-    new_samples = new_snap_node['data']['represented']['samples']
-    assert new_samples > 0, "zzz_snap_new/data.dat should have samples as representative"
+    # ccc_snap is newest, so it should be selected as representative (default: prefer newer)
+    assert ccc_node is not None, "ccc_snap/data.dat not found (should be representative as newest)"
+    ccc_samples = ccc_node['data']['represented']['samples']
+    assert ccc_samples > 0, "ccc_snap/data.dat should have samples as representative"
 
-    # The older snapshot should not appear in tree
-    assert old_snap_node is None, "aaa_snap_old/data.dat should not appear in tree (newer snapshot is representative)"
+    # Other snapshots should not appear in tree
+    assert aaa_node is None, "aaa_snap should not appear (would indicate lexicographic ordering bug)"
+    assert bbb_node is None, "bbb_snap should not appear (oldest, not newest)"
+    assert ddd_node is None, "ddd_snap should not appear (would indicate reverse lexicographic bug)"
 
-    print(f"  ✓ Newer snapshot preferred: zzz_snap_new/data.dat={new_samples} samples (older aaa_snap_old not in tree)")
+    print(f"  ✓ Newer snapshot preferred: ccc_snap/data.dat={ccc_samples} samples (others not in tree)")
 
 
 def test_newer_directory_preferred_within_subvolume():
@@ -1876,63 +1903,56 @@ def test_newer_directory_preferred_within_subvolume():
     When data is shared between directories within the same subvolume (same otime),
     the newer directory (later birthtime) should be selected as representative.
     This is the default behavior (chronological=false).
+
+    Uses four directories to distinguish time-based ordering from lexicographic ordering:
+    - aaa_dir: lexicographically smallest (middle age)
+    - bbb_dir: oldest (created first)
+    - ccc_dir: newest (created last)
+    - ddd_dir: lexicographically largest (middle age)
+
+    Default mode should select ccc_dir (newest), not aaa_dir (lexicographic).
     """
     setup_btrfs_basic()
 
     # Create a subvolume to test birthtime within it
     machine.succeed("btrfs subvolume create /mnt/btrfs/mysubvol")
 
-    # Create older directory first - use aaa prefix so lexicographic would pick this one
-    machine.succeed("mkdir /mnt/btrfs/mysubvol/aaa_old_dir")
-    machine.succeed("dd if=/dev/urandom of=/mnt/btrfs/mysubvol/aaa_old_dir/data.dat bs=1M count=5")
+    # Create directories in specific order to control birthtimes:
+    # bbb (oldest) -> aaa -> ddd -> ccc (newest)
+    machine.succeed("mkdir /mnt/btrfs/mysubvol/bbb_dir")
+    machine.succeed("dd if=/dev/urandom of=/mnt/btrfs/mysubvol/bbb_dir/data.dat bs=1M count=5")
+
+    machine.succeed("mkdir /mnt/btrfs/mysubvol/aaa_dir")
+    machine.succeed("cp --reflink=always /mnt/btrfs/mysubvol/bbb_dir/data.dat /mnt/btrfs/mysubvol/aaa_dir/data.dat")
+
+    machine.succeed("mkdir /mnt/btrfs/mysubvol/ddd_dir")
+    machine.succeed("cp --reflink=always /mnt/btrfs/mysubvol/bbb_dir/data.dat /mnt/btrfs/mysubvol/ddd_dir/data.dat")
+
+    machine.succeed("mkdir /mnt/btrfs/mysubvol/ccc_dir")
+    machine.succeed("cp --reflink=always /mnt/btrfs/mysubvol/bbb_dir/data.dat /mnt/btrfs/mysubvol/ccc_dir/data.dat")
     machine.succeed("sync")
-
-    # Create newer directory - use zzz prefix so lexicographic would pick wrong one
-    # Nanosecond-precision birthtimes ensure correct ordering
-    machine.succeed("mkdir /mnt/btrfs/mysubvol/zzz_new_dir")
-
-    # Reflink the file to the newer directory (same data, different directory)
-    machine.succeed("cp --reflink=always /mnt/btrfs/mysubvol/aaa_old_dir/data.dat /mnt/btrfs/mysubvol/zzz_new_dir/data.dat")
-    machine.succeed("sync")
-
-    # Debug: Check directory birthtimes
-    old_stat = machine.succeed("stat /mnt/btrfs/mysubvol/aaa_old_dir 2>&1 || true")
-    new_stat = machine.succeed("stat /mnt/btrfs/mysubvol/zzz_new_dir 2>&1 || true")
-    print(f"  aaa_old_dir stat: {old_stat.strip()[:100]}")
-    print(f"  zzz_new_dir stat: {new_stat.strip()[:100]}")
 
     # Run btdu with many samples
     run_btdu("--headless --export=/tmp/birthtime_subvol.json --max-samples=10000 /mnt/btrfs", timeout=180)
     data = verify_json_export("/tmp/birthtime_subvol.json")
 
-    # Debug: print structure
-    subvol_node = get_node(data['root'], [SINGLE, DATA, 'mysubvol'])
-    if subvol_node:
-        children = subvol_node.get('children', [])
-        print(f"  mysubvol children: {[c.get('name') for c in children]}")
-        for child in children:
-            samples = child.get('data', {}).get('represented', {}).get('samples', 0)
-            print(f"    {child.get('name')}: {samples} samples")
+    # Find all paths
+    aaa_node = get_node(data['root'], [SINGLE, DATA, 'mysubvol', 'aaa_dir', 'data.dat'])
+    bbb_node = get_node(data['root'], [SINGLE, DATA, 'mysubvol', 'bbb_dir', 'data.dat'])
+    ccc_node = get_node(data['root'], [SINGLE, DATA, 'mysubvol', 'ccc_dir', 'data.dat'])
+    ddd_node = get_node(data['root'], [SINGLE, DATA, 'mysubvol', 'ddd_dir', 'data.dat'])
 
-    # Find both paths
-    old_dir_node = get_node(data['root'], [SINGLE, DATA, 'mysubvol', 'aaa_old_dir', 'data.dat'])
-    new_dir_node = get_node(data['root'], [SINGLE, DATA, 'mysubvol', 'zzz_new_dir', 'data.dat'])
+    # ccc_dir is newest, so it should be selected as representative (default: prefer newer)
+    assert ccc_node is not None, "ccc_dir/data.dat not found (should be representative as newest)"
+    ccc_samples = ccc_node['data']['represented']['samples']
+    assert ccc_samples > 0, "ccc_dir/data.dat should have samples as representative"
 
-    # Debug output
-    if old_dir_node:
-        print(f"  aaa_old_dir/data.dat: {old_dir_node.get('data', {}).get('represented', {}).get('samples', 0)} samples")
-    if new_dir_node:
-        print(f"  zzz_new_dir/data.dat: {new_dir_node.get('data', {}).get('represented', {}).get('samples', 0)} samples")
+    # Other directories should not appear in tree
+    assert aaa_node is None, "aaa_dir should not appear (would indicate lexicographic ordering bug)"
+    assert bbb_node is None, "bbb_dir should not appear (oldest, not newest)"
+    assert ddd_node is None, "ddd_dir should not appear (would indicate reverse lexicographic bug)"
 
-    # The newer directory should be selected as representative (despite zzz > aaa lexicographically)
-    assert new_dir_node is not None, "zzz_new_dir/data.dat not found (should be representative as newer)"
-    new_samples = new_dir_node['data']['represented']['samples']
-    assert new_samples > 0, "zzz_new_dir/data.dat should have samples as representative"
-
-    # The older directory should not appear in tree
-    assert old_dir_node is None, "aaa_old_dir/data.dat should not appear in tree (newer dir is representative)"
-
-    print(f"  ✓ Newer directory preferred within subvolume: zzz_new_dir/data.dat={new_samples} samples")
+    print(f"  ✓ Newer directory preferred within subvolume: ccc_dir/data.dat={ccc_samples} samples")
 
 
 def test_birthtime_preserved_in_binary_export():
@@ -1943,8 +1963,13 @@ def test_birthtime_preserved_in_binary_export():
     2. Subvolume otimes are saved in binary format
     3. Time-based representative path selection is preserved after import
 
-    The test creates scenarios where time ordering determines the representative path,
-    then verifies this ordering is preserved through binary export/import.
+    Uses four objects to distinguish time-based ordering from lexicographic ordering:
+    - aaa: lexicographically smallest (middle age)
+    - bbb: oldest (created first)
+    - ccc: newest (created last)
+    - ddd: lexicographically largest (middle age)
+
+    Default mode should select ccc (newest), chronological mode should select bbb (oldest).
     """
     setup_btrfs_basic()
 
@@ -1955,15 +1980,19 @@ def test_birthtime_preserved_in_binary_export():
     # Create a subvolume
     machine.succeed("btrfs subvolume create /mnt/btrfs/subvol")
 
-    # Create older directory with aaa prefix (lexicographically first)
-    machine.succeed("mkdir /mnt/btrfs/subvol/aaa_old_dir")
-    machine.succeed("dd if=/dev/urandom of=/mnt/btrfs/subvol/aaa_old_dir/data.dat bs=1M count=5")
-    machine.succeed("sync")
+    # Create directories in specific order to control birthtimes:
+    # bbb (oldest) -> aaa -> ddd -> ccc (newest)
+    machine.succeed("mkdir /mnt/btrfs/subvol/bbb_dir")
+    machine.succeed("dd if=/dev/urandom of=/mnt/btrfs/subvol/bbb_dir/data.dat bs=1M count=5")
 
-    # Create newer directory with zzz prefix (lexicographically last)
-    # Without birthtime ordering, lexicographic would pick aaa_old_dir
-    machine.succeed("mkdir /mnt/btrfs/subvol/zzz_new_dir")
-    machine.succeed("cp --reflink=always /mnt/btrfs/subvol/aaa_old_dir/data.dat /mnt/btrfs/subvol/zzz_new_dir/data.dat")
+    machine.succeed("mkdir /mnt/btrfs/subvol/aaa_dir")
+    machine.succeed("cp --reflink=always /mnt/btrfs/subvol/bbb_dir/data.dat /mnt/btrfs/subvol/aaa_dir/data.dat")
+
+    machine.succeed("mkdir /mnt/btrfs/subvol/ddd_dir")
+    machine.succeed("cp --reflink=always /mnt/btrfs/subvol/bbb_dir/data.dat /mnt/btrfs/subvol/ddd_dir/data.dat")
+
+    machine.succeed("mkdir /mnt/btrfs/subvol/ccc_dir")
+    machine.succeed("cp --reflink=always /mnt/btrfs/subvol/bbb_dir/data.dat /mnt/btrfs/subvol/ccc_dir/data.dat")
     machine.succeed("sync")
 
     # =========================================================================
@@ -1975,15 +2004,19 @@ def test_birthtime_preserved_in_binary_export():
     machine.succeed("dd if=/dev/urandom of=/mnt/btrfs/source/snap_data.dat bs=1M count=5")
     machine.succeed("sync")
 
-    # Create older snapshot with aaa prefix
-    machine.succeed("btrfs subvolume snapshot -r /mnt/btrfs/source /mnt/btrfs/aaa_snap_old")
-    machine.succeed("sync")
+    # Create snapshots in specific order to control otimes:
+    # bbb (oldest) -> aaa -> ddd -> ccc (newest)
+    # Use sleep 1 between each to ensure different otimes (second granularity)
+    machine.succeed("btrfs subvolume snapshot -r /mnt/btrfs/source /mnt/btrfs/bbb_snap")
+    machine.succeed("sync && sleep 1")
 
-    # Ensure different otime (second granularity)
-    machine.succeed("sleep 1")
+    machine.succeed("btrfs subvolume snapshot -r /mnt/btrfs/source /mnt/btrfs/aaa_snap")
+    machine.succeed("sync && sleep 1")
 
-    # Create newer snapshot with zzz prefix
-    machine.succeed("btrfs subvolume snapshot -r /mnt/btrfs/source /mnt/btrfs/zzz_snap_new")
+    machine.succeed("btrfs subvolume snapshot -r /mnt/btrfs/source /mnt/btrfs/ddd_snap")
+    machine.succeed("sync && sleep 1")
+
+    machine.succeed("btrfs subvolume snapshot -r /mnt/btrfs/source /mnt/btrfs/ccc_snap")
     machine.succeed("sync")
 
     # Overwrite source data to isolate snapshot comparison
@@ -2008,35 +2041,43 @@ def test_birthtime_preserved_in_binary_export():
     # Verify directory birthtime ordering is preserved
     # =========================================================================
 
-    # Newer directory (zzz_new_dir) should be representative despite lexicographic ordering
-    old_dir_node = get_node(data['root'], [SINGLE, DATA, 'subvol', 'aaa_old_dir', 'data.dat'])
-    new_dir_node = get_node(data['root'], [SINGLE, DATA, 'subvol', 'zzz_new_dir', 'data.dat'])
+    # ccc_dir is newest, should be representative (default: prefer newer)
+    aaa_dir = get_node(data['root'], [SINGLE, DATA, 'subvol', 'aaa_dir', 'data.dat'])
+    bbb_dir = get_node(data['root'], [SINGLE, DATA, 'subvol', 'bbb_dir', 'data.dat'])
+    ccc_dir = get_node(data['root'], [SINGLE, DATA, 'subvol', 'ccc_dir', 'data.dat'])
+    ddd_dir = get_node(data['root'], [SINGLE, DATA, 'subvol', 'ddd_dir', 'data.dat'])
 
-    assert new_dir_node is not None, "zzz_new_dir/data.dat not found (should be representative as newer)"
-    new_dir_samples = new_dir_node['data']['represented']['samples']
-    assert new_dir_samples > 0, "zzz_new_dir/data.dat should have samples as representative"
+    assert ccc_dir is not None, "ccc_dir/data.dat not found (should be representative as newest)"
+    ccc_dir_samples = ccc_dir['data']['represented']['samples']
+    assert ccc_dir_samples > 0, "ccc_dir/data.dat should have samples as representative"
 
-    # Older directory should not be representative
-    assert old_dir_node is None, "aaa_old_dir/data.dat should not appear in tree (newer dir is representative)"
+    # Other directories should not appear
+    assert aaa_dir is None, "aaa_dir should not appear (would indicate lexicographic ordering bug)"
+    assert bbb_dir is None, "bbb_dir should not appear (oldest, not newest)"
+    assert ddd_dir is None, "ddd_dir should not appear (would indicate reverse lexicographic bug)"
 
-    print(f"  ✓ Directory birthtime preserved: zzz_new_dir={new_dir_samples} samples (older aaa_old_dir not in tree)")
+    print(f"  ✓ Directory birthtime preserved: ccc_dir={ccc_dir_samples} samples (others not in tree)")
 
     # =========================================================================
     # Verify subvolume otime ordering is preserved
     # =========================================================================
 
-    # Newer snapshot (zzz_snap_new) should be representative despite lexicographic ordering
-    old_snap_node = get_node(data['root'], [SINGLE, DATA, 'aaa_snap_old', 'snap_data.dat'])
-    new_snap_node = get_node(data['root'], [SINGLE, DATA, 'zzz_snap_new', 'snap_data.dat'])
+    # ccc_snap is newest, should be representative
+    aaa_snap = get_node(data['root'], [SINGLE, DATA, 'aaa_snap', 'snap_data.dat'])
+    bbb_snap = get_node(data['root'], [SINGLE, DATA, 'bbb_snap', 'snap_data.dat'])
+    ccc_snap = get_node(data['root'], [SINGLE, DATA, 'ccc_snap', 'snap_data.dat'])
+    ddd_snap = get_node(data['root'], [SINGLE, DATA, 'ddd_snap', 'snap_data.dat'])
 
-    assert new_snap_node is not None, "zzz_snap_new/snap_data.dat not found (should be representative as newer)"
-    new_snap_samples = new_snap_node['data']['represented']['samples']
-    assert new_snap_samples > 0, "zzz_snap_new/snap_data.dat should have samples as representative"
+    assert ccc_snap is not None, "ccc_snap/snap_data.dat not found (should be representative as newest)"
+    ccc_snap_samples = ccc_snap['data']['represented']['samples']
+    assert ccc_snap_samples > 0, "ccc_snap/snap_data.dat should have samples as representative"
 
-    # Older snapshot should not be representative
-    assert old_snap_node is None, "aaa_snap_old/snap_data.dat should not appear in tree (newer snap is representative)"
+    # Other snapshots should not appear
+    assert aaa_snap is None, "aaa_snap should not appear (would indicate lexicographic ordering bug)"
+    assert bbb_snap is None, "bbb_snap should not appear (oldest, not newest)"
+    assert ddd_snap is None, "ddd_snap should not appear (would indicate reverse lexicographic bug)"
 
-    print(f"  ✓ Subvolume otime preserved: zzz_snap_new={new_snap_samples} samples (older aaa_snap_old not in tree)")
+    print(f"  ✓ Subvolume otime preserved: ccc_snap={ccc_snap_samples} samples (others not in tree)")
 
     # =========================================================================
     # Phase 3: Test --chronological mode preserves through binary export/import
@@ -2049,31 +2090,39 @@ def test_birthtime_preserved_in_binary_export():
     machine.succeed("timeout 10 btdu --import --headless --export=/tmp/birthtime_chrono_reimport.json /tmp/birthtime_chrono.btdu")
     chrono_data = verify_json_export("/tmp/birthtime_chrono_reimport.json")
 
-    # With --chronological, OLDER paths should be representative
+    # With --chronological, bbb (oldest) should be representative
 
-    # Directory: older (aaa_old_dir) should now be representative
-    chrono_old_dir = get_node(chrono_data['root'], [SINGLE, DATA, 'subvol', 'aaa_old_dir', 'data.dat'])
-    chrono_new_dir = get_node(chrono_data['root'], [SINGLE, DATA, 'subvol', 'zzz_new_dir', 'data.dat'])
+    # Directory: bbb_dir (oldest) should now be representative
+    chrono_aaa_dir = get_node(chrono_data['root'], [SINGLE, DATA, 'subvol', 'aaa_dir', 'data.dat'])
+    chrono_bbb_dir = get_node(chrono_data['root'], [SINGLE, DATA, 'subvol', 'bbb_dir', 'data.dat'])
+    chrono_ccc_dir = get_node(chrono_data['root'], [SINGLE, DATA, 'subvol', 'ccc_dir', 'data.dat'])
+    chrono_ddd_dir = get_node(chrono_data['root'], [SINGLE, DATA, 'subvol', 'ddd_dir', 'data.dat'])
 
-    assert chrono_old_dir is not None, "In chronological mode, aaa_old_dir/data.dat should be representative"
-    chrono_old_dir_samples = chrono_old_dir['data']['represented']['samples']
-    assert chrono_old_dir_samples > 0, "aaa_old_dir/data.dat should have samples in chronological mode"
+    assert chrono_bbb_dir is not None, "In chronological mode, bbb_dir/data.dat should be representative (oldest)"
+    chrono_bbb_dir_samples = chrono_bbb_dir['data']['represented']['samples']
+    assert chrono_bbb_dir_samples > 0, "bbb_dir/data.dat should have samples in chronological mode"
 
-    assert chrono_new_dir is None, "In chronological mode, zzz_new_dir should not be representative"
+    assert chrono_aaa_dir is None, "aaa_dir should not appear (would indicate lexicographic bug)"
+    assert chrono_ccc_dir is None, "ccc_dir should not appear (newest, not oldest)"
+    assert chrono_ddd_dir is None, "ddd_dir should not appear (would indicate reverse lexicographic bug)"
 
-    print(f"  ✓ Chronological mode preserved: aaa_old_dir={chrono_old_dir_samples} samples (newer zzz_new_dir not in tree)")
+    print(f"  ✓ Chronological directory order preserved: bbb_dir={chrono_bbb_dir_samples} samples")
 
-    # Snapshot: older (aaa_snap_old) should now be representative
-    chrono_old_snap = get_node(chrono_data['root'], [SINGLE, DATA, 'aaa_snap_old', 'snap_data.dat'])
-    chrono_new_snap = get_node(chrono_data['root'], [SINGLE, DATA, 'zzz_snap_new', 'snap_data.dat'])
+    # Snapshot: bbb_snap (oldest) should now be representative
+    chrono_aaa_snap = get_node(chrono_data['root'], [SINGLE, DATA, 'aaa_snap', 'snap_data.dat'])
+    chrono_bbb_snap = get_node(chrono_data['root'], [SINGLE, DATA, 'bbb_snap', 'snap_data.dat'])
+    chrono_ccc_snap = get_node(chrono_data['root'], [SINGLE, DATA, 'ccc_snap', 'snap_data.dat'])
+    chrono_ddd_snap = get_node(chrono_data['root'], [SINGLE, DATA, 'ddd_snap', 'snap_data.dat'])
 
-    assert chrono_old_snap is not None, "In chronological mode, aaa_snap_old/snap_data.dat should be representative"
-    chrono_old_snap_samples = chrono_old_snap['data']['represented']['samples']
-    assert chrono_old_snap_samples > 0, "aaa_snap_old/snap_data.dat should have samples in chronological mode"
+    assert chrono_bbb_snap is not None, "In chronological mode, bbb_snap/snap_data.dat should be representative (oldest)"
+    chrono_bbb_snap_samples = chrono_bbb_snap['data']['represented']['samples']
+    assert chrono_bbb_snap_samples > 0, "bbb_snap/snap_data.dat should have samples in chronological mode"
 
-    assert chrono_new_snap is None, "In chronological mode, zzz_snap_new should not be representative"
+    assert chrono_aaa_snap is None, "aaa_snap should not appear (would indicate lexicographic bug)"
+    assert chrono_ccc_snap is None, "ccc_snap should not appear (newest, not oldest)"
+    assert chrono_ddd_snap is None, "ddd_snap should not appear (would indicate reverse lexicographic bug)"
 
-    print(f"  ✓ Chronological snapshot order preserved: aaa_snap_old={chrono_old_snap_samples} samples")
+    print(f"  ✓ Chronological snapshot order preserved: bbb_snap={chrono_bbb_snap_samples} samples")
 
     print("  ✓ Birthtime preservation verified for both directories and subvolumes")
 
