@@ -1935,6 +1935,149 @@ def test_newer_directory_preferred_within_subvolume():
     print(f"  ✓ Newer directory preferred within subvolume: zzz_new_dir/data.dat={new_samples} samples")
 
 
+def test_birthtime_preserved_in_binary_export():
+    """Test that birthtime data is preserved through binary export/import.
+
+    This verifies that:
+    1. Directory birthtimes are saved in binary format
+    2. Subvolume otimes are saved in binary format
+    3. Time-based representative path selection is preserved after import
+
+    The test creates scenarios where time ordering determines the representative path,
+    then verifies this ordering is preserved through binary export/import.
+    """
+    setup_btrfs_basic()
+
+    # =========================================================================
+    # Test 1: Directory birthtime preservation within subvolume
+    # =========================================================================
+
+    # Create a subvolume
+    machine.succeed("btrfs subvolume create /mnt/btrfs/subvol")
+
+    # Create older directory with aaa prefix (lexicographically first)
+    machine.succeed("mkdir /mnt/btrfs/subvol/aaa_old_dir")
+    machine.succeed("dd if=/dev/urandom of=/mnt/btrfs/subvol/aaa_old_dir/data.dat bs=1M count=5")
+    machine.succeed("sync")
+
+    # Create newer directory with zzz prefix (lexicographically last)
+    # Without birthtime ordering, lexicographic would pick aaa_old_dir
+    machine.succeed("mkdir /mnt/btrfs/subvol/zzz_new_dir")
+    machine.succeed("cp --reflink=always /mnt/btrfs/subvol/aaa_old_dir/data.dat /mnt/btrfs/subvol/zzz_new_dir/data.dat")
+    machine.succeed("sync")
+
+    # =========================================================================
+    # Test 2: Subvolume otime preservation
+    # =========================================================================
+
+    # Create source subvolume with different data
+    machine.succeed("btrfs subvolume create /mnt/btrfs/source")
+    machine.succeed("dd if=/dev/urandom of=/mnt/btrfs/source/snap_data.dat bs=1M count=5")
+    machine.succeed("sync")
+
+    # Create older snapshot with aaa prefix
+    machine.succeed("btrfs subvolume snapshot -r /mnt/btrfs/source /mnt/btrfs/aaa_snap_old")
+    machine.succeed("sync")
+
+    # Ensure different otime (second granularity)
+    machine.succeed("sleep 1")
+
+    # Create newer snapshot with zzz prefix
+    machine.succeed("btrfs subvolume snapshot -r /mnt/btrfs/source /mnt/btrfs/zzz_snap_new")
+    machine.succeed("sync")
+
+    # Overwrite source data to isolate snapshot comparison
+    machine.succeed("dd if=/dev/urandom of=/mnt/btrfs/source/snap_data.dat bs=1M count=5")
+    machine.succeed("sync")
+
+    # =========================================================================
+    # Phase 1: Sample and export to binary format (default: newer preferred)
+    # =========================================================================
+    run_btdu("--headless --export=/tmp/birthtime_test.btdu --export-format=binary --max-samples=10000 /mnt/btrfs", timeout=180)
+
+    # Verify binary file was created and has content
+    machine.succeed("test -s /tmp/birthtime_test.btdu")
+
+    # =========================================================================
+    # Phase 2: Import binary and re-export to JSON to verify preservation
+    # =========================================================================
+    machine.succeed("timeout 10 btdu --import --headless --export=/tmp/birthtime_reimport.json /tmp/birthtime_test.btdu")
+    data = verify_json_export("/tmp/birthtime_reimport.json")
+
+    # =========================================================================
+    # Verify directory birthtime ordering is preserved
+    # =========================================================================
+
+    # Newer directory (zzz_new_dir) should be representative despite lexicographic ordering
+    old_dir_node = get_node(data['root'], [SINGLE, DATA, 'subvol', 'aaa_old_dir', 'data.dat'])
+    new_dir_node = get_node(data['root'], [SINGLE, DATA, 'subvol', 'zzz_new_dir', 'data.dat'])
+
+    assert new_dir_node is not None, "zzz_new_dir/data.dat not found (should be representative as newer)"
+    new_dir_samples = new_dir_node['data']['represented']['samples']
+    assert new_dir_samples > 0, "zzz_new_dir/data.dat should have samples as representative"
+
+    # Older directory should not be representative
+    assert old_dir_node is None, "aaa_old_dir/data.dat should not appear in tree (newer dir is representative)"
+
+    print(f"  ✓ Directory birthtime preserved: zzz_new_dir={new_dir_samples} samples (older aaa_old_dir not in tree)")
+
+    # =========================================================================
+    # Verify subvolume otime ordering is preserved
+    # =========================================================================
+
+    # Newer snapshot (zzz_snap_new) should be representative despite lexicographic ordering
+    old_snap_node = get_node(data['root'], [SINGLE, DATA, 'aaa_snap_old', 'snap_data.dat'])
+    new_snap_node = get_node(data['root'], [SINGLE, DATA, 'zzz_snap_new', 'snap_data.dat'])
+
+    assert new_snap_node is not None, "zzz_snap_new/snap_data.dat not found (should be representative as newer)"
+    new_snap_samples = new_snap_node['data']['represented']['samples']
+    assert new_snap_samples > 0, "zzz_snap_new/snap_data.dat should have samples as representative"
+
+    # Older snapshot should not be representative
+    assert old_snap_node is None, "aaa_snap_old/snap_data.dat should not appear in tree (newer snap is representative)"
+
+    print(f"  ✓ Subvolume otime preserved: zzz_snap_new={new_snap_samples} samples (older aaa_snap_old not in tree)")
+
+    # =========================================================================
+    # Phase 3: Test --chronological mode preserves through binary export/import
+    # =========================================================================
+
+    # Sample with --chronological (older preferred)
+    run_btdu("--chronological --headless --export=/tmp/birthtime_chrono.btdu --export-format=binary --max-samples=10000 /mnt/btrfs", timeout=180)
+
+    # Import and re-export
+    machine.succeed("timeout 10 btdu --import --headless --export=/tmp/birthtime_chrono_reimport.json /tmp/birthtime_chrono.btdu")
+    chrono_data = verify_json_export("/tmp/birthtime_chrono_reimport.json")
+
+    # With --chronological, OLDER paths should be representative
+
+    # Directory: older (aaa_old_dir) should now be representative
+    chrono_old_dir = get_node(chrono_data['root'], [SINGLE, DATA, 'subvol', 'aaa_old_dir', 'data.dat'])
+    chrono_new_dir = get_node(chrono_data['root'], [SINGLE, DATA, 'subvol', 'zzz_new_dir', 'data.dat'])
+
+    assert chrono_old_dir is not None, "In chronological mode, aaa_old_dir/data.dat should be representative"
+    chrono_old_dir_samples = chrono_old_dir['data']['represented']['samples']
+    assert chrono_old_dir_samples > 0, "aaa_old_dir/data.dat should have samples in chronological mode"
+
+    assert chrono_new_dir is None, "In chronological mode, zzz_new_dir should not be representative"
+
+    print(f"  ✓ Chronological mode preserved: aaa_old_dir={chrono_old_dir_samples} samples (newer zzz_new_dir not in tree)")
+
+    # Snapshot: older (aaa_snap_old) should now be representative
+    chrono_old_snap = get_node(chrono_data['root'], [SINGLE, DATA, 'aaa_snap_old', 'snap_data.dat'])
+    chrono_new_snap = get_node(chrono_data['root'], [SINGLE, DATA, 'zzz_snap_new', 'snap_data.dat'])
+
+    assert chrono_old_snap is not None, "In chronological mode, aaa_snap_old/snap_data.dat should be representative"
+    chrono_old_snap_samples = chrono_old_snap['data']['represented']['samples']
+    assert chrono_old_snap_samples > 0, "aaa_snap_old/snap_data.dat should have samples in chronological mode"
+
+    assert chrono_new_snap is None, "In chronological mode, zzz_snap_new should not be representative"
+
+    print(f"  ✓ Chronological snapshot order preserved: aaa_snap_old={chrono_old_snap_samples} samples")
+
+    print("  ✓ Birthtime preservation verified for both directories and subvolumes")
+
+
 def test_seenas_for_nonrepresentative_paths():
     """Test that seenAs data is available for non-representative paths with 0 represented samples.
 
@@ -2076,6 +2219,7 @@ def execute_all_tests():
         test_original_preferred_over_snapshot,
         test_newer_snapshot_preferred,
         test_newer_directory_preferred_within_subvolume,
+        test_birthtime_preserved_in_binary_export,
         test_seenas_for_nonrepresentative_paths,
     ]
 
