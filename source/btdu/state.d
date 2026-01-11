@@ -307,7 +307,8 @@ import btdu.statx;
 
 // Birthtime cache: GlobalPath -> birthtime (nanoseconds since epoch)
 // GlobalPath is a lightweight struct (two pointers), so we use it directly as key.
-private long[GlobalPath] birthtimeCache;
+// Public for binary import/export.
+long[GlobalPath] birthtimeCache;
 
 /// Creation time and read-only status for a path component.
 /// For subvolume roots, uses RootInfo (otime, isReadOnly).

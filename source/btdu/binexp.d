@@ -38,6 +38,7 @@ encoding (64-bit values) or fixed-size encoding (smaller integers).
 Version History:
 - v1: Initial version
 - v2: Added filesystem UUID (fsid) to header
+- v3: Added birthtimeCache for path age comparison during rebuilds
 
 File Structure:
 ```
@@ -74,6 +75,10 @@ File Structure:
 │ Marks                                                           │
 │   - Count: varint                                               │
 │   - Entries: (browserRootIndex, marked) pairs                   │
+├─────────────────────────────────────────────────────────────────┤
+│ BirthtimeCache (v3+)                                            │
+│   - Count: varint                                               │
+│   - Entries: (parentRootIndex, subPathIndex, birthtime) tuples  │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -118,6 +123,7 @@ enum BinaryFormatVersion : uint
 {
     v1 = 1,
     v2 = 2,    /// Added fsid to header
+    v3 = 3,    /// Added birthtimeCache for path age comparison
 }
 enum latestBinaryFormatVersion = BinaryFormatVersion.max;
 
@@ -1024,11 +1030,46 @@ void visitMarks(IO, MarksList)(ref IO io, MarksList marksList)
     });
 }
 
+/// Birthtime cache entry for serialization
+struct BirthtimeCacheEntry
+{
+    PathsGlobalPath path;
+    long birthtime;
+}
+
+void visitBirthtimeCache(IO, BirthtimeCacheList)(ref IO io, BirthtimeCacheList cacheList)
+{
+    import std.typecons : Tuple;
+    import btdu.state : birthtimeCache;
+
+    // Wire format: (parentRootIndex, subPathIndex, birthtime)
+    alias Wire = Tuple!(ulong, "parentRootIndex", ulong, "subPathIndex", long, "birthtime");
+
+    visitCountedItems!BirthtimeCacheEntry(io, cacheList, (BirthtimeCacheEntry* entry) {
+        Wire w;
+        static if (IO.isWriting)
+        {
+            w.parentRootIndex = io.getRootIndex(entry.path.parent);
+            w.subPathIndex = io.getSubPathIndex(entry.path.subPath);
+            w.birthtime = entry.birthtime;
+        }
+        visit(io, w);
+        static if (!IO.isWriting)
+        {
+            // Reconstruct GlobalPath and populate cache
+            PathsGlobalPath path;
+            path.parent = io.resolveRoot(w.parentRootIndex);
+            path.subPath = io.resolveSubPath(w.subPathIndex);
+            birthtimeCache[path] = w.birthtime;
+        }
+    });
+}
+
 // ============================================================================
 // Export
 // ============================================================================
 
-import btdu.state : browserRoot, browserRootPtr, globalRoots, sharingGroupAllocator, expert, physical, totalSize, fsPath, fsid, imported;
+import btdu.state : browserRoot, browserRootPtr, globalRoots, sharingGroupAllocator, expert, physical, totalSize, fsPath, fsid, imported, birthtimeCache;
 
 void exportBinary(BinaryFormatVersion ver = latestBinaryFormatVersion)(string path)
 {
@@ -1152,6 +1193,20 @@ void exportBinary(BinaryFormatVersion ver = latestBinaryFormatVersion)(string pa
         internBrowserRoot(path);  // Ensure marked paths are indexed
     });
 
+    // Collect birthtimeCache entries
+    // The cache keys are GlobalPaths with (parent, subPath) where:
+    // - parent is a GlobalPath* that should be in rootToIndex (or null)
+    // - subPath is a SubPath* that's in subPathAllocator
+    BirthtimeCacheEntry[] birthtimeCacheEntries;
+
+    foreach (gpKey, birthtime; birthtimeCache)
+    {
+        // Ensure parent root is indexed (it should be, but collect if not)
+        if (gpKey.parent !is null && gpKey.parent !in io.rootToIndex)
+            collectRoot(-1, gpKey.parent);
+        birthtimeCacheEntries ~= BirthtimeCacheEntry(gpKey, birthtime);
+    }
+
     // Finalize strings
     finalizeStrings();
 
@@ -1179,6 +1234,10 @@ void exportBinary(BinaryFormatVersion ver = latestBinaryFormatVersion)(string pa
     visitBrowserRoots(io, browserRoots);
     visitSharingGroups(io, sharingGroupAllocator[]);
     visitMarks(io, marks);
+
+    // v3+: Write birthtimeCache for path age comparison during rebuilds
+    static if (ver >= BinaryFormatVersion.v3)
+        visitBirthtimeCache(io, birthtimeCacheEntries);
 }
 
 // ============================================================================
@@ -1255,6 +1314,10 @@ void importBinaryImpl(BinaryFormatVersion ver)(const(ubyte)[] data, DataSet targ
     visitBrowserRoots(io, null);
     visitSharingGroups(io, null);
     visitMarks(io, null);
+
+    // v3+: Read birthtimeCache for path age comparison during rebuilds
+    static if (ver >= BinaryFormatVersion.v3)
+        visitBirthtimeCache(io, null);
 
     debug(check) checkState();
 
