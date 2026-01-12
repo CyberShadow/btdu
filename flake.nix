@@ -70,6 +70,24 @@
           dubBuildType = "checked";
         });
 
+        # Unit tests derivation
+        unittests = pkgs.buildDubPackage (btduCommon // {
+          pname = "btdu-unittests";
+
+          buildPhase = ''
+            runHook preBuild
+            dub test --skip-registry=all
+            runHook postBuild
+          '';
+
+          # No install needed for tests - just need to run them
+          installPhase = ''
+            runHook preInstall
+            touch $out
+            runHook postInstall
+          '';
+        });
+
         # ============================================================
         # Static build infrastructure (musl-based, no runtime deps)
         # ============================================================
@@ -349,6 +367,7 @@
         # Integration tests as checks (only on Linux systems)
         # Uses btduDebug build with -debug=check for extra assertions
         checks = pkgs.lib.optionalAttrs pkgs.stdenv.isLinux {
+          inherit unittests;
           integration = import ./ci/tests/nixos-test.nix {
             inherit (pkgs) lib;
             inherit pkgs;
