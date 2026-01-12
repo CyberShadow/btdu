@@ -206,7 +206,7 @@ struct SharingGroup
 						insertAt = j;
 
 				// Shift older entries down
-				foreach_reverse (j; 0 .. insertAt)
+				foreach (j; 0 .. insertAt)
 				{
 					this.data.offsets[j] = this.data.offsets[j + 1];
 					this.lastSeen[j] = this.lastSeen[j + 1];
@@ -241,6 +241,40 @@ struct SharingGroup
 			return h;
 		}
 	}
+}
+
+/// Unit test for SharingGroup.mergeFrom offset shifting
+unittest
+{
+	import btdu.proto : Offset;
+
+	// Create two sharing groups with different offsets and lastSeen timestamps
+	SharingGroup target;
+	target.data.offsets[0] = Offset(100, 0, 100);  // oldest, lastSeen = 1
+	target.data.offsets[1] = Offset(200, 0, 200);  // middle, lastSeen = 2
+	target.data.offsets[2] = Offset(300, 0, 300);  // newest, lastSeen = 3
+	target.lastSeen = [1, 2, 3];
+	target.data.samples = 3;
+
+	SharingGroup source;
+	source.data.offsets[0] = Offset.init;
+	source.data.offsets[1] = Offset.init;
+	source.data.offsets[2] = Offset(400, 0, 400);  // newer than all target offsets
+	source.lastSeen = [0, 0, 5];
+	source.data.samples = 1;
+
+	target.mergeFrom(&source);
+
+	// After merge, the oldest offset (100) should be discarded,
+	// and we should have [200, 300, 400] with lastSeen [2, 3, 5]
+	assert(target.data.offsets[0].logical == 200, "Expected offset 200 at index 0");
+	assert(target.data.offsets[1].logical == 300, "Expected offset 300 at index 1");
+	assert(target.data.offsets[2].logical == 400, "Expected offset 400 at index 2");
+	assert(target.lastSeen == [2, 3, 5], "Expected lastSeen [2, 3, 5]");
+
+	// Verify no duplicates (this was the bug: indices 0 and 1 had same value)
+	assert(target.data.offsets[0] != target.data.offsets[1], "Offsets 0 and 1 should differ");
+	assert(target.data.offsets[1] != target.data.offsets[2], "Offsets 1 and 2 should differ");
 }
 
 /// Common definitions for a deduplicated trie for paths.
@@ -1023,7 +1057,7 @@ struct BrowserPath
 										insertAt = j;
 
 								// Shift older entries down
-								foreach_reverse (j; 0 .. insertAt)
+								foreach (j; 0 .. insertAt)
 								{
 									result[j] = result[j + 1];
 									resultLastSeen[j] = resultLastSeen[j + 1];
