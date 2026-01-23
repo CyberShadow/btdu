@@ -23,7 +23,6 @@ import core.sys.posix.signal;
 import core.sys.posix.unistd;
 
 import std.algorithm.iteration;
-import std.algorithm.mutation;
 import std.algorithm.searching;
 import std.conv;
 import std.exception;
@@ -41,6 +40,7 @@ import btrfs.c.kernel_shared.ctree;
 import btdu.alloc;
 import btdu.common;
 import btdu.paths;
+import btdu.proto : ProtocolMixin;
 import btdu.sample.proto;
 import btdu.state;
 
@@ -70,6 +70,8 @@ struct Subprocess
 			stdin,
 			pipe.writeEnd,
 		);
+
+		initialize();
 	}
 
 	void pause(bool doPause)
@@ -97,57 +99,20 @@ struct Subprocess
 		}
 	}
 
-	/// Receive buffer
-	private ubyte[] buf;
-	/// Section of buffer containing received and unparsed data
-	private size_t bufStart, bufEnd;
+	mixin ProtocolMixin!AllMessages;
 
-	/// Check if more data is wanted (called by proto.parse before each message)
+	/// Check if more data is wanted (called by parse before each message)
 	bool wantData()
 	{
 		return browserRoot.getSamples(SampleType.represented) < *sampleLimit;
 	}
 
 	/// Called when select() identifies that the process wrote something.
-	/// Reads one datum; returns `true` if there is more to read.
+	/// Returns true if there may be more to read.
 	bool handleInput()
 	{
 		assert(!rebuildInProgress(), "handleInput() called during rebuild");
-
-		auto data = buf[bufStart .. bufEnd];
-		auto bytesNeeded = parse(data, this);
-		bufStart = bufEnd - data.length;
-		if (bufStart == bufEnd)
-			bufStart = bufEnd = 0;
-
-		if (bytesNeeded == 0)
-			return false;
-
-		if (buf.length < bufEnd + bytesNeeded)
-		{
-			// Moving remaining data to the start of the buffer
-			// may allow us to avoid an allocation.
-			if (bufStart > 0)
-			{
-				copy(buf[bufStart .. bufEnd], buf[0 .. bufEnd - bufStart]);
-				bufEnd -= bufStart;
-				bufStart -= bufStart;
-			}
-			if (buf.length < bufEnd + bytesNeeded)
-			{
-				buf.length = bufEnd + bytesNeeded;
-				buf.length = buf.capacity;
-			}
-		}
-		auto received = read(pipe.readEnd.fileno, buf.ptr + bufEnd, buf.length - bufEnd);
-		enforce(received != 0, "Unexpected subprocess termination");
-		if (received == Socket.ERROR)
-		{
-			errnoEnforce(wouldHaveBlocked, "Subprocess read error");
-			return false; // Done
-		}
-		bufEnd += received;
-		return true; // Not done
+		return handleReadable(pipe.readEnd.fileno);
 	}
 
 	void handleMessage(StartMessage m)
