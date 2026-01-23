@@ -1069,7 +1069,7 @@ void visitBirthtimeCache(IO, BirthtimeCacheList)(ref IO io, BirthtimeCacheList c
 // Export
 // ============================================================================
 
-import btdu.state : browserRoot, browserRootPtr, globalRoots, sharingGroupAllocator, expert, physical, totalSize, fsPath, fsid, imported, birthtimeCache;
+import btdu.state : browserRoot, browserRootPtr, globalRoots, sharingGroupAllocator, getResolvedSharingGroups, expert, physical, totalSize, fsPath, fsid, imported, birthtimeCache;
 
 void exportBinary(BinaryFormatVersion ver = latestBinaryFormatVersion)(string path)
 {
@@ -1182,7 +1182,9 @@ void exportBinary(BinaryFormatVersion ver = latestBinaryFormatVersion)(string pa
 
     internBrowserRoot(browserRootPtr);
 
-    foreach (ref group; sharingGroupAllocator[])
+    // Intern browser roots for resolved sharing groups
+    auto resolvedGroups = getResolvedSharingGroups();
+    foreach (ref group; resolvedGroups)
         internBrowserRoot(group.root);
 
     // Collect marks - intern paths into browserRoots (marks use browserRoot indices)
@@ -1232,7 +1234,9 @@ void exportBinary(BinaryFormatVersion ver = latestBinaryFormatVersion)(string pa
     visitSubPaths(io);
     visitRoots(io, roots, rootIDs);
     visitBrowserRoots(io, browserRoots);
-    visitSharingGroups(io, sharingGroupAllocator[]);
+
+    // Export resolved sharing groups
+    visitSharingGroups(io, getResolvedSharingGroups());
     visitMarks(io, marks);
 
     // v3+: Write birthtimeCache for path age comparison during rebuilds
