@@ -132,6 +132,11 @@ struct SharingGroup
 	PathData* pathData;    /// ditto
 	size_t representativeIndex;  /// Index of the representative path in paths array
 
+	/// Value indicating the group is pending stat resolution.
+	/// When representativeIndex == pendingRepresentative, the group hasn't been
+	/// resolved yet and samples haven't been populated into the BrowserPath tree.
+	enum pendingRepresentative = size_t.max;
+
 	/// Find the index of a path matching the given element range
 	/// Returns size_t.max if not found
 	size_t findIndex(R)(R elementRange) const
@@ -180,6 +185,13 @@ struct SharingGroup
 			if (this.pathData[i].path is browserPath)
 				count++;
 		return count;
+	}
+
+	/// Check if this group is pending stat resolution.
+	/// A pending group has representativeIndex == pendingRepresentative.
+	bool isPending() const
+	{
+		return representativeIndex == pendingRepresentative;
 	}
 
 	/// Merge another group's sample data into this one.
