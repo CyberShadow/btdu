@@ -61,7 +61,7 @@ struct Subprocess
 		pid = spawnProcess(
 			[
 				thisExePath,
-				"--subprocess",
+				"--process-type=sample",
 				"--seed", rndGen.uniform!Seed.text,
 				"--physical=" ~ physical.text,
 				"--",

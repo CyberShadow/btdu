@@ -56,7 +56,7 @@ void program(
 	Parameter!(string, "Path to the root of the filesystem to analyze") path,
 	Option!(uint, "Number of sampling subprocesses\n (default is number of logical CPUs for this system)", "N", 'j') procs = 0,
 	Option!(Seed, "Random seed used to choose samples") seed = 0,
-	Switch!hiddenOption subprocess = false,
+	Option!(ProcessType, hiddenOption, "TYPE", '\0', "process-type") processType = ProcessType.main,
 	Switch!("Measure physical space (instead of logical).", 'p') physical = false,
 	Switch!("Expert mode: collect and show additional metrics.\nUses more memory.", 'x') expert = false,
 	Switch!hiddenOption man = false,
@@ -113,7 +113,7 @@ Please report defects and enhancement requests to the GitHub issue tracker:
 
 	if (doImport)
 	{
-		if (procs || seed || subprocess || physical || maxSamples || maxTime || minResolution || prefer || ignore)
+		if (procs || seed || processType != ProcessType.main || physical || maxSamples || maxTime || minResolution || prefer || ignore)
 			throw new Exception("Conflicting command-line options");
 
 		// Set expert mode from CLI before import.
@@ -141,8 +141,13 @@ Please report defects and enhancement requests to the GitHub issue tracker:
 		rules ~= ignore.map!(p => PathRule(PathRule.Type.ignore, parsePathPattern(p, fsPath))).array;
 		.pathRules = rules;
 
-		if (subprocess)
-			return subprocessMain(path, physical);
+		final switch (processType)
+		{
+			case ProcessType.sample:
+				return subprocessMain(path, physical);
+			case ProcessType.main:
+				break;
+		}
 
 		checkBtrfs(fsPath, autoMount);
 
@@ -157,7 +162,7 @@ Please report defects and enhancement requests to the GitHub issue tracker:
 	// Load comparison baseline if requested
 	if (comparePath)
 	{
-		if (subprocess)
+		if (processType != ProcessType.main)
 			throw new Exception("Cannot use --compare with subprocess mode");
 
 		stderr.writeln("Loading comparison baseline...");

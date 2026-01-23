@@ -29,6 +29,13 @@ enum btduVersion = "0.7.2";
 
 alias Seed = typeof(Random.defaultSeed);
 
+/// Process role - distinguishes main process from worker subprocesses
+enum ProcessType
+{
+	main,    /// Main process with UI
+	sample,  /// Sampling subprocess
+}
+
 // C error messages
 
 const(char)[] errorString(int errno)
