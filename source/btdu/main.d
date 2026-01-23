@@ -48,8 +48,9 @@ import btdu.impexp : ExportFormat, importData, importCompareData, exportData, gu
 import btdu.paths;
 import btdu.sample.process;
 import btdu.sample.subproc;
-import btdu.stat.process : statSubprocessMain;
 import btdu.state;
+import btdu.stat.process;
+import btdu.stat.subproc;
 
 @(`Sampling disk usage profiler for btrfs.`)
 @Version("btdu v" ~ btduVersion)
@@ -160,6 +161,13 @@ Please report defects and enhancement requests to the GitHub issue tracker:
 		subprocesses = new Subprocess[procs];
 		foreach (ref subproc; subprocesses)
 			subproc.start();
+
+		// Spawn stat subprocess for async birthtime resolution
+		statSubproc = new StatSubprocess;
+		statSubproc.start();
+
+		// Initialize pending groups range to track newly created groups
+		.pendingGroups = sharingGroupAllocator.openRange();
 	}
 
 	// Load comparison baseline if requested
@@ -253,8 +261,13 @@ Please report defects and enhancement requests to the GitHub issue tracker:
 			exceptSet.add(browser.curses.stdinSocket);
 		}
 		if (!paused && !rebuildInProgress())
+		{
 			foreach (ref subproc; subprocesses)
 				readSet.add(subproc.socket);
+			// Add stat subprocess for birthtime responses
+			if (statSubproc)
+				readSet.add(statSubproc.readSocket);
+		}
 
 		// Need a refresh now?
 		bool busy = rebuildInProgress();
@@ -321,6 +334,16 @@ Please report defects and enhancement requests to the GitHub issue tracker:
 						now = MonoTime.currTime();
 					numReadable--;
 				}
+
+			// Handle stat subprocess response
+			if (statSubproc && readSet.isSet(statSubproc.readSocket))
+			{
+				if (statSubproc.handleInput())
+				{
+					// Got a response - try to resolve more pending groups
+					statSubproc.processPendingGroups();
+				}
+			}
 		}
 		// Process incremental rebuild if in progress
 		if (rebuildInProgress())
@@ -358,6 +381,34 @@ Please report defects and enhancement requests to the GitHub issue tracker:
 		// Print CLI tree output unless --du or --export mode is used
 		if (!du && !exportPath)
 			exportData(null, ExportFormat.human);
+	}
+
+	// Resolve any remaining pending sharing groups before export, but only if:
+	// - We're actually exporting, AND
+	// - User requested a precise sample count (--max-samples)
+	// Otherwise, pending groups at exit are expected and resolution would be a pointless delay.
+	if (statSubproc && !.pendingGroups.empty && exportPath && maxSamples)
+	{
+		stderr.writeln("Resolving pending groups...");
+		while (!.pendingGroups.empty)
+		{
+			// If idle, send next request
+			if (!statSubproc.isBusy())
+				statSubproc.processPendingGroups();
+
+			// If now busy (request sent), wait for response
+			if (statSubproc.isBusy())
+			{
+				if (!statSubproc.handleInput())
+					break; // Stat subprocess closed unexpectedly
+				// Got response, loop will call processPendingGroups again
+			}
+			else
+			{
+				// Not busy and no pending groups need stat - all done
+				break;
+			}
+		}
 	}
 
 	if (exportPath)
@@ -404,8 +455,12 @@ Please report defects and enhancement requests to the GitHub issue tracker:
 
 	// Wait for subprocesses to terminate (used by test suite to ensure clean unmount)
 	if (waitForSubprocesses)
+	{
 		foreach (ref subproc; subprocesses)
 			subproc.terminate();
+		if (statSubproc)
+			statSubproc.terminate();
+	}
 }
 
 // System call bindings for mount namespace operations
