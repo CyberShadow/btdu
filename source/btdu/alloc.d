@@ -200,6 +200,73 @@ struct SlabAllocator(T, size_t slabSize = 4 * 1024 * 1024, bool indexed = false)
 		}
 	}
 
+	/// Range with implicit end - always iterates to current allocator position.
+	/// New allocations automatically appear in this range.
+	/// Useful for tracking "pending" items that need processing.
+	struct OpenRange
+	{
+		SlabAllocator* allocator;
+		Slab* slab;
+		size_t index;
+
+		bool empty()
+		{
+			// If slab is null, we started before any allocations - check if any exist now
+			if (slab is null)
+			{
+				if (allocator.firstSlab is null)
+					return true; // Still no allocations
+				// Allocations started - begin from first slab
+				slab = allocator.firstSlab;
+				index = 0;
+			}
+			// Empty if we've caught up to the allocator's current position
+			return slab is allocator.currentSlab && index >= allocator.currentIndex;
+		}
+
+		ref T front()
+		{
+			return slab.items[index];
+		}
+
+		/// Get a pointer to the front element.
+		T* frontPtr()
+		{
+			return &slab.items[index];
+		}
+
+		void popFront()
+		{
+			index++;
+			// Move to next slab if we've exhausted this one and there are more
+			if (index >= itemsPerSlab && slab.next !is null)
+			{
+				slab = slab.next;
+				index = 0;
+			}
+		}
+
+		/// Number of items remaining (from current position to allocator's current position)
+		size_t length()
+		{
+			if (empty)
+				return 0;
+			size_t count = 0;
+			for (const(Slab)* s = slab; s !is allocator.currentSlab; s = s.next)
+				count += itemsPerSlab;
+			count += allocator.currentIndex;
+			count -= index;
+			return count;
+		}
+	}
+
+	/// Create an open-ended range starting from current position.
+	/// The range will be empty initially, but will include items as they are allocated.
+	OpenRange openRange()
+	{
+		return OpenRange(&this, currentSlab, currentIndex);
+	}
+
 	/// Number of allocated items.
 	static if (indexed)
 	{
