@@ -68,6 +68,8 @@
           # Use custom "checked" build type defined in dub.sdl
           # This enables debugMode and passes -d-debug=check to enable debug(check) blocks
           dubBuildType = "checked";
+          # Don't strip so we get readable stack traces
+          dontStrip = true;
         });
 
         # ============================================================
