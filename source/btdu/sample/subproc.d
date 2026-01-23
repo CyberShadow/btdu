@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020, 2021, 2022, 2023, 2025  Vladimir Panteleev <btdu@cy.md>
+ * Copyright (C) 2020, 2021, 2022, 2023, 2025, 2026  Vladimir Panteleev <btdu@cy.md>
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public
@@ -43,6 +43,7 @@ import btdu.paths;
 import btdu.proto : ProtocolMixin;
 import btdu.sample.proto;
 import btdu.state;
+import btdu.stat.subproc : statSubproc;
 
 /// Represents one managed subprocess
 struct Subprocess
@@ -312,13 +313,22 @@ struct Subprocess
 			auto pathData = growAllocator.makeArray!(SharingGroup.PathData)(paths.length);
 			pathData[] = SharingGroup.PathData.init;
 
-			// Find the representative index
-			size_t representativeIndex = size_t.max;
-			if (persistentPaths.length > 0)
+			// Find the representative index.
+			// When stat subprocess is active, defer resolution for multi-path groups
+			// that need birthtime comparison (mark as pending).
+			size_t representativeIndex = SharingGroup.pendingRepresentative;
+			if (persistentPaths.length == 0)
 			{
+				// Empty paths - no representative needed
+				representativeIndex = 0;
+			}
+			else if (persistentPaths.length == 1 || !statSubprocessActive)
+			{
+				// Single path or stat subprocess not active - resolve immediately
 				auto representativePath = selectRepresentativePath(persistentPaths);
 				representativeIndex = persistentPaths.countUntil!(p => p is representativePath);
 			}
+			// else: multi-path group with stat subprocess active - stay pending
 
 			// Create the sharing group
 			SharingGroup newGroupData;
@@ -336,6 +346,10 @@ struct Subprocess
 			numSingleSampleGroups++;
 
 			isNew = true;
+
+			// Trigger stat processing for the new pending group
+			if (group.isPending() && statSubproc && !statSubproc.isBusy())
+				statSubproc.processPendingGroups();
 		}
 
 		return group;
@@ -401,18 +415,22 @@ struct Subprocess
 		if (isNewGroup)
 			diskMap.incrementSectorGroupCount(result.sampleIndex);
 
-		// Populate BrowserPath tree from sharing group
-		populateBrowserPathsFromSharingGroup(
-			group,
-			isNewGroup,
-			1,  // Adding 1 sample
-			(&result.offset)[0..1],
-			duration
-		);
+		// Populate BrowserPath tree from sharing group.
+		// Skip for pending groups - they'll be populated after stat resolution.
+		if (!group.isPending())
+		{
+			populateBrowserPathsFromSharingGroup(
+				group,
+				isNewGroup,
+				1,  // Adding 1 sample
+				(&result.offset)[0..1],
+				duration
+			);
+		}
 
 		// Update sharing group's own sample counter.
-		// This happens after populateBrowserPathsFromSharingGroup so that
-		// group.data reflects the final state when the function returns.
+		// This happens even for pending groups - we accumulate samples while
+		// waiting for stat resolution.
 		group.data.add(1, (&result.offset)[0..1], duration);
 
 		// Record sample in disk map for visualization
