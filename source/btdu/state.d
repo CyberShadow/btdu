@@ -138,6 +138,38 @@ SubPath subPathRoot;
 uint currentGeneration; /// Incremented on deletion; samples with older generation are discarded
 
 // ============================================================
+// Stat subprocess state
+// ============================================================
+
+/// Range over pending sharing groups that need stat resolution.
+/// New groups are automatically included as they are allocated.
+SlabAllocator!SharingGroup.OpenRange pendingGroups;
+
+/// True when the stat subprocess is running and we should defer stat calls.
+bool statSubprocessActive;
+
+/// Returns a range over resolved (non-pending) sharing groups.
+/// Since groups are resolved sequentially, this is all groups before the pendingGroups position.
+SlabAllocator!SharingGroup.Range getResolvedSharingGroups()
+{
+	alias Range = SlabAllocator!SharingGroup.Range;
+
+	if (!statSubprocessActive)
+	{
+		// No stat subprocess - all groups are resolved
+		return sharingGroupAllocator[];
+	}
+
+	// Return range from start to pendingGroups position
+	return Range(
+		sharingGroupAllocator.firstSlab,
+		0,
+		pendingGroups.slab,
+		pendingGroups.index
+	);
+}
+
+// ============================================================
 // Compatibility shims - forward to states[DataSet.xxx]
 // ============================================================
 
