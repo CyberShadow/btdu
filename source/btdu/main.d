@@ -269,15 +269,15 @@ Please report defects and enhancement requests to the GitHub issue tracker:
 				readSet.add(statSubproc.readSocket);
 		}
 
-		// Need a refresh now?
-		bool busy = rebuildInProgress();
-		// Need a refresh periodically?
-		bool idle = !headless && browser.needRefresh();
+		// CPU-bound work in progress? Use non-blocking select to process immediately.
+		bool needBusyLoop = rebuildInProgress();
+		// Need periodic UI refresh?
+		bool needPeriodicRefresh = !headless && browser.needRefresh();
 
-		if (busy)
+		if (needBusyLoop)
 			Socket.select(readSet, null, exceptSet, Duration.zero);
 		else
-		if (idle)
+		if (needPeriodicRefresh)
 			Socket.select(readSet, null, exceptSet, refreshInterval);
 		else
 			Socket.select(readSet, null, exceptSet);
