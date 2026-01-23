@@ -17,7 +17,7 @@
  */
 
 /// Sampling subprocess implementation
-module btdu.sample;
+module btdu.sample.process;
 
 import core.stdc.errno;
 import core.sys.posix.fcntl;

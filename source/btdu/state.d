@@ -35,7 +35,7 @@ import containers.internal.hash : generateHash;
 
 import btdu.alloc;
 import btdu.paths;
-import btdu.subproc : Subprocess;
+import btdu.sample.subproc : Subprocess;
 
 /// Returns the appropriate allocator for a given type.
 /// SubPath uses IndexedSlabAllocator for efficient reverse lookups,

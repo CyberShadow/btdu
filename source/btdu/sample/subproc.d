@@ -17,7 +17,7 @@
  */
 
 /// Subprocess management
-module btdu.subproc;
+module btdu.sample.subproc;
 
 import core.sys.posix.signal;
 import core.sys.posix.unistd;

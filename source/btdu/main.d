@@ -46,8 +46,8 @@ import btdu.ui.browser;
 import btdu.common;
 import btdu.impexp : ExportFormat, importData, importCompareData, exportData, guessExportFormat, exportExtensions;
 import btdu.paths;
-import btdu.sample;
-import btdu.subproc;
+import btdu.sample.process;
+import btdu.sample.subproc;
 import btdu.state;
 
 @(`Sampling disk usage profiler for btrfs.`)
