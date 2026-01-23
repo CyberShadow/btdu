@@ -34,6 +34,7 @@ enum ProcessType
 {
 	main,    /// Main process with UI
 	sample,  /// Sampling subprocess
+	stat,    /// Stat subprocess for birthtime resolution
 }
 
 // C error messages

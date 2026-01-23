@@ -48,6 +48,7 @@ import btdu.impexp : ExportFormat, importData, importCompareData, exportData, gu
 import btdu.paths;
 import btdu.sample.process;
 import btdu.sample.subproc;
+import btdu.stat.process : statSubprocessMain;
 import btdu.state;
 
 @(`Sampling disk usage profiler for btrfs.`)
@@ -145,6 +146,8 @@ Please report defects and enhancement requests to the GitHub issue tracker:
 		{
 			case ProcessType.sample:
 				return subprocessMain(path, physical);
+			case ProcessType.stat:
+				return statSubprocessMain();
 			case ProcessType.main:
 				break;
 		}
