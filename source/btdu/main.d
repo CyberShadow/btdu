@@ -365,6 +365,9 @@ Please report defects and enhancement requests to the GitHub issue tracker:
 		}
 	}
 
+	if (!headless)
+		browser.stop();
+
 	if (headless)
 	{
 		if (!doImport)

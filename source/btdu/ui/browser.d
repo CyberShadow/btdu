@@ -197,6 +197,11 @@ struct Browser
 		currentPath = browserRootPtr;
 	}
 
+	void stop()
+	{
+		curses.destroy();
+	}
+
 	/// Returns true when the UI should be refreshed periodically
 	/// even if there are no new samples or user input.
 	@property bool needRefresh()
