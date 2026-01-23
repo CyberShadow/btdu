@@ -16,8 +16,9 @@
  * Boston, MA 021110-1307, USA.
  */
 
-/// Main process / subprocess communication protocol
-module btdu.proto;
+/// Sample subprocess protocol messages.
+/// Communication is subprocess -> main process only.
+module btdu.sample.proto;
 
 import core.sys.posix.unistd;
 

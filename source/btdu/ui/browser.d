@@ -50,7 +50,7 @@ import btdu.alloc : StaticAppender;
 import btdu.common;
 import btdu.impexp : ExportFormat, exportData;
 import btdu.paths;
-import btdu.proto : logicalOffsetHole, logicalOffsetSlack;
+import btdu.sample.proto : logicalOffsetHole, logicalOffsetSlack;
 import btdu.state;
 import btdu.ui.curses;
 import btdu.ui.deletion;

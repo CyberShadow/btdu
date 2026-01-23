@@ -45,7 +45,7 @@ import ae.utils.path.glob;
 import btdu.alloc;
 import btdu.state : allocatorFor, findDivergenceCreationInfo;
 
-public import btdu.proto : Offset;
+public import btdu.sample.proto : Offset;
 
 alias PathPattern = CompiledGlob!char[];
 

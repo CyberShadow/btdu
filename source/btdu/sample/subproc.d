@@ -41,7 +41,7 @@ import btrfs.c.kernel_shared.ctree;
 import btdu.alloc;
 import btdu.common;
 import btdu.paths;
-import btdu.proto;
+import btdu.sample.proto;
 import btdu.state;
 
 /// Represents one managed subprocess
@@ -467,7 +467,7 @@ struct Subprocess
 	}
 }
 
-private SubPath* appendError(ref SubPath path, ref btdu.proto.Error error)
+private SubPath* appendError(ref SubPath path, ref btdu.sample.proto.Error error)
 {
 	auto result = &path;
 

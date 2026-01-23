@@ -111,7 +111,7 @@ import containers.hashmap : HashMap;
 
 import btdu.alloc : CasualAllocator, growAllocator;
 import btdu.paths : historySize, BrowserPath, SubPath, SharingGroup, Mark;
-import btdu.proto : Offset;
+import btdu.sample.proto : Offset;
 import btrfs.c.ioctl : btrfs_ioctl_fs_info_args;
 
 import btdu.state : DataSet, SamplingState, subPathAllocator, subPathRoot;

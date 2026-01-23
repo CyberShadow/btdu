@@ -48,7 +48,7 @@ import btrfs.c.kernel_shared.ctree;
 
 import btdu.alloc : StaticAppender;
 import btdu.common : errorString;
-import btdu.proto;
+import btdu.sample.proto;
 
 void subprocessMain(string fsPath, bool physical)
 {
@@ -270,7 +270,7 @@ void subprocessMain(string fsPath, bool physical)
 											int rootFD = open(pathBuf.peek().ptr, O_RDONLY);
 											if (rootFD < 0)
 											{
-												send(ResultInodeErrorMessage(btdu.proto.Error("open", errno, pathBuf.peek()[0 .. $-1])));
+												send(ResultInodeErrorMessage(btdu.sample.proto.Error("open", errno, pathBuf.peek()[0 .. $-1])));
 												return;
 											}
 											scope(exit) close(rootFD);
@@ -392,9 +392,9 @@ Root getRoot(int fd, __u64 rootID)
 	return result;
 }
 
-btdu.proto.Error toError(Exception e)
+btdu.sample.proto.Error toError(Exception e)
 {
-	btdu.proto.Error error;
+	btdu.sample.proto.Error error;
 	error.msg = e.msg;
 	if (auto ex = cast(ErrnoException) e)
 	{
