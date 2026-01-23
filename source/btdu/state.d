@@ -465,7 +465,18 @@ DivergenceResult findDivergenceCreationInfo(const(GlobalPath)* a, const(GlobalPa
 	return result;
 }
 
+/// Check if a birthtime is cached for the given path.
+bool isBirthtimeCached(GlobalPath path)
+{
+	if (path.subPath is null)
+		return true; // null paths always have birthtime 0
+	return (path in birthtimeCache) !is null;
+}
+
 /// Get the birthtime of a GlobalPath.
+/// When statSubprocessActive is true and the path is not cached, returns 0 (unknown)
+/// without blocking. The caller should check isBirthtimeCached first if it needs to
+/// know whether the value is definitive.
 /// Complexity: O(N) where N is the path depth.
 long getBirthtime(GlobalPath path)
 {
@@ -480,6 +491,11 @@ long getBirthtime(GlobalPath path)
 	// Return 0 (unknown) for uncached paths - the cache should have been
 	// populated during import for all paths that were queried during sampling.
 	if (imported)
+		return 0;
+
+	// When stat subprocess is active, don't block - return 0 for uncached paths.
+	// The caller should queue this path for async stat resolution.
+	if (statSubprocessActive)
 		return 0;
 
 	// Build path string using static appender
@@ -501,6 +517,17 @@ long getBirthtime(GlobalPath path)
 	// Cache result
 	birthtimeCache[path] = birthtime;
 	return birthtime;
+}
+
+/// Build a full filesystem path string for a GlobalPath.
+/// Returns the path string suitable for statx().
+string buildFullPath(GlobalPath path)
+{
+	static StaticAppender!char pathBuf;
+	pathBuf.clear();
+	pathBuf.put(fsPath);  // Prepend mount point
+	path.toFilesystemPath(&pathBuf.put!(const(char)[]));  // Append path components
+	return pathBuf.peek().idup;
 }
 
 // ============================================================
