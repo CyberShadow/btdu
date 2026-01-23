@@ -531,6 +531,96 @@ string buildFullPath(GlobalPath path)
 }
 
 // ============================================================
+// Pending group stat resolution
+// ============================================================
+
+import btdu.paths : SharingGroup;
+
+/// Info about paths that need stat resolution for a pending group.
+struct PendingStatInfo
+{
+	/// Paths that need birthtime lookup (not yet cached).
+	/// These are GlobalPaths at divergence points between paths in the sharing group.
+	GlobalPath[] uncachedPaths;
+
+	/// Full filesystem path strings for uncachedPaths (for stat subprocess).
+	string[] pathStrings;
+
+	/// Whether all needed birthtimes are already cached.
+	bool allCached() const { return uncachedPaths.length == 0; }
+}
+
+/// Find all uncached divergence paths for a pending sharing group.
+/// Returns info about which paths need stat resolution.
+PendingStatInfo findUncachedDivergencePaths(SharingGroup* group)
+{
+	import std.algorithm.searching : canFind;
+
+	PendingStatInfo result;
+
+	if (group.paths.length <= 1)
+		return result; // No divergence points for single-path groups
+
+	void checkPath(GlobalPath path)
+	{
+		if (path.subPath is null)
+			return;
+
+		// Skip if already checked
+		if (result.uncachedPaths.canFind(path))
+			return;
+
+		// Skip if already cached
+		if (isBirthtimeCached(path))
+			return;
+
+		// Check if this is a registered subvolume (uses otime, not birthtime)
+		if ((cast(GlobalPath*) &path) in rootInfoByRootPath)
+			return;
+
+		// Need to stat this path
+		result.uncachedPaths ~= path;
+		result.pathStrings ~= buildFullPath(path);
+	}
+
+	// Find all divergence points by comparing adjacent pairs.
+	// Since paths are sorted lexicographically, paths with common prefixes are
+	// contiguous. This means every divergence point appears in exactly one
+	// adjacent pair, making O(n) comparison sufficient instead of O(n²).
+	for (size_t i = 0; i + 1 < group.paths.length; i++)
+	{
+		auto divergence = findDivergenceCreationInfo(&group.paths[i], &group.paths[i + 1]);
+		if (divergence.diverged)
+		{
+			// Check if birthtimes at divergence points are cached.
+			// The divergence point is the directory where the paths differ.
+			// We need to check the SubPath that diverged.
+
+			// Extract the GlobalPath to the diverging directory for each path.
+			// This is complex because findDivergenceCreationInfo doesn't return
+			// the actual GlobalPaths at the divergence point.
+
+			// For simplicity, we'll check all intermediate paths along the chain.
+			// This may check more paths than strictly necessary, but is correct.
+			void checkAllPaths(ref GlobalPath gp)
+			{
+				for (auto subPath = gp.subPath; subPath !is null && subPath.parent !is null; subPath = subPath.parent)
+				{
+					GlobalPath intermediate;
+					intermediate.parent = gp.parent;
+					intermediate.subPath = subPath;
+					checkPath(intermediate);
+				}
+			}
+			checkAllPaths(group.paths[i]);
+			checkAllPaths(group.paths[i + 1]);
+		}
+	}
+
+	return result;
+}
+
+// ============================================================
 // Marks upkeep
 // ============================================================
 
