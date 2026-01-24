@@ -30,8 +30,7 @@ import std.socket : AddressFamily, Socket, socket_t;
 import btdu.proto : ProtocolMixin;
 import btdu.paths : GlobalPath, SharingGroup, selectRepresentativePath;
 import btdu.state : birthtimeCache, findUncachedDivergencePaths, fsPath,
-	pendingGroups, populateBrowserPathsFromSharingGroup, sharingGroupAllocator,
-	statSubprocessActive;
+	pendingGroups, populateBrowserPathsFromSharingGroup, sharingGroupAllocator;
 import btdu.stat.proto;
 
 /// Manages the stat subprocess for async birthtime resolution.
@@ -73,7 +72,6 @@ struct StatSubprocess
 		);
 
 		initialize();
-		statSubprocessActive = true;
 	}
 
 	void terminate()
@@ -94,8 +92,6 @@ struct StatSubprocess
 			wait(pid);
 			pid = Pid.init;
 		}
-
-		statSubprocessActive = false;
 	}
 
 	/// Returns true if we're waiting for a response.

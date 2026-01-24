@@ -145,20 +145,11 @@ uint currentGeneration; /// Incremented on deletion; samples with older generati
 /// New groups are automatically included as they are allocated.
 SlabAllocator!SharingGroup.OpenRange pendingGroups;
 
-/// True when the stat subprocess is running and we should defer stat calls.
-bool statSubprocessActive;
-
 /// Returns a range over resolved (non-pending) sharing groups.
 /// Since groups are resolved sequentially, this is all groups before the pendingGroups position.
 SlabAllocator!SharingGroup.Range getResolvedSharingGroups()
 {
 	alias Range = SlabAllocator!SharingGroup.Range;
-
-	if (!statSubprocessActive)
-	{
-		// No stat subprocess - all groups are resolved
-		return sharingGroupAllocator[];
-	}
 
 	// Return range from start to pendingGroups position
 	return Range(
@@ -335,8 +326,6 @@ DiskMap diskMap;
 // Birthtime lookup for path-based creation time comparison
 // ============================================================
 
-import btdu.statx;
-
 // Birthtime cache: GlobalPath -> birthtime (nanoseconds since epoch)
 // GlobalPath is a lightweight struct (two pointers), so we use it directly as key.
 // Public for binary import/export.
@@ -473,50 +462,18 @@ bool isBirthtimeCached(GlobalPath path)
 	return (path in birthtimeCache) !is null;
 }
 
-/// Get the birthtime of a GlobalPath.
-/// When statSubprocessActive is true and the path is not cached, returns 0 (unknown)
-/// without blocking. The caller should check isBirthtimeCached first if it needs to
-/// know whether the value is definitive.
-/// Complexity: O(N) where N is the path depth.
+/// Get the birthtime of a GlobalPath from cache.
+/// Returns 0 (unknown) for uncached paths. The caller should check
+/// isBirthtimeCached first if it needs to know whether the value is definitive.
 long getBirthtime(GlobalPath path)
 {
 	if (path.subPath is null)
 		return 0;
 
-	// Check cache first (avoids building path string on hit)
 	if (auto cached = path in birthtimeCache)
 		return *cached;
 
-	// When viewing imported data, we can't stat the original filesystem.
-	// Return 0 (unknown) for uncached paths - the cache should have been
-	// populated during import for all paths that were queried during sampling.
-	if (imported)
-		return 0;
-
-	// When stat subprocess is active, don't block - return 0 for uncached paths.
-	// The caller should queue this path for async stat resolution.
-	if (statSubprocessActive)
-		return 0;
-
-	// Build path string using static appender
-	static StaticAppender!char pathBuf;
-	pathBuf.clear();
-	pathBuf.put(fsPath);  // Prepend mount point
-	path.toFilesystemPath(&pathBuf.put!(const(char)[]));  // Append path components
-
-	// Call statx to get birthtime
-	pathBuf.put('\0');
-	statx_t stx;
-	int ret = statx(AT_FDCWD, pathBuf.peek.ptr, AT_SYMLINK_NOFOLLOW, STATX_BTIME, &stx);
-
-	long birthtime = 0;
-	if (ret == 0 && (stx.stx_mask & STATX_BTIME))
-		// Store as nanoseconds for full precision comparison
-		birthtime = stx.stx_btime.tv_sec * 1_000_000_000L + stx.stx_btime.tv_nsec;
-
-	// Cache result
-	birthtimeCache[path] = birthtime;
-	return birthtime;
+	return 0;
 }
 
 /// Build a full filesystem path string for a GlobalPath.

@@ -314,21 +314,20 @@ struct Subprocess
 			pathData[] = SharingGroup.PathData.init;
 
 			// Find the representative index.
-			// When stat subprocess is active, defer resolution for multi-path groups
-			// that need birthtime comparison (mark as pending).
+			// Defer resolution for multi-path groups that need birthtime comparison.
 			size_t representativeIndex = SharingGroup.pendingRepresentative;
 			if (persistentPaths.length == 0)
 			{
 				// Empty paths - no representative needed
 				representativeIndex = 0;
 			}
-			else if (persistentPaths.length == 1 || !statSubprocessActive)
+			else if (persistentPaths.length == 1)
 			{
-				// Single path or stat subprocess not active - resolve immediately
+				// Single path - resolve immediately
 				auto representativePath = selectRepresentativePath(persistentPaths);
 				representativeIndex = persistentPaths.countUntil!(p => p is representativePath);
 			}
-			// else: multi-path group with stat subprocess active - stay pending
+			// else: multi-path group - stay pending for async stat resolution
 
 			// Create the sharing group
 			SharingGroup newGroupData;
