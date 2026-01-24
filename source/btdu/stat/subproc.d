@@ -76,6 +76,10 @@ struct StatSubprocess
 
 	void terminate()
 	{
+		// Send graceful shutdown request
+		if (toSubproc.writeEnd.isOpen)
+			sendRequest(toSubproc.writeEnd.fileno, ShutdownRequest());
+
 		if (readSocket)
 		{
 			readSocket.close();
@@ -88,7 +92,6 @@ struct StatSubprocess
 
 		if (pid !is Pid.init)
 		{
-			kill(pid, SIGTERM);
 			wait(pid);
 			pid = Pid.init;
 		}

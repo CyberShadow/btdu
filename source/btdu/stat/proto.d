@@ -38,8 +38,14 @@ struct StatRequest
 	const(char[])[] paths;
 }
 
+/// Request graceful shutdown.
+struct ShutdownRequest
+{
+}
+
 alias RequestMessages = AliasSeq!(
 	StatRequest,
+	ShutdownRequest,
 );
 
 
