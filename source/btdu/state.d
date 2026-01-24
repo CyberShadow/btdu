@@ -476,17 +476,6 @@ long getBirthtime(GlobalPath path)
 	return 0;
 }
 
-/// Build a full filesystem path string for a GlobalPath.
-/// Returns the path string suitable for statx().
-string buildFullPath(GlobalPath path)
-{
-	static StaticAppender!char pathBuf;
-	pathBuf.clear();
-	pathBuf.put(fsPath);  // Prepend mount point
-	path.toFilesystemPath(&pathBuf.put!(const(char)[]));  // Append path components
-	return pathBuf.peek().idup;
-}
-
 // ============================================================
 // Pending group stat resolution
 // ============================================================
@@ -494,6 +483,8 @@ string buildFullPath(GlobalPath path)
 import btdu.paths : SharingGroup;
 
 /// Info about paths that need stat resolution for a pending group.
+/// Uses static buffers to avoid GC allocations on the hot path.
+/// Only valid until the next call to findUncachedDivergencePaths.
 struct PendingStatInfo
 {
 	/// Paths that need birthtime lookup (not yet cached).
@@ -501,7 +492,8 @@ struct PendingStatInfo
 	GlobalPath[] uncachedPaths;
 
 	/// Full filesystem path strings for uncachedPaths (for stat subprocess).
-	string[] pathStrings;
+	/// Slices into a contiguous buffer.
+	const(char[])[] pathStrings;
 
 	/// Whether all needed birthtimes are already cached.
 	bool allCached() const { return uncachedPaths.length == 0; }
@@ -509,14 +501,24 @@ struct PendingStatInfo
 
 /// Find all uncached divergence paths for a pending sharing group.
 /// Returns info about which paths need stat resolution.
+/// The returned slices are valid until the next call to this function.
 PendingStatInfo findUncachedDivergencePaths(SharingGroup* group)
 {
 	import std.algorithm.searching : canFind;
 
-	PendingStatInfo result;
+	// Static buffers - reused across calls to avoid repeated GC allocations.
+	// Safe because only one stat request is in flight at a time.
+	// Using .length = 0 preserves capacity for reuse.
+	static GlobalPath[] uncachedPathsBuf;
+	static char[] pathStringsBuf;
+	static const(char)[][] pathSlicesBuf;
+
+	uncachedPathsBuf.length = 0;
+	pathStringsBuf.length = 0;
+	pathSlicesBuf.length = 0;
 
 	if (group.paths.length <= 1)
-		return result; // No divergence points for single-path groups
+		return PendingStatInfo.init; // No divergence points for single-path groups
 
 	void checkPath(GlobalPath path)
 	{
@@ -524,7 +526,7 @@ PendingStatInfo findUncachedDivergencePaths(SharingGroup* group)
 			return;
 
 		// Skip if already checked
-		if (result.uncachedPaths.canFind(path))
+		if (uncachedPathsBuf.canFind(path))
 			return;
 
 		// Skip if already cached
@@ -535,9 +537,14 @@ PendingStatInfo findUncachedDivergencePaths(SharingGroup* group)
 		if ((cast(GlobalPath*) &path) in rootInfoByRootPath)
 			return;
 
-		// Need to stat this path
-		result.uncachedPaths ~= path;
-		result.pathStrings ~= buildFullPath(path);
+		// Need to stat this path - append to static buffers
+		uncachedPathsBuf ~= path;
+
+		// Build path string directly into buffer
+		auto startPos = pathStringsBuf.length;
+		pathStringsBuf ~= fsPath;
+		path.toFilesystemPath((const(char)[] s) { pathStringsBuf ~= s; });
+		pathSlicesBuf ~= pathStringsBuf[startPos .. $];
 	}
 
 	// Find all divergence points by comparing adjacent pairs.
@@ -574,6 +581,9 @@ PendingStatInfo findUncachedDivergencePaths(SharingGroup* group)
 		}
 	}
 
+	PendingStatInfo result;
+	result.uncachedPaths = uncachedPathsBuf;
+	result.pathStrings = pathSlicesBuf;
 	return result;
 }
 
