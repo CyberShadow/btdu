@@ -345,10 +345,8 @@ struct Subprocess
 			numSingleSampleGroups++;
 
 			isNew = true;
-
-			// Trigger stat processing for the new pending group
-			if (group.isPending() && statSubproc && !statSubproc.isBusy())
-				statSubproc.processPendingGroups();
+			// Note: Don't call processPendingGroups here - the group has no samples yet.
+			// The caller (processResult) will trigger processing after adding the sample.
 		}
 
 		return group;
@@ -431,6 +429,10 @@ struct Subprocess
 		// This happens even for pending groups - we accumulate samples while
 		// waiting for stat resolution.
 		group.data.add(1, (&result.offset)[0..1], duration);
+
+		// Trigger stat processing for pending groups now that the sample is added
+		if (group.isPending() && statSubproc && !statSubproc.isBusy())
+			statSubproc.processPendingGroups();
 
 		// Record sample in disk map for visualization
 		diskMap.recordSample(result.sampleIndex, result.category);

@@ -29,8 +29,9 @@ import std.socket : AddressFamily, Socket, socket_t;
 
 import btdu.proto : ProtocolMixin;
 import btdu.paths : GlobalPath, SharingGroup, selectRepresentativePath;
-import btdu.state : birthtimeCache, findUncachedDivergencePaths, fsPath,
-	pendingGroups, populateBrowserPathsFromSharingGroup, sharingGroupAllocator;
+import btdu.state : birthtimeCache, clearRequestedPaths, fsPath, getRequestedUncachedPaths,
+	hasRequestedUncachedPaths, pendingGroups, populateBrowserPathsFromSharingGroup,
+	sharingGroupAllocator;
 import btdu.stat.proto;
 
 /// Manages the stat subprocess for async birthtime resolution.
@@ -161,29 +162,38 @@ struct StatSubprocess
 				continue;
 			}
 
-			// Find uncached paths for this group
-			auto statInfo = findUncachedDivergencePaths(group);
+			// On-demand birthtime resolution:
+			// 1. Clear the requested paths buffer
+			// 2. Run selectRepresentativePath - this may record cache misses
+			// 3. If any paths were requested, send stat request and retry later
+			clearRequestedPaths();
 
-			if (!statInfo.allCached())
-			{
-				// Need to stat some paths - send request and wait
-				sendStatRequest(statInfo.uncachedPaths, statInfo.pathStrings);
-				// Don't advance the queue - we'll retry this group after response
-				return;
-			}
-
-			// All birthtimes are now cached - resolve the representative
+			// Resolve the representative (may request uncached birthtimes)
+			// Don't store the result yet - we'll retry if birthtimes are needed
+			ptrdiff_t representativeIndex;
 			if (group.paths.length > 0)
 			{
 				auto representativePath = selectRepresentativePath(group.paths);
-				group.representativeIndex = group.paths.countUntil!(p => p is representativePath);
+				representativeIndex = group.paths.countUntil!(p => p is representativePath);
 			}
 			else
 			{
-				group.representativeIndex = 0;
+				representativeIndex = 0;
 			}
 
-			// Now populate BrowserPath tree with accumulated samples
+			// Check if any birthtimes were needed but not cached
+			if (hasRequestedUncachedPaths())
+			{
+				auto statInfo = getRequestedUncachedPaths();
+				// Need to stat some paths - send request and wait
+				sendStatRequest(statInfo.uncachedPaths, statInfo.pathStrings);
+				// Don't advance the queue or update representativeIndex - we'll retry
+				return;
+			}
+
+			// All birthtimes were available (or not needed)
+			// Now safe to mark as resolved and populate the tree
+			group.representativeIndex = representativeIndex;
 			populateBrowserPathsFromSharingGroup(
 				group,
 				true,  // isNew for initial population

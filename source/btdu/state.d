@@ -364,94 +364,35 @@ struct DivergenceResult
 	CreationInfo bInfo; /// Creation info for path B at divergence point
 }
 
+/// Get creation info for a path at divergence point.
+/// If the diverging GlobalPath is a registered subvolume, use RootInfo.
+/// Otherwise, use birthtime of the diverging directory.
+private CreationInfo getCreationInfoAtDivergence(const(GlobalPath)* gpLevel, GlobalPath pathAtDivergence)
+{
+	// Check if gpLevel is a registered subvolume
+	if (auto rootInfo = cast(GlobalPath*) gpLevel in rootInfoByRootPath)
+	{
+		// Convert otime from seconds to nanoseconds for consistent comparison
+		return CreationInfo((*rootInfo).otime * 1_000_000_000L, (*rootInfo).isReadOnly);
+	}
+	// Regular directory: use birthtime of the path at divergence
+	return CreationInfo(getBirthtime(pathAtDivergence), false);
+}
+
 /// Find where two GlobalPaths diverge and return creation info at that point.
 /// Complexity: O(N) where N is the shorter path's depth.
 DivergenceResult findDivergenceCreationInfo(const(GlobalPath)* a, const(GlobalPath)* b)
 {
-	if (a is b)
+	auto divergence = GlobalPath.findDivergence(a, b);
+	if (divergence.isNull)
 		return DivergenceResult(false, CreationInfo.init, CreationInfo.init);
 
-	DivergenceResult result;
-
-	// Get creation info for a path at divergence point.
-	// If the diverging GlobalPath is a registered subvolume, use RootInfo.
-	// Otherwise, use birthtime of the diverging directory.
-	CreationInfo getCreationInfo(const(GlobalPath)* gp, const(SubPath)* sp)
-	{
-		// Check if gp itself is a registered subvolume
-		if (auto rootInfo = cast(GlobalPath*) gp in rootInfoByRootPath)
-			// Convert otime from seconds to nanoseconds for consistent comparison
-			return CreationInfo((*rootInfo).otime * 1_000_000_000L, (*rootInfo).isReadOnly);
-		// Regular directory: construct path to diverging dir and get birthtime
-		return CreationInfo(getBirthtime(GlobalPath(cast(GlobalPath*) gp.parent, cast(SubPath*) sp)), false);
-	}
-
-	// Compare SubPath components in root-to-leaf order using synchronized recursion.
-	// Returns true to stop early (found divergence or one path ended).
-	bool compareSubPaths(const(SubPath)* spA, const(SubPath)* spB,
-		const(GlobalPath)* gpA, const(GlobalPath)* gpB)
-	{
-		bool aEnd = (spA is null || spA.parent is null);
-		bool bEnd = (spB is null || spB.parent is null);
-
-		if (aEnd && bEnd)
-			return false; // Both ended, continue to next GlobalPath
-
-		if (aEnd || bEnd)
-			return true; // One ended before the other - one is prefix of other
-
-		// Recurse to parents first (root-to-leaf order)
-		if (compareSubPaths(spA.parent, spB.parent, gpA, gpB))
-			return true;
-
-		// Compare this component on the way back
-		auto nameA = spA.name[];
-		auto nameB = spB.name[];
-
-		// Skip special components
-		bool specialA = nameA.length == 0 || nameA[0] == '\0';
-		bool specialB = nameB.length == 0 || nameB[0] == '\0';
-
-		if (specialA && specialB)
-			return false; // Both special, continue
-		if (specialA || specialB)
-			return true; // One special, one not - treat as prefix
-
-		// Both are regular components - check for divergence
-		if (nameA != nameB)
-		{
-			result.diverged = true;
-			result.aInfo = getCreationInfo(gpA, spA);
-			result.bInfo = getCreationInfo(gpB, spB);
-			return true;
-		}
-
-		// Components match, continue
-		return false;
-	}
-
-	// Compare GlobalPath chains in root-to-leaf order using synchronized recursion.
-	bool compareGlobalPaths(const(GlobalPath)* gpA, const(GlobalPath)* gpB)
-	{
-		bool aEnd = (gpA is null);
-		bool bEnd = (gpB is null);
-
-		if (aEnd && bEnd)
-			return false; // Both ended
-
-		if (aEnd || bEnd)
-			return true; // One ended - one is prefix of other
-
-		// Recurse to parents first (root-to-leaf order)
-		if (compareGlobalPaths(gpA.parent, gpB.parent))
-			return true;
-
-		// Compare this GlobalPath's SubPaths
-		return compareSubPaths(gpA.subPath, gpB.subPath, gpA, gpB);
-	}
-
-	compareGlobalPaths(a, b);
-	return result;
+	auto div = divergence.get;
+	return DivergenceResult(
+		true,
+		getCreationInfoAtDivergence(div.aGlobalPath, div.aPath),
+		getCreationInfoAtDivergence(div.bGlobalPath, div.bPath)
+	);
 }
 
 /// Check if a birthtime is cached for the given path.
@@ -463,8 +404,8 @@ bool isBirthtimeCached(GlobalPath path)
 }
 
 /// Get the birthtime of a GlobalPath from cache.
-/// Returns 0 (unknown) for uncached paths. The caller should check
-/// isBirthtimeCached first if it needs to know whether the value is definitive.
+/// Returns 0 (unknown) for uncached paths. Records cache misses for
+/// on-demand stat resolution.
 long getBirthtime(GlobalPath path)
 {
 	if (path.subPath is null)
@@ -473,6 +414,8 @@ long getBirthtime(GlobalPath path)
 	if (auto cached = path in birthtimeCache)
 		return *cached;
 
+	// Cache miss - record this path for on-demand stat resolution
+	recordRequestedPath(path);
 	return 0;
 }
 
@@ -484,7 +427,7 @@ import btdu.paths : SharingGroup;
 
 /// Info about paths that need stat resolution for a pending group.
 /// Uses static buffers to avoid GC allocations on the hot path.
-/// Only valid until the next call to findUncachedDivergencePaths.
+/// Only valid until the next call to clearRequestedPaths.
 struct PendingStatInfo
 {
 	/// Paths that need birthtime lookup (not yet cached).
@@ -499,92 +442,52 @@ struct PendingStatInfo
 	bool allCached() const { return uncachedPaths.length == 0; }
 }
 
-/// Find all uncached divergence paths for a pending sharing group.
-/// Returns info about which paths need stat resolution.
-/// The returned slices are valid until the next call to this function.
-PendingStatInfo findUncachedDivergencePaths(SharingGroup* group)
+/// Paths that were requested during the current selectRepresentativePath call
+/// but weren't cached. Populated by getBirthtime, consumed by processPendingGroups.
+private GlobalPath[] requestedUncachedPaths;
+private char[] requestedPathStringsBuf;
+private const(char)[][] requestedPathSlicesBuf;
+
+/// Clear the requested paths buffers before a selectRepresentativePath call.
+void clearRequestedPaths()
+{
+	requestedUncachedPaths.length = 0;
+	requestedPathStringsBuf.length = 0;
+	requestedPathSlicesBuf.length = 0;
+}
+
+/// Check if any paths were requested but not cached during the last comparison.
+bool hasRequestedUncachedPaths()
+{
+	return requestedUncachedPaths.length > 0;
+}
+
+/// Get the info about requested uncached paths for stat resolution.
+PendingStatInfo getRequestedUncachedPaths()
+{
+	PendingStatInfo result;
+	result.uncachedPaths = requestedUncachedPaths;
+	result.pathStrings = requestedPathSlicesBuf;
+	return result;
+}
+
+/// Record a path that was requested but not cached.
+/// Called by getBirthtime when a cache miss occurs.
+private void recordRequestedPath(GlobalPath path)
 {
 	import std.algorithm.searching : canFind;
 
-	// Static buffers - reused across calls to avoid repeated GC allocations.
-	// Safe because only one stat request is in flight at a time.
-	// Using .length = 0 preserves capacity for reuse.
-	static GlobalPath[] uncachedPathsBuf;
-	static char[] pathStringsBuf;
-	static const(char)[][] pathSlicesBuf;
+	// Skip if already recorded
+	if (requestedUncachedPaths.canFind(path))
+		return;
 
-	uncachedPathsBuf.length = 0;
-	pathStringsBuf.length = 0;
-	pathSlicesBuf.length = 0;
+	requestedUncachedPaths ~= path;
 
-	if (group.paths.length <= 1)
-		return PendingStatInfo.init; // No divergence points for single-path groups
-
-	void checkPath(GlobalPath path)
-	{
-		if (path.subPath is null)
-			return;
-
-		// Skip if already checked
-		if (uncachedPathsBuf.canFind(path))
-			return;
-
-		// Skip if already cached
-		if (isBirthtimeCached(path))
-			return;
-
-		// Check if this is a registered subvolume (uses otime, not birthtime)
-		if ((cast(GlobalPath*) &path) in rootInfoByRootPath)
-			return;
-
-		// Need to stat this path - append to static buffers
-		uncachedPathsBuf ~= path;
-
-		// Build path string directly into buffer
-		auto startPos = pathStringsBuf.length;
-		pathStringsBuf ~= fsPath;
-		path.toFilesystemPath((const(char)[] s) { pathStringsBuf ~= s; });
-		pathSlicesBuf ~= pathStringsBuf[startPos .. $];
-	}
-
-	// Find all divergence points by comparing adjacent pairs.
-	// Since paths are sorted lexicographically, paths with common prefixes are
-	// contiguous. This means every divergence point appears in exactly one
-	// adjacent pair, making O(n) comparison sufficient instead of O(n²).
-	for (size_t i = 0; i + 1 < group.paths.length; i++)
-	{
-		auto divergence = findDivergenceCreationInfo(&group.paths[i], &group.paths[i + 1]);
-		if (divergence.diverged)
-		{
-			// Check if birthtimes at divergence points are cached.
-			// The divergence point is the directory where the paths differ.
-			// We need to check the SubPath that diverged.
-
-			// Extract the GlobalPath to the diverging directory for each path.
-			// This is complex because findDivergenceCreationInfo doesn't return
-			// the actual GlobalPaths at the divergence point.
-
-			// For simplicity, we'll check all intermediate paths along the chain.
-			// This may check more paths than strictly necessary, but is correct.
-			void checkAllPaths(ref GlobalPath gp)
-			{
-				for (auto subPath = gp.subPath; subPath !is null && subPath.parent !is null; subPath = subPath.parent)
-				{
-					GlobalPath intermediate;
-					intermediate.parent = gp.parent;
-					intermediate.subPath = subPath;
-					checkPath(intermediate);
-				}
-			}
-			checkAllPaths(group.paths[i]);
-			checkAllPaths(group.paths[i + 1]);
-		}
-	}
-
-	PendingStatInfo result;
-	result.uncachedPaths = uncachedPathsBuf;
-	result.pathStrings = pathSlicesBuf;
-	return result;
+	// Build path string
+	auto startPos = requestedPathStringsBuf.length;
+	requestedPathStringsBuf ~= fsPath;
+	path.toFilesystemPath((const(char)[] s) { requestedPathStringsBuf ~= s; });
+	requestedPathSlicesBuf ~= requestedPathStringsBuf[startPos .. $];
 }
 
 // ============================================================

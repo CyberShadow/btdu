@@ -701,6 +701,105 @@ struct GlobalPath
 			.joiner;
 	}
 
+	/// Result of finding where two GlobalPaths diverge.
+	struct DivergenceInfo
+	{
+		/// Paths at the divergence point.
+		/// These represent the path UP TO and including the diverging component.
+		/// For birthtime lookup.
+		GlobalPath aPath;
+		GlobalPath bPath;
+
+		/// The GlobalPath levels containing the divergence.
+		/// Used to check if divergence is at a subvolume boundary.
+		const(GlobalPath)* aGlobalPath;
+		const(GlobalPath)* bGlobalPath;
+	}
+
+	/// Find where two GlobalPaths diverge (comparing from root to leaf).
+	/// Returns null if paths are identical or one is a prefix of the other.
+	static Nullable!DivergenceInfo findDivergence(const(GlobalPath)* a, const(GlobalPath)* b)
+	{
+		import std.typecons : Nullable, nullable;
+
+		if (a is b)
+			return Nullable!DivergenceInfo.init;
+
+		Nullable!DivergenceInfo result;
+
+		// Compare SubPath components in root-to-leaf order using synchronized recursion.
+		// Returns true to stop early (found divergence or one path ended).
+		bool compareSubPaths(const(SubPath)* spA, const(SubPath)* spB,
+			const(GlobalPath)* gpA, const(GlobalPath)* gpB)
+		{
+			bool aEnd = (spA is null || spA.parent is null);
+			bool bEnd = (spB is null || spB.parent is null);
+
+			if (aEnd && bEnd)
+				return false; // Both ended, continue to next GlobalPath
+
+			if (aEnd || bEnd)
+				return true; // One ended before the other - one is prefix of other
+
+			// Recurse to parents first (root-to-leaf order)
+			if (compareSubPaths(spA.parent, spB.parent, gpA, gpB))
+				return true;
+
+			// Compare this component on the way back
+			auto nameA = spA.name[];
+			auto nameB = spB.name[];
+
+			// Skip special components
+			bool specialA = nameA.length == 0 || nameA[0] == '\0';
+			bool specialB = nameB.length == 0 || nameB[0] == '\0';
+
+			if (specialA && specialB)
+				return false; // Both special, continue
+			if (specialA || specialB)
+				return true; // One special, one not - treat as prefix
+
+			// Both are regular components - check for divergence
+			if (nameA != nameB)
+			{
+				// Build paths at divergence point
+				// The path at divergence is: parent GlobalPath + SubPath up to this component
+				result = DivergenceInfo(
+					GlobalPath(cast(GlobalPath*) gpA.parent, cast(SubPath*) spA),
+					GlobalPath(cast(GlobalPath*) gpB.parent, cast(SubPath*) spB),
+					gpA,
+					gpB
+				);
+				return true;
+			}
+
+			// Components match, continue
+			return false;
+		}
+
+		// Compare GlobalPath chains in root-to-leaf order using synchronized recursion.
+		bool compareGlobalPaths(const(GlobalPath)* gpA, const(GlobalPath)* gpB)
+		{
+			bool aEnd = (gpA is null);
+			bool bEnd = (gpB is null);
+
+			if (aEnd && bEnd)
+				return false; // Both ended
+
+			if (aEnd || bEnd)
+				return true; // One ended - one is prefix of other
+
+			// Recurse to parents first (root-to-leaf order)
+			if (compareGlobalPaths(gpA.parent, gpB.parent))
+				return true;
+
+			// Compare this GlobalPath's SubPaths
+			return compareSubPaths(gpA.subPath, gpB.subPath, gpA, gpB);
+		}
+
+		compareGlobalPaths(a, b);
+		return result;
+	}
+
 	mixin PathCommon;
 	mixin PathCmp;
 }
