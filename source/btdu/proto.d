@@ -35,12 +35,24 @@ import btdu.alloc : StaticAppender;
 // Incremental Parser Buffer Management
 // ============================================================================
 
+/// Result status from handleReadable.
+enum ReadStatus
+{
+	hasMore,    /// More data may be available to read
+	wouldBlock, /// No more data currently available (non-blocking)
+	eof,        /// End of file reached (pipe closed)
+}
+
 /// Combined protocol handler mixin providing buffer management, parsing, and I/O.
 /// The mixing-in struct must implement:
 ///   - `bool wantData()` - return false to stop processing
 ///   - `void handleMessage(M)` - for each message type M in AllMessages
 mixin template ProtocolMixin(AllMessages...)
 {
+	// Re-export ReadStatus so it's accessible in the mixin context
+	static import btdu.proto;
+	alias ReadStatus = btdu.proto.ReadStatus;
+
 	private ubyte[] buf;
 	private size_t bufStart, bufEnd;
 
@@ -51,22 +63,22 @@ mixin template ProtocolMixin(AllMessages...)
 	}
 
 	/// Called when fd is readable. Reads data and parses messages.
-	/// Returns true if there may be more to read, false if done/would-block.
-	/// Throws on EOF (unexpected subprocess termination).
-	bool handleReadable(int fd)
+	/// Returns ReadStatus indicating whether more data is available or EOF was reached.
+	ReadStatus handleReadable(int fd)
 	{
 		import core.sys.posix.unistd : read;
 		import std.algorithm.mutation : copy;
-		import std.exception : enforce, errnoEnforce;
+		import std.exception : errnoEnforce;
 		import std.socket : wouldHaveBlocked;
 
 		// Read available data
 		auto received = read(fd, buf.ptr + bufEnd, buf.length - bufEnd);
-		enforce(received != 0, "Unexpected subprocess termination");
+		if (received == 0)
+			return ReadStatus.eof;
 		if (received < 0)
 		{
 			errnoEnforce(wouldHaveBlocked, "Subprocess read error");
-			return false;
+			return ReadStatus.wouldBlock;
 		}
 		bufEnd += received;
 
@@ -93,7 +105,7 @@ mixin template ProtocolMixin(AllMessages...)
 			}
 		}
 
-		return bytesNeeded > 0;
+		return bytesNeeded > 0 ? ReadStatus.hasMore : ReadStatus.wouldBlock;
 	}
 
 	/// Parse messages from buffer. Returns bytes needed for next message, 0 if done.

@@ -116,8 +116,12 @@ struct StatSubprocess
 	/// Returns true if a complete response was received.
 	bool handleInput()
 	{
+		import std.exception : enforce;
+		import btdu.proto : ReadStatus;
+
 		responseReceived = false;
-		handleReadable(fromSubproc.readEnd.fileno);
+		auto status = handleReadable(fromSubproc.readEnd.fileno);
+		enforce(status != ReadStatus.eof, "Unexpected stat subprocess termination");
 
 		if (!responseReceived)
 			return false;

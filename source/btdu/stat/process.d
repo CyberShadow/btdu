@@ -32,6 +32,8 @@ import btdu.statx;
 /// Reads requests from stdin, performs statx() calls, sends responses to stdout.
 void statSubprocessMain()
 {
+	import btdu.proto : ReadStatus;
+
 	// Ignore SIGINT/SIGTERM, because the main process will handle it for us.
 	addShutdownHandler((reason) {});
 
@@ -40,7 +42,10 @@ void statSubprocessMain()
 
 	while (handler.running)
 	{
-		handler.handleReadable(STDIN_FILENO);
+		auto status = handler.handleReadable(STDIN_FILENO);
+		// EOF means main process closed the pipe - exit gracefully
+		if (status == ReadStatus.eof)
+			break;
 	}
 }
 

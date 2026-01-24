@@ -112,8 +112,13 @@ struct Subprocess
 	/// Returns true if there may be more to read.
 	bool handleInput()
 	{
+		import std.exception : enforce;
+		import btdu.proto : ReadStatus;
+
 		assert(!rebuildInProgress(), "handleInput() called during rebuild");
-		return handleReadable(pipe.readEnd.fileno);
+		auto status = handleReadable(pipe.readEnd.fileno);
+		enforce(status != ReadStatus.eof, "Unexpected subprocess termination");
+		return status == ReadStatus.hasMore;
 	}
 
 	void handleMessage(StartMessage m)
