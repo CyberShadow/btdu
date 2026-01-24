@@ -384,13 +384,13 @@ struct Subprocess
 
 		auto pathsSlice = allPaths.peek();
 
-		// Sort paths for consistent hashing/deduplication
+		// Sort paths lexicographically. This ensures:
+		// 1. Consistent hashing/deduplication for sharing groups
+		// 2. Paths with common prefixes are contiguous, enabling O(n) divergence
+		//    point detection via adjacent-pair comparison
 		{
 			import std.algorithm.sorting : sort;
-			import std.typecons : tuple;
-			pathsSlice.sort!((ref a, ref b) =>
-				tuple(a.parent, a.subPath) < tuple(b.parent, b.subPath)
-			);
+			pathsSlice.sort!((ref a, ref b) => a < b);
 		}
 
 		// Get or create sharing group
