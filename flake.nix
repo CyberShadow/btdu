@@ -144,7 +144,7 @@
               configurePhase = ''
                 # Use musl headers and disable glibc's FORTIFY_SOURCE
                 # Note: -w suppresses all warnings, needed because zlib's configure checks for any stderr output
-                export CC="${pkgs.llvmPackages.clang-unwrapped}/bin/clang --target=${targetTriple}"
+                export CC="${pkgs.llvmPackages.clang-unwrapped}/bin/clang --target=${targetTriple} -nostdlib"
                 export AR="${pkgs.llvmPackages.bintools-unwrapped}/bin/llvm-ar"
                 export RANLIB="${pkgs.llvmPackages.bintools-unwrapped}/bin/llvm-ranlib"
                 export CFLAGS="-isystem ${muslLibc.dev}/include -flto=thin -O2 -U_FORTIFY_SOURCE -w"
