@@ -1286,15 +1286,24 @@ struct BrowserPath
 		@JSONOptional Nullable!bool mark;
 		@JSONOptional ulong[string] seenAs; // Map: path -> sample count
 
+		SerializedForm[] children;
+	}
+
+	struct ExportSerializedForm
+	{
+		string name;
+		SerializedForm.SerializedData data;
+		@JSONOptional Nullable!bool mark;
+		@JSONOptional ulong[string] seenAs; // Map: path -> sample count
 		BrowserPath*[] children;
 	}
 
-	SerializedForm toJSON()
+	ExportSerializedForm toJSON()
 	{
 		import std.conv : to;
 		import btdu.state : exportSeenAs;
 
-		SerializedForm s;
+		ExportSerializedForm s;
 		s.name = this.name[];
 		for (auto p = firstChild; p; p = p.nextSibling)
 			s.children ~= p;
@@ -1323,10 +1332,11 @@ struct BrowserPath
 		import std.conv : to;
 
 		auto p = BrowserPath(null, NameString(s.name));
-		foreach_reverse (child; s.children)
+		foreach_reverse (ref child; s.children)
 		{
-			child.nextSibling = p.firstChild;
-			p.firstChild = child;
+			auto parsedChild = growAllocator.make!BrowserPath(BrowserPath.fromJSON(child));
+			parsedChild.nextSibling = p.firstChild;
+			p.firstChild = parsedChild;
 		}
 		auto aggData = p.ensureAggregateData();
 		static foreach (sampleType; EnumMembers!SampleType)

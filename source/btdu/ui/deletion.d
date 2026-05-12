@@ -262,6 +262,78 @@ struct Deleter
 	}
 }
 
+version (Posix) unittest
+{
+	import std.algorithm.searching : canFind;
+	import std.conv : to, octal;
+	import std.datetime.stopwatch : MonoTime;
+	import std.file : mkdir, rmdir;
+	import std.path : buildPath;
+	import std.string : toStringz;
+
+	import core.sys.posix.unistd : getpid, getuid;
+	import core.sys.posix.sys.stat : chmod;
+	import core.thread : Thread;
+	import core.time : dur;
+
+	import btdu.state : fsPath;
+
+	// Running tests as root bypasses directory permissions, so this reproducer is not applicable.
+	if (getuid() == 0)
+		return;
+
+	auto tempRoot = buildPath("/tmp", "btdu-delete-repro-" ~ getpid().to!string ~ "-" ~ MonoTime.currTime.ticks.to!string);
+	auto blockedDir = buildPath(tempRoot, "blocked");
+
+	mkdir(tempRoot);
+	mkdir(blockedDir);
+	int chmodResult = chmod(blockedDir.toStringz, 0);
+	enforce(chmodResult == 0, "chmod");
+
+	void safeRmdir(string path)
+	{
+		try
+			rmdir(path);
+		catch (Exception)
+		{}
+	}
+
+	scope(exit)
+	{
+		chmod(blockedDir.toStringz, octal!"700");
+		safeRmdir(blockedDir);
+		safeRmdir(tempRoot);
+	}
+
+	auto oldFsPath = fsPath;
+	scope(exit) fsPath = oldFsPath;
+	fsPath = tempRoot;
+
+	BrowserPath root = BrowserPath(null, BrowserPath.NameString(""));
+	BrowserPath path = BrowserPath(&root, BrowserPath.NameString("blocked"));
+	Deleter deleter;
+	deleter.prepare([Deleter.Item(&path, false)]);
+	deleter.start();
+
+	foreach (_; 0 .. 500)
+	{
+		deleter.update();
+		auto state = deleter.getState();
+		if (state.status != Deleter.Status.progress)
+			break;
+		Thread.sleep(10.dur!"msecs");
+	}
+
+	auto state = deleter.getState();
+	assert(state.status == Deleter.Status.error, "Expected deletion error, got " ~ state.status.to!string);
+	assert(
+		state.error.canFind("Permission denied") ||
+		state.error.canFind("openat") ||
+		state.error.canFind("opendir"),
+		"Expected permission/open failure, got: " ~ state.error
+	);
+}
+
 private:
 
 // TODO: upstream into Druntime
