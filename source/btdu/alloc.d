@@ -209,6 +209,18 @@ struct SlabAllocator(T, size_t slabSize = 4 * 1024 * 1024, bool indexed = false)
 		Slab* slab;
 		size_t index;
 
+		// Advance off a slab-end boundary once a successor slab exists.
+		// The cursor may legitimately rest at (slab, itemsPerSlab) only while
+		// slab.next is still null (the slab is drained but not yet succeeded).
+		private void normalize()
+		{
+			if (slab !is null && index >= itemsPerSlab && slab.next !is null)
+			{
+				slab = slab.next;
+				index = 0;
+			}
+		}
+
 		bool empty()
 		{
 			// If slab is null, we started before any allocations - check if any exist now
@@ -220,6 +232,7 @@ struct SlabAllocator(T, size_t slabSize = 4 * 1024 * 1024, bool indexed = false)
 				slab = allocator.firstSlab;
 				index = 0;
 			}
+			normalize();
 			// Empty if we've caught up to the allocator's current position
 			return slab is allocator.currentSlab && index >= allocator.currentIndex;
 		}
@@ -334,3 +347,30 @@ struct SlabAllocator(T, size_t slabSize = 4 * 1024 * 1024, bool indexed = false)
 
 /// Alias for indexed slab allocator
 alias IndexedSlabAllocator(T, size_t slabSize = 4 * 1024 * 1024) = SlabAllocator!(T, slabSize, true);
+
+unittest
+{
+	SlabAllocator!(int, 64) allocator;
+	auto range = allocator.openRange();
+
+	foreach (i; 0 .. typeof(allocator).itemsPerSlab)
+	{
+		auto mem = allocator.allocate(int.sizeof);
+		*cast(int*)mem.ptr = cast(int)i;
+	}
+
+	foreach (i; 0 .. typeof(allocator).itemsPerSlab)
+	{
+		assert(!range.empty);
+		assert(*range.frontPtr == i);
+		range.popFront();
+	}
+
+	assert(range.empty);
+
+	auto mem = allocator.allocate(int.sizeof);
+	*cast(int*)mem.ptr = 42;
+
+	assert(!range.empty);
+	assert(*range.frontPtr == 42);
+}
