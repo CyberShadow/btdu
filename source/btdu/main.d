@@ -592,8 +592,6 @@ private string formatSubvolumeError(string fsPath, MountInfo[] mounts)
 {
 	import std.algorithm.searching : canFind;
 
-	string msg = "The specified path is not mounted from the btrfs top-level subvolume.\n\n";
-
 	// Get mount info and detect common layouts
 	auto mountInfo = mounts.getPathMountInfo(fsPath);
 	auto options = mountInfo.mntops
@@ -603,9 +601,36 @@ private string formatSubvolumeError(string fsPath, MountInfo[] mounts)
 		.assocArray;
 
 	string currentSubvol;
-	if ("subvol" in options)
-		currentSubvol = options["subvol"];
+	bool mountIsTopLevel = true;
+	if (auto subvol = "subvol" in options)
+	{
+		currentSubvol = *subvol;
+		mountIsTopLevel = currentSubvol == "/";
+	}
+	if (auto subvolid = "subvolid" in options)
+		mountIsTopLevel = mountIsTopLevel || *subvolid == "5";
 
+	string msg;
+	if (mountIsTopLevel)
+	{
+		msg = "The specified path is not the top-level subvolume of its btrfs filesystem.\n\n";
+		msg ~= "> WHAT WENT WRONG:\n\n" ~
+			"  The path you specified (\"" ~ fsPath ~ "\") is located inside a nested\n" ~
+			"  subvolume, not the top-level subvolume.\n\n" ~
+			"  btdu must be given the mount point of the top-level subvolume itself,\n" ~
+			"  not a path within it.\n\n" ~
+			"> WHY THIS MATTERS:\n\n" ~
+			"  btdu analyzes the entire filesystem and needs the top-level subvolume\n" ~
+			"  to reach all subvolumes and snapshots.\n\n" ~
+			"> WHAT TO DO:\n\n" ~
+			"  The top-level subvolume of this filesystem is already mounted at\n" ~
+			"  \"" ~ mountInfo.file ~ "\". Run btdu there instead:\n\n" ~
+			format("     sudo %s",
+				[Runtime.args[0], mountInfo.file].escapeShellCommand);
+		return msg;
+	}
+
+	msg = "The specified path is not mounted from the btrfs top-level subvolume.\n\n";
 	msg ~= "> WHAT WENT WRONG:\n\n";
 	if (fsPath == "/")
 		msg ~= "  Your root filesystem \"/\" is a btrfs subvolume, but not the top-level one.\n";
