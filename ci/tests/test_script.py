@@ -737,6 +737,25 @@ def test_auto_mount_with_subvolume():
     print(f"  ✓ --auto-mount collected {samples} samples")
 
 
+def test_nested_subvolume_path_uses_existing_top_level_mount():
+    """Verify a nested subvolume path suggests the existing top-level mount."""
+    machine.succeed("mkfs.btrfs -f /dev/vdb")
+    machine.succeed("mkdir -p /mnt/btrfs")
+    machine.succeed("mount /dev/vdb /mnt/btrfs")
+
+    machine.succeed("btrfs subvolume create /mnt/btrfs/nested")
+    machine.succeed("dd if=/dev/urandom of=/mnt/btrfs/nested/testfile.dat bs=1M count=1")
+    machine.succeed("sync")
+
+    result = machine.fail("btdu --headless /mnt/btrfs/nested 2>&1")
+    assert "not the top-level subvolume of its btrfs filesystem" in result, f"Expected nested-subvolume error, got: {result}"
+    assert "already mounted at" in result, f"Expected guidance to existing mount, got: {result}"
+    assert "sudo btdu /mnt/btrfs" in result, f"Expected top-level mount command, got: {result}"
+    assert "mount -o subvol=/" not in result, f"Should not suggest creating another mount, got: {result}"
+    assert "--auto-mount" not in result, f"Should not suggest --auto-mount, got: {result}"
+    print("  ✓ Nested subvolume path suggests existing top-level mount only")
+
+
 def test_auto_mount_prefer_ignore_rejected():
     """Verify --prefer/--ignore options are rejected with --auto-mount."""
     # Setup: mount non-top-level subvolume
@@ -1837,6 +1856,7 @@ def execute_all_tests():
         test_non_btrfs_error,
         test_conflicting_options,
         test_auto_mount_with_subvolume,
+        test_nested_subvolume_path_uses_existing_top_level_mount,
         test_auto_mount_prefer_ignore_rejected,
         test_auto_mount_with_top_level,
         test_auto_mount_with_block_device,
