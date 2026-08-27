@@ -93,13 +93,8 @@
         # ============================================================
 
         # LDC source for building runtime (with ARM musl patch applied)
-        ldcSrcUnpatched = pkgs.fetchFromGitHub {
-          owner = "ldc-developers";
-          repo = "ldc";
-          tag = "v${pkgs.ldc.version}";
-          hash = "sha256-6LcpY3LSFK4KgEiGrFp/LONu5Vr+/+vI04wEEpF3s+s=";
-          fetchSubmodules = true;
-        };
+        # - Reuse nixpkgs' own LDC source so it always matches the ldc-build-runtime
+        ldcSrcUnpatched = pkgs.ldc.src;
 
         # Apply ARM musl patches to LDC source
         # - stat.d: Add stat_t for musl ARM (correct struct size)
