@@ -15,7 +15,7 @@ import core.lifetime : move;
 
 import ae.sys.data;
 import ae.sys.datamm;
-import ae.utils.json;
+import ae.utils.serialization.json;
 
 import btrfs.c.ioctl : btrfs_ioctl_fs_info_args;
 
@@ -91,8 +91,19 @@ void importData(string path)
 // JSON format
 // ============================================================================
 
-/// Serialized
-struct SerializedState
+/// Serialized import state
+struct ImportedSerializedState
+{
+	bool expert;
+	@JSONOptional bool physical;
+	string fsPath;
+	@JSONOptional string fsid;  /// UUID formatted as "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+	ulong totalSize;
+	BrowserPath.SerializedForm root;
+}
+
+/// Serialized export state
+struct ExportedSerializedState
 {
 	bool expert;
 	@JSONOptional bool physical;
@@ -121,19 +132,35 @@ private typeof(btrfs_ioctl_fs_info_args.fsid) parseFsid(string s)
 /// Load and parse an exported JSON file.
 /// Returns the parsed state structure.
 /// The memory-mapped file is stored in the output parameter to keep it alive.
-private SerializedState loadExportFile(string path, out Data mmapData)
+private ImportedSerializedState loadExportFile(string path, out Data mmapData)
 {
 	mmapData = mapFile(path, MmMode.read);
 	auto json = cast(string)mmapData.unsafeContents;
 
 	debug importing = true;
 	scope(exit) debug importing = false;
-	return json.jsonParse!SerializedState();
+	return json.jsonParse!ImportedSerializedState();
 }
 
 /// Keep memory-mapped files alive, as directory names may reference them
 private __gshared Data importMmapData;
 private __gshared Data compareMmapData;
+
+private struct JsonOutputAdapter(Output)
+{
+	Output output;
+
+	void put(T...)(T args)
+	{
+		static foreach (arg; args)
+			output.put(arg);
+	}
+
+	string get()
+	{
+		return null;
+	}
+}
 
 bool isJsonFormat(string path)
 {
@@ -158,7 +185,10 @@ void importJson(string path)
 	fsPath = s.fsPath;
 	fsid = parseFsid(s.fsid);
 	totalSize = s.totalSize;
-	move(*s.root, browserRoot);
+	debug importing = true;
+	scope(exit) debug importing = false;
+	auto importedRoot = BrowserPath.fromJSON(s.root);
+	move(importedRoot, browserRoot);
 
 	browserRoot.resetParents();
 	imported = true;
@@ -194,7 +224,10 @@ private void importCompareJson(string path)
 	compareTotalSize = s.totalSize;
 	compareFsid = parseFsid(s.fsid);
 	// Note: we don't set fsPath from compare - keep current fsPath
-	move(*s.root, compareRoot);
+	debug importing = true;
+	scope(exit) debug importing = false;
+	auto importedCompareRoot = BrowserPath.fromJSON(s.root);
+	move(importedCompareRoot, compareRoot);
 
 	compareRoot.resetParents();
 	compareMode = true;
@@ -221,7 +254,7 @@ void exportData(string path, ExportFormat fmt = ExportFormat.json)
 
 private void exportJson(string path)
 {
-	SerializedState s;
+	ExportedSerializedState s;
 	s.expert = expert;
 	s.physical = physical;
 	s.fsPath = fsPath;
@@ -230,14 +263,14 @@ private void exportJson(string path)
 	s.root = browserRootPtr;
 
 	alias LockingBinaryWriter = typeof(File.lockingBinaryWriter());
-	alias JsonFileSerializer = CustomJsonSerializer!(JsonWriter!LockingBinaryWriter);
+	alias OutputAdapter = JsonOutputAdapter!LockingBinaryWriter;
 
-	{
-		JsonFileSerializer j;
-		auto file = path is null ? stdout : File(path, "wb");
-		j.writer.output = file.lockingBinaryWriter;
-		j.put(s);
-	}
+	auto file = path is null ? stdout : File(path, "wb");
+	OutputAdapter output;
+	output.output = file.lockingBinaryWriter;
+	JsonWriter!OutputAdapter writer;
+	writer.output = output;
+	JsonCustomSerializer.Impl!Object.read(&writer, s);
 }
 
 // ============================================================================
