@@ -156,12 +156,12 @@ private struct JsonOutputAdapter(Output)
 			output.put(arg);
 	}
 
-	auto get()
+	static if (__traits(compiles, { Output output; output.get(); }))
 	{
-		static if (__traits(compiles, output.get()))
+		auto get()
+		{
 			return output.get();
-		else
-			return "";
+		}
 	}
 }
 
