@@ -246,7 +246,7 @@ private void exportJson(string path)
 	s.totalSize = totalSize;
 	s.root = browserRootPtr;
 
-	auto file = path is null ? stdout : File(path, "w");
+	auto file = path is null ? stdout : File(path, "wb");
 	file.write(toJson(s));
 }
 
