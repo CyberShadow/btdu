@@ -146,22 +146,6 @@ private ImportedSerializedState loadExportFile(string path, out Data mmapData)
 private __gshared Data importMmapData;
 private __gshared Data compareMmapData;
 
-private struct JsonOutputAdapter(Output)
-{
-	Output output;
-
-	void put(T...)(T args)
-	{
-		static foreach (arg; args)
-			output.put(arg);
-	}
-
-	string get()
-	{
-		return null;
-	}
-}
-
 bool isJsonFormat(string path)
 {
 	import std.file : read;
@@ -262,15 +246,8 @@ private void exportJson(string path)
 	s.totalSize = totalSize;
 	s.root = browserRootPtr;
 
-	alias LockingBinaryWriter = typeof(File.lockingBinaryWriter());
-	alias OutputAdapter = JsonOutputAdapter!LockingBinaryWriter;
-
-	auto file = path is null ? stdout : File(path, "wb");
-	OutputAdapter output;
-	output.output = file.lockingBinaryWriter;
-	JsonWriter!OutputAdapter writer;
-	writer.output = output;
-	JsonCustomSerializer.Impl!Object.read(&writer, s);
+	auto file = path is null ? stdout : File(path, "w");
+	file.write(toJson(s));
 }
 
 // ============================================================================
