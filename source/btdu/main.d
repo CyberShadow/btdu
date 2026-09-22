@@ -47,6 +47,7 @@ import btdu.common;
 import btdu.impexp : ExportFormat, importData, importCompareData, exportData, guessExportFormat, exportExtensions;
 import btdu.paths;
 import btdu.sample;
+import btdu.runstate;
 import btdu.subproc;
 import btdu.state;
 
@@ -83,6 +84,13 @@ void program(
 
 	if (autoMount && (prefer.length || ignore.length))
 		throw new Exception("--prefer and --ignore options are not available with --auto-mount");
+
+	SamplingRun samplingRun;
+	samplingRun.initialize(
+		maxSamples ? maxSamples.value : null,
+		maxTime ? maxTime.value : null,
+		minResolution ? minResolution.value : null,
+	);
 
 	if (man)
 	{
@@ -146,7 +154,7 @@ Please report defects and enhancement requests to the GitHub issue tracker:
 		if (procs == 0)
 			procs = totalCPUs;
 
-		subprocesses = new Subprocess[procs];
+		subprocesses = configureSubprocesses(rndGen, procs, &samplingRun.sampleLimit);
 		foreach (ref subproc; subprocesses)
 			subproc.start();
 	}
@@ -179,28 +187,6 @@ Please report defects and enhancement requests to the GitHub issue tracker:
 		}
 	}
 
-	Duration parsedMaxTime;
-	if (maxTime)
-		parsedMaxTime = parseDuration(maxTime);
-
-	ulong parsedMaxSamples = ulong.max;  // ulong.max means no limit
-	if (maxSamples)
-		parsedMaxSamples = maxSamples.to!ulong;
-
-	foreach (ref subproc; subprocesses)
-		subproc.sampleLimit = &parsedMaxSamples;
-
-	@property real parsedMinResolution()
-	{
-		static Nullable!real value;
-		assert(minResolution && totalSize, "minResolution or totalSize is not set");
-		return value.require({
-			if (minResolution.value.endsWith("%"))
-				return minResolution[0 .. $-1].to!real / 100 * totalSize;
-			return parseSize(minResolution);
-		}());
-	}
-
 	Browser browser;
 	if (!headless)
 	{
@@ -208,11 +194,11 @@ Please report defects and enhancement requests to the GitHub issue tracker:
 		browser.update();
 	}
 
-	auto startTime = MonoTime.currTime();
+	samplingRun.startTime = MonoTime.currTime();
 	auto refreshInterval = 500.msecs;
 	if (refreshIntervalStr)
 		refreshInterval = parseDuration(refreshIntervalStr);
-	auto nextRefresh = startTime;
+	samplingRun.nextRefresh = samplingRun.startTime;
 
 	enum totalMaxDuration = 1.seconds / 60; // 60 FPS
 
@@ -232,7 +218,7 @@ Please report defects and enhancement requests to the GitHub issue tracker:
 	}
 
 	// Main event loop
-	while (run)
+	mainLoop: while (run)
 	{
 		readSet.reset();
 		exceptSet.reset();
@@ -262,22 +248,35 @@ Please report defects and enhancement requests to the GitHub issue tracker:
 
 		if (browser.curses.stdinSocket && browser.handleInput())
 		{
-			do {} while (browser.handleInput()); // Process all input
+			do
+			{
+				if (browser.consumeRestartRequest())
+				{
+					samplingRun.replaceWorkers(subprocesses);
+					paused = false;
+					foreach (i, ref worker; subprocesses)
+						worker.start();
+					browser.update();
+					continue mainLoop;
+				}
+			}
+			while (browser.handleInput()); // Process all input
 			if (browser.done)
 				break;
 			browser.update();
-			nextRefresh = now + refreshInterval;
+			samplingRun.nextRefresh = now + refreshInterval;
 		}
 
 		// Check limits before processing new samples
-		if ((maxSamples
-				&& browserRoot.getSamples(SampleType.represented) >= parsedMaxSamples) ||
-			(maxTime
-				&& now >= startTime + parsedMaxTime) ||
-			(minResolution
+		if (samplingRun.limitsArmed && (
+			(!samplingRun.maxSamples.isNull
+				&& browserRoot.getSamples(SampleType.represented) >= samplingRun.maxSamples.get) ||
+			(!samplingRun.maxTime.isNull
+				&& now >= samplingRun.startTime + samplingRun.maxTime.get) ||
+			(samplingRun.minResolution
 				&& browserRoot.getSamples(SampleType.represented)
 				&& totalSize
-				&& (totalSize / browserRoot.getSamples(SampleType.represented)) <= parsedMinResolution))
+				&& (totalSize / browserRoot.getSamples(SampleType.represented)) <= samplingRun.parsedMinResolution(totalSize))))
 		{
 			if (headless || exitOnLimit)
 				break;
@@ -290,8 +289,7 @@ Please report defects and enhancement requests to the GitHub issue tracker:
 					browser.update();
 				}
 				// Only pause once
-				maxSamples = maxTime = minResolution = null;
-				parsedMaxSamples = ulong.max;
+				samplingRun.disarmLimits();
 			}
 		}
 
@@ -324,10 +322,10 @@ Please report defects and enhancement requests to the GitHub issue tracker:
 			}
 		}
 
-		if (!headless && now > nextRefresh)
+		if (!headless && now > samplingRun.nextRefresh)
 		{
 			browser.update();
-			nextRefresh = now + refreshInterval;
+			samplingRun.nextRefresh = now + refreshInterval;
 		}
 	}
 
@@ -340,7 +338,7 @@ Please report defects and enhancement requests to the GitHub issue tracker:
 				"Collected %s samples (achieving a resolution of ~%s) in %s.",
 				totalSamples,
 				totalSamples ? (totalSize / totalSamples).humanSize().to!string : "-",
-				MonoTime.currTime() - startTime,
+				MonoTime.currTime() - samplingRun.startTime,
 			);
 		}
 

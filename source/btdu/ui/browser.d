@@ -142,6 +142,7 @@ struct Browser
 		none,
 		deleteConfirm,
 		deleteProgress,
+		restartConfirm,
 		rebuild,
 		exportFormat,
 	}
@@ -189,6 +190,19 @@ struct Browser
 	bool infoPanelsVisible = true;
 
 	Deleter deleter;
+	private bool restartRequested;
+
+	bool consumeRestartRequest()
+	{
+		if (!restartRequested)
+			return false;
+		assert(deleter.getState().status == Deleter.Status.none,
+			"Cannot restart while deletion is active");
+		assert(!rebuildInProgress(), "Cannot restart while rebuilding");
+		auto result = restartRequested;
+		restartRequested = false;
+		return result;
+	}
 
 	void start()
 	{
@@ -1738,6 +1752,7 @@ struct Browser
 									printKey("Open selected node", button("↵ Enter"), " ", button("→"), " ", button("l"));
 									printKey("Return to parent node", button("←"), " ", button("h"));
 									printKey("Pause/resume", button("p"));
+									printKey("Restart live sampling", button("⇧ Shift"), "+", button("R"));
 									printKey("Sort by name (ascending/descending)", button("n"));
 									printKey("Sort by size (ascending/descending)", button("s"));
 									printKey("Sort by delta [compare mode]", button("c"));
@@ -1890,6 +1905,15 @@ struct Browser
 										);
 										break;
 								}
+								break;
+
+							case Popup.restartConfirm:
+								title = "Restart sampling";
+								write(
+									"Restart sampling? Collected samples will be cleared and sampling will resume.", endl,
+									endl,
+									"Press Shift+Y to confirm, any other key to cancel.",
+								);
 								break;
 
 							case Popup.rebuild:
@@ -2170,8 +2194,12 @@ struct Browser
 
 		if (ch == Curses.Key.none)
 			return false; // no events - would have blocked
-		else
-			message = null;
+		return handleKey(ch);
+	}
+
+	bool handleKey(Curses.Key ch)
+	{
+		message = null;
 
 		static char ctrl(char letter) in(letter >= 'a' && letter <= 'z') { return cast(char)(letter - 'a' + 1); }
 
@@ -2262,6 +2290,21 @@ struct Browser
 				}
 				return true;
 
+			case Popup.restartConfirm:
+				switch (ch)
+				{
+					case 'Y':
+						popup = Popup.none;
+						restartRequested = true;
+						break;
+
+					default:
+						popup = Popup.none;
+						showMessage("Sampling restart cancelled.");
+						break;
+				}
+				return true;
+
 			case Popup.rebuild:
 				// No input handling during rebuild - it's a blocking operation
 				return true;
@@ -2306,6 +2349,12 @@ struct Browser
 			case Mode.browser:
 				switch (ch)
 				{
+					case 'R':
+						if (imported)
+							showMessage("Viewing an imported file, cannot restart sampling");
+						else
+							popup = Popup.restartConfirm;
+						break;
 					case '?':
 					case Curses.Key.f1:
 						mode = Mode.help;
@@ -2653,6 +2702,38 @@ struct Browser
 
 		return true;
 	}
+}
+
+unittest
+{
+	resetLiveSamplingState();
+	imported = false;
+
+	Browser browser;
+
+	browser.handleKey(Curses.Key('R'));
+	assert(browser.popup == Browser.Popup.restartConfirm);
+	browser.handleKey(Curses.Key('Y'));
+	assert(browser.popup == Browser.Popup.none);
+	assert(browser.consumeRestartRequest());
+	assert(!browser.consumeRestartRequest());
+
+	browser.handleKey(Curses.Key('R'));
+	browser.handleKey(Curses.Key('y'));
+	assert(browser.popup == Browser.Popup.none);
+	assert(!browser.consumeRestartRequest());
+	browser.handleKey(Curses.Key('R'));
+	browser.handleKey(Curses.Key('n'));
+	assert(browser.popup == Browser.Popup.none);
+	assert(!browser.consumeRestartRequest());
+
+	imported = true;
+	browser.handleKey(Curses.Key('R'));
+	assert(browser.popup == Browser.Popup.none);
+	assert(!browser.consumeRestartRequest());
+	imported = false;
+
+	resetLiveSamplingState();
 }
 
 private:
