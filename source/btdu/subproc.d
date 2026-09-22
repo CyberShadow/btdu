@@ -29,7 +29,7 @@ import std.conv;
 import std.exception;
 import std.file;
 import std.process;
-import std.random;
+import std.random : Random, uniform;
 import std.socket;
 import std.stdio : stdin;
 import std.string;
@@ -50,10 +50,14 @@ struct Subprocess
 	Pipe pipe;
 	Socket socket;
 	Pid pid;
+	Seed seed;
 	ulong* sampleLimit;  /// Points to limit value; ulong.max means no limit
 
 	void start()
 	{
+		assert(pid is Pid.init && socket is null, "Subprocess already started");
+		assert(sampleLimit, "sampleLimit not configured");
+
 		pipe = .pipe();
 		socket = new Socket(cast(socket_t)pipe.readEnd.fileno.dup, AddressFamily.UNSPEC);
 		socket.blocking = false;
@@ -62,7 +66,7 @@ struct Subprocess
 			[
 				thisExePath,
 				"--subprocess",
-				"--seed", rndGen.uniform!Seed.text,
+				"--seed", seed.text,
 				"--physical=" ~ physical.text,
 				"--",
 				fsPath,
@@ -77,9 +81,8 @@ struct Subprocess
 		pid.kill(doPause ? SIGSTOP : SIGCONT);
 	}
 
-	void terminate()
+	private void closeDescriptors()
 	{
-		// Close pipe first to avoid subprocess getting SIGPIPE while trying to write
 		if (socket)
 		{
 			socket.close();
@@ -87,7 +90,13 @@ struct Subprocess
 		}
 		pipe.readEnd.close();
 		pipe.writeEnd.close();
+		pipe = Pipe.init;
+	}
 
+	void terminate()
+	{
+		// Close pipe first to avoid subprocess getting SIGPIPE while trying to write
+		closeDescriptors();
 		// Kill and wait for subprocess
 		if (pid !is Pid.init)
 		{
@@ -462,6 +471,38 @@ struct Subprocess
 	}
 }
 
+/// Allocate fresh workers with parent-assigned seeds and one stable limit.
+Subprocess[] configureSubprocesses(ref Random random, size_t count, ulong* sampleLimit)
+{
+	assert(sampleLimit !is null);
+	auto result = new Subprocess[count];
+	foreach (ref subprocess; result)
+	{
+		subprocess.seed = random.uniform!Seed;
+		subprocess.sampleLimit = sampleLimit;
+	}
+	return result;
+}
+
+/// Force-retire and discard every subprocess.
+void forceTerminate(ref Subprocess[] subprocesses)
+{
+	foreach (ref subprocess; subprocesses)
+		if (subprocess.pid !is Pid.init)
+			subprocess.pid.kill(SIGKILL);
+
+	foreach (ref subprocess; subprocesses)
+	{
+		subprocess.closeDescriptors();
+		if (subprocess.pid !is Pid.init)
+		{
+			subprocess.pid.wait();
+			subprocess.pid = Pid.init;
+		}
+	}
+	subprocesses = null;
+}
+
 unittest
 {
 	resetLiveSamplingState();
@@ -542,6 +583,141 @@ unittest
 	resetLiveSamplingState();
 	root.setMark(false);
 	expert = false;
+}
+
+unittest
+{
+	import core.stdc.errno : ECHILD, errno;
+	import core.sys.posix.sys.wait : WNOHANG, waitpid;
+	import std.stdio : File;
+
+	ulong sampleLimit = 123;
+	auto subprocesses = new Subprocess[2];
+	auto oldPids = new Pid[subprocesses.length];
+
+	foreach (i, ref subprocess; subprocesses)
+	{
+		subprocess.sampleLimit = &sampleLimit;
+		subprocess.pipe = .pipe();
+		subprocess.socket = new Socket(
+			cast(socket_t) subprocess.pipe.readEnd.fileno.dup,
+			AddressFamily.UNSPEC);
+		subprocess.socket.blocking = false;
+		File childWriteEnd;
+		childWriteEnd.fdopen(subprocess.pipe.writeEnd.fileno.dup, "wb");
+		subprocess.pid = spawnProcess(
+			["/bin/sh", "-c", "exec sleep 600"],
+			stdin,
+			childWriteEnd,
+		);
+		oldPids[i] = subprocess.pid;
+	}
+	subprocesses[0].pause(true);
+
+	forceTerminate(subprocesses);
+
+	assert(subprocesses is null);
+	foreach (i; 0 .. oldPids.length)
+	{
+		int status;
+		assert(waitpid(oldPids[i].processID, &status, WNOHANG) == -1);
+		assert(errno == ECHILD);
+	}
+}
+
+unittest
+{
+	import std.random : Random, uniform;
+
+	void appendHeader(ref ubyte[] data, size_t type, size_t bodyLength)
+	{
+		Header header = Header(Header.sizeof + bodyLength, type);
+		data ~= header.asBytes;
+	}
+	void appendResultStart(ref ubyte[] data, ResultStartMessage message)
+	{
+		appendHeader(data, 2, ResultStartMessage.sizeof);
+		data ~= message.asBytes;
+	}
+	void appendResultError(ref ubyte[] data, btdu.proto.Error error)
+	{
+		appendHeader(data, 8, size_t.sizeof + error.msg.length + int.sizeof +
+			size_t.sizeof + error.path.length);
+		size_t length = error.msg.length;
+		data ~= length.asBytes;
+		data ~= cast(const(ubyte)[]) error.msg;
+		data ~= error.errno.asBytes;
+		length = error.path.length;
+		data ~= length.asBytes;
+		data ~= cast(const(ubyte)[]) error.path;
+	}
+	void appendResultEnd(ref ubyte[] data, ResultEndMessage message)
+	{
+		appendHeader(data, 9, ResultEndMessage.sizeof);
+		data ~= message.asBytes;
+	}
+	void openInputPipe(ref Subprocess subprocess)
+	{
+		subprocess.pipe = .pipe();
+		subprocess.socket = new Socket(cast(socket_t) subprocess.pipe.readEnd.fileno.dup,
+			AddressFamily.UNSPEC);
+		subprocess.socket.blocking = false;
+	}
+	void receive(ref Subprocess subprocess, ubyte[] data)
+	{
+		auto written = write(subprocess.pipe.writeEnd.fileno, data.ptr, data.length);
+		assert(written == data.length);
+		while (subprocess.handleInput()) {}
+	}
+
+	resetLiveSamplingState();
+	totalSize = 1;
+	ulong sampleLimit = ulong.max;
+	auto expectedRandom = Random(cast(Seed) 0);
+	auto actualRandom = Random(cast(Seed) 0);
+	auto oldWorkers = configureSubprocesses(actualRandom, 1, &sampleLimit);
+	assert(oldWorkers[0].seed == expectedRandom.uniform!Seed);
+	assert(actualRandom.uniform!Seed == expectedRandom.uniform!Seed);
+	assert(oldWorkers[0].sampleLimit is &sampleLimit);
+	openInputPipe(oldWorkers[0]);
+
+	ubyte[] oldInput;
+	appendResultStart(oldInput, ResultStartMessage(0, Offset(0), 0, currentGeneration));
+	appendResultError(oldInput, btdu.proto.Error("old", 0, ""));
+	appendResultEnd(oldInput, ResultEndMessage(1));
+	receive(oldWorkers[0], oldInput[0 .. $ - 1]);
+	assert(oldWorkers[0].bufEnd > oldWorkers[0].bufStart);
+	assert(oldWorkers[0].result != Subprocess.Result.init);
+	assert(oldWorkers[0].allPaths.peek().length == 1);
+	assert(browserRoot.getSamples(SampleType.represented) == 0);
+
+	auto retired = oldWorkers;
+	auto savedSeed = retired[0].seed;
+	auto savedLimit = retired[0].sampleLimit;
+	forceTerminate(oldWorkers);
+	assert(oldWorkers is null);
+	assert(browserRoot.getSamples(SampleType.represented) == 0);
+
+	auto freshWorkers = new Subprocess[1];
+	freshWorkers[0].seed = savedSeed;
+	freshWorkers[0].sampleLimit = savedLimit;
+	assert(freshWorkers[0].buf is null);
+	assert(freshWorkers[0].bufStart == 0 && freshWorkers[0].bufEnd == 0);
+	assert(freshWorkers[0].result == Subprocess.Result.init);
+	assert(freshWorkers[0].allPaths.peek().length == 0);
+	openInputPipe(freshWorkers[0]);
+	ubyte[] freshInput;
+	appendResultStart(freshInput, ResultStartMessage(0, Offset(0), 0, currentGeneration));
+	appendResultError(freshInput, btdu.proto.Error("fresh", 0, ""));
+	appendResultEnd(freshInput, ResultEndMessage(1));
+	receive(freshWorkers[0], freshInput);
+	assert(browserRoot.getSamples(SampleType.represented) == 1);
+	assert(freshWorkers[0].result == Subprocess.Result.init);
+	assert(freshWorkers[0].allPaths.peek().length == 0);
+	freshWorkers[0].closeDescriptors();
+	retired[0].terminate();
+
+	resetLiveSamplingState();
 }
 
 private SubPath* appendError(ref SubPath path, ref btdu.proto.Error error)
