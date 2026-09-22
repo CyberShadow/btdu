@@ -144,6 +144,23 @@ struct SlabAllocator(T, size_t slabSize = 4 * 1024 * 1024, bool indexed = false)
 		return (cast(void*) &currentSlab.items[currentIndex++])[0 .. T.sizeof];
 	}
 
+	/// Release all slabs and reset the allocator to its initial state.
+	void clear()
+	{
+		for (auto slab = firstSlab; slab; )
+		{
+			auto next = slab.next;
+			auto deallocated = MmapAllocator.instance.deallocate((cast(void*) slab)[0 .. Slab.sizeof]);
+			assert(deallocated);
+			slab = next;
+		}
+		firstSlab = null;
+		currentSlab = null;
+		currentIndex = 0;
+		static if (indexed)
+			slabIndex = null;
+	}
+
 	/// Iterate over all allocated items.
 	int opApply(scope int delegate(ref T) dg)
 	{
@@ -267,3 +284,47 @@ struct SlabAllocator(T, size_t slabSize = 4 * 1024 * 1024, bool indexed = false)
 
 /// Alias for indexed slab allocator
 alias IndexedSlabAllocator(T, size_t slabSize = 4 * 1024 * 1024) = SlabAllocator!(T, slabSize, true);
+
+unittest
+{
+	import std.typecons : Ternary;
+
+	alias Allocator = IndexedSlabAllocator!(int, 64);
+	Allocator allocator;
+
+	foreach (i; 0 .. Allocator.itemsPerSlab + 1)
+		*cast(int*) allocator.allocate(int.sizeof).ptr = cast(int) i;
+	assert(allocator.length == Allocator.itemsPerSlab + 1);
+	assert(allocator.slabIndex.length == 2);
+
+	allocator.clear();
+	assert(allocator.opSlice.empty);
+	assert(allocator.length == 0);
+	assert(allocator.slabIndex.length == 0);
+
+	auto item = allocator.allocate(int.sizeof);
+	assert(allocator.indexOf(cast(const(int)*) item.ptr) == 0);
+
+	allocator.clear();
+	assert(allocator.opSlice.empty);
+	assert(allocator.length == 0);
+	assert(allocator.slabIndex.length == 0);
+}
+
+unittest
+{
+	import std.typecons : Ternary;
+
+	CheckedAllocator!GrowAllocator allocator;
+
+	auto first = allocator.allocate(16);
+	(cast(ubyte[]) first)[] = 0xAA;
+	assert(allocator.empty == Ternary.no);
+
+	allocator.deallocateAll();
+	assert(allocator.empty == Ternary.yes);
+
+	auto second = allocator.allocate(16);
+	(cast(ubyte[]) second)[] = 0x55;
+	assert(allocator.empty == Ternary.no);
+}

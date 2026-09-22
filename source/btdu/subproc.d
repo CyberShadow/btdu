@@ -337,9 +337,9 @@ struct Subprocess
 		else
 		{
 			// New set of paths - allocate and create new group
-			auto persistentPaths = growAllocator.makeArray!GlobalPath(paths.length);
+			auto persistentPaths = sharingGroupDataAllocator.makeArray!GlobalPath(paths.length);
 			persistentPaths[] = paths[];
-			auto pathData = growAllocator.makeArray!(SharingGroup.PathData)(paths.length);
+			auto pathData = sharingGroupDataAllocator.makeArray!(SharingGroup.PathData)(paths.length);
 			pathData[] = SharingGroup.PathData.init;
 
 			// Find the representative index
@@ -460,6 +460,88 @@ struct Subprocess
 	{
 		throw new Exception("Subprocess encountered a fatal error:\n" ~ cast(string)m.msg);
 	}
+}
+
+unittest
+{
+	resetLiveSamplingState();
+	expert = true;
+	auto root = browserRootPtr;
+	root.setMark(true);
+
+	GlobalPath[] paths = [
+		GlobalPath(null, subPathRoot.appendName("a")),
+		GlobalPath(null, subPathRoot.appendName("b")),
+	];
+	Offset offset;
+	void observe(SharingGroup* group, bool needsLinking)
+	{
+		populateBrowserPathsFromSharingGroup(
+			group, needsLinking, 1, (&offset)[0 .. 1], 7);
+		group.data.add(1, (&offset)[0 .. 1], 7);
+	}
+
+	bool isNew;
+	auto group = Subprocess.saveSharingGroup(root, paths, isNew);
+	assert(isNew);
+	observe(group, isNew);
+	group = Subprocess.saveSharingGroup(root, paths, isNew);
+	assert(!isNew);
+	observe(group, isNew);
+	assert(root.getSamples(SampleType.represented) == 2);
+	assert(root.getSamples(SampleType.exclusive) == 2);
+	assert(root.getSamples(SampleType.shared_) == 4);
+	assert(root.getDistributedSamples() == 2);
+	assert(marked.getSamples(SampleType.exclusive) == 2);
+	assert(markTotalSamples == 2);
+	auto firstPath = group.pathData[0].path;
+	auto secondPath = group.pathData[1].path;
+	assert(firstPath.firstSharingGroup is group);
+	assert(secondPath.firstSharingGroup is group);
+	assert(numSharingGroups == 1);
+
+	group = null;
+	resetLiveSamplingState();
+
+	assert(browserRootPtr is root);
+	assert(root.getEffectiveMark());
+	assert(firstPath.firstSharingGroup is null);
+	assert(secondPath.firstSharingGroup is null);
+	assert(root.getSamples(SampleType.represented) == 0);
+	assert(root.getSamples(SampleType.exclusive) == 0);
+	assert(root.getSamples(SampleType.shared_) == 0);
+	assert(root.getDistributedSamples() == 0);
+	assert(marked.getSamples(SampleType.exclusive) == 0);
+	assert(markTotalSamples == 0);
+
+	group = Subprocess.saveSharingGroup(root, paths, isNew);
+	assert(isNew);
+	observe(group, isNew);
+	assert(numSharingGroups == 1);
+	assert(root.getSamples(SampleType.represented) == 1);
+	assert(root.getSamples(SampleType.exclusive) == 1);
+	assert(root.getSamples(SampleType.shared_) == 2);
+	assert(root.getDistributedSamples() == 1);
+	assert(group.pathData[0].path is firstPath);
+	assert(group.pathData[1].path is secondPath);
+
+	startRebuild();
+	while (processRebuildStep())
+	{}
+	assert(root.getSamples(SampleType.represented) == 1);
+	assert(root.getSamples(SampleType.exclusive) == 1);
+
+	group = null;
+	resetLiveSamplingState();
+	group = Subprocess.saveSharingGroup(root, paths, isNew);
+	assert(isNew);
+	observe(group, isNew);
+	assert(root.getSamples(SampleType.represented) == 1);
+
+	group = null;
+	resetLiveSamplingState();
+	root.setMark(false);
+	expert = false;
 }
 
 private SubPath* appendError(ref SubPath path, ref btdu.proto.Error error)

@@ -83,6 +83,9 @@ struct SamplingState
 	/// Slab allocator instance for SharingGroups - enables efficient iteration over all groups.
 	SlabAllocator!SharingGroup sharingGroupAllocator;
 
+	/// Storage for variable data owned by live sharing groups.
+	CheckedAllocator!GrowAllocator sharingGroupDataAllocator;
+
 	/// Total number of created sharing groups
 	size_t numSharingGroups;
 	/// Number of sharing groups with exactly 1 sample
@@ -145,6 +148,7 @@ BrowserPath* browserRootPtr() { return states[DataSet.main].rootPtr; }
 @property ref globalRoots() { return states[DataSet.main].roots; }
 @property ref sharingGroups() { return states[DataSet.main].sharingGroups; }
 @property ref sharingGroupAllocator() { return states[DataSet.main].sharingGroupAllocator; }
+@property ref sharingGroupDataAllocator() { return states[DataSet.main].sharingGroupDataAllocator; }
 @property ref numSharingGroups() { return states[DataSet.main].numSharingGroups; }
 @property ref numSingleSampleGroups() { return states[DataSet.main].numSingleSampleGroups; }
 
@@ -473,6 +477,38 @@ void incrementGeneration()
 	foreach (ref subproc; subprocesses)
 		if (subproc.pid !is typeof(subproc.pid).init)
 			kill(subproc.pid.processID, SIGUSR1);
+}
+
+/// Discard the live sampling dataset while preserving the browser tree identity.
+///
+/// Call only for live sampling, after every subprocess has been retired, and
+/// while no deletion operation is active. The caller owns the deletion-operation
+/// precondition because asynchronous deletion is owned by the Browser.
+void resetLiveSamplingState()
+{
+	assert(!imported, "Cannot reset imported sampling data");
+	foreach (ref subproc; subprocesses)
+		assert(subproc.pid is typeof(subproc.pid).init,
+			"Cannot reset while a subprocess is still active");
+	assert(!rebuildInProgress(), "Cannot reset while rebuilding");
+
+	auto state = &states[DataSet.main];
+	state.rebuildState = RebuildState.init;
+	state.browserRoot.reset();
+	state.sharingGroups.clear();
+	state.sharingGroupAllocator.clear();
+	auto deallocated = state.sharingGroupDataAllocator.deallocateAll();
+	assert(deallocated);
+	state.numSharingGroups = 0;
+	state.numSingleSampleGroups = 0;
+	state.roots = null;
+	state.totalSize = 0;
+	state.fsid = typeof(state.fsid).init;
+	devices = null;
+	diskMap = DiskMap.init;
+	marked.resetNodeSamples();
+	markTotalSamples = 0;
+	currentGeneration = 0;
 }
 
 bool toFilesystemPath(BrowserPath* path, void delegate(const(char)[]) sink)
@@ -973,4 +1009,78 @@ bool processRebuildStep()
 	}
 
 	return false;  // All done
+}
+
+unittest
+{
+	import std.experimental.allocator : make, makeArray;
+
+	resetLiveSamplingState();
+	compareMode = true;
+	expert = true;
+	totalSize = 4096;
+	fsid[0] = 1;
+	devices.length = 1;
+	globalRoots[5] = RootInfo(null, false);
+	diskMap.recordSample(0, DiskMap.SectorCategory.data);
+	currentGeneration = 3;
+
+	auto root = browserRootPtr;
+	root.forceAggregateData();
+	root.setMark(true);
+	Offset offset;
+	root.addSamples(SampleType.represented, 2, (&offset)[0 .. 1], 7);
+	root.addSamples(SampleType.exclusive, 2, (&offset)[0 .. 1], 7);
+	root.addDistributedSample(2, 7);
+	marked.addSamples(SampleType.exclusive, 2, (&offset)[0 .. 1], 7);
+	marked.addDistributedSample(2, 7);
+	markTotalSamples = 2;
+
+	auto paths = sharingGroupDataAllocator.makeArray!GlobalPath(1);
+	paths[0] = GlobalPath(null, &subPathRoot);
+	auto pathData = sharingGroupDataAllocator.makeArray!(SharingGroup.PathData)(1);
+	pathData[] = SharingGroup.PathData.init;
+	auto group = make!SharingGroup(sharingGroupAllocator);
+	group.root = root;
+	group.paths = paths;
+	group.pathData = pathData.ptr;
+	group.representativeIndex = 0;
+	sharingGroups.insert(SharingGroup.Paths(group));
+	numSharingGroups = 1;
+	numSingleSampleGroups = 1;
+
+	compareRoot.forceAggregateData();
+	compareRoot.addSamples(SampleType.represented, 4, (&offset)[0 .. 1], 11);
+	auto compareRootAddress = compareRootPtr;
+	auto compareSamples = compareRoot.getSamples(SampleType.represented);
+
+	group = null;
+	resetLiveSamplingState();
+
+	assert(browserRootPtr is root);
+	assert(root.getEffectiveMark());
+	assert(root.getSamples(SampleType.represented) == 0);
+	assert(root.getSamples(SampleType.exclusive) == 0);
+	assert(root.getDistributedSamples() == 0);
+	assert(marked.getSamples(SampleType.exclusive) == 0);
+	assert(marked.getDistributedSamples() == 0);
+	assert(markTotalSamples == 0);
+	assert(sharingGroupAllocator.opSlice.empty);
+	assert(sharingGroups.length == 0);
+	assert(numSharingGroups == 0);
+	assert(numSingleSampleGroups == 0);
+	assert(globalRoots.length == 0);
+	assert(totalSize == 0);
+	assert(fsid == typeof(fsid).init);
+	assert(devices.length == 0);
+	assert(diskMap.sectors[0].totalSamples == 0);
+	assert(currentGeneration == 0);
+	assert(compareRootPtr is compareRootAddress);
+	assert(compareRoot.getSamples(SampleType.represented) == compareSamples);
+
+	compareMode = false;
+	startRebuild();
+	assert(!processRebuildStep());
+	expert = false;
+	root.setMark(false);
 }
