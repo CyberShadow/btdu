@@ -891,13 +891,13 @@ struct BrowserPath
 		}
 	}
 
-	debug(check) void checkState() const
+	debug(check) void checkState(bool aggregateOnly) const
 	{
 		import btdu.state : rebuildInProgress, compareMode, deletionOccurred;
 
 		// Check children first (because our validity depends on theirs)
 		for (const(BrowserPath)* p = firstChild; p; p = p.nextSibling)
-			p.checkState();
+			p.checkState(aggregateOnly);
 
 		// A node cannot have both sharing groups and children
 		assert(!(firstSharingGroup && firstChild),
@@ -919,9 +919,9 @@ struct BrowserPath
 			// sharing groups - skip this check if deletion has occurred.
 			if (!rebuildInProgress() && !compareMode && !deletionOccurred)
 			{
-				// Non-root nodes must have either children or sharing groups
-				assert(firstChild || firstSharingGroup,
-					"%s: Non-root non-special node has neither children nor sharing groups".format(this));
+				// Aggregate-only leaves store their samples directly.
+				assert(firstChild || (aggregateOnly ? aggregateData !is null : firstSharingGroup !is null),
+					"%s: Non-root non-special leaf lacks sample data".format(this));
 			}
 
 			// aggregateData check: tree structure doesn't change during rebuild,
@@ -937,7 +937,7 @@ struct BrowserPath
 
 		// For nodes with aggregateData, verify it matches children's samples
 		// Skip during rebuild since samples are being recomputed
-		if (aggregateData && !rebuildInProgress())
+		if (aggregateData && (!aggregateOnly || firstChild) && !rebuildInProgress())
 		{
 			ulong total = 0;
 			for (const(BrowserPath)* p = firstChild; p; p = p.nextSibling)

@@ -1039,7 +1039,7 @@ void exportBinary(BinaryFormatVersion ver = latestBinaryFormatVersion)(string pa
     alias Index = ulong;
 
     // Binary format requires SharingGroups which only exist for live-sampled data.
-    enforce(!imported || sharingGroupAllocator[].length > 0,
+    enforce(!states[DataSet.main].aggregateOnly,
         "Cannot export to binary format: data was imported from JSON which lacks " ~
         "the detailed sampling information required by the binary format. " ~
         "Use JSON format instead (--export-format=json).");

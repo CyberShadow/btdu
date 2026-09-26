@@ -69,6 +69,7 @@ enum DataSet
 /// This allows having separate state instances for main data vs compare baseline.
 struct SamplingState
 {
+	bool aggregateOnly; /// Tree holds per-node aggregate sample data only (JSON import); no sharing groups exist.
 	ulong totalSize;
 	bool expert;
 	bool physical;
@@ -126,7 +127,7 @@ bool compareMode;
 IndexedSlabAllocator!SubPath subPathAllocator;
 
 // Other global state (not per-dataset)
-bool imported;
+bool imported; /// Main data came from a file rather than live sampling.
 bool exportSeenAs;
 bool autoMountMode; /// True when using --auto-mount with a temporary mount point
 string fsPath;
@@ -296,10 +297,10 @@ debug(check) bool deletionOccurred;
 
 debug(check) void checkState()
 {
-	browserRoot.checkState();
+	browserRoot.checkState(states[DataSet.main].aggregateOnly);
 	// Check compare tree if in compare mode
 	if (compareMode)
-		compareRoot.checkState();
+		compareRoot.checkState(states[DataSet.compare].aggregateOnly);
 	// Note: `marked` is not checked - it's a virtual node that aggregates from
 	// marked paths across the tree, not from its own children.
 }
@@ -509,6 +510,7 @@ void resetSamplingState()
 	markTotalSamples = 0;
 	currentGeneration = 0;
 	imported = false;
+	state.aggregateOnly = false;
 }
 
 bool toFilesystemPath(BrowserPath* path, void delegate(const(char)[]) sink)
@@ -733,7 +735,7 @@ void populateOrUnpopulateBrowserPathsFromSharingGroup(IngestDirection direction)
 	debug (check)
 		foreach (i, ref path; paths)
 			if (group.pathData[i].path)
-				group.pathData[i].path.checkState();
+				group.pathData[i].path.checkState(aggregateOnly: false);
 
 	auto representativeIndex = group.representativeIndex;
 
@@ -894,7 +896,7 @@ void populateOrUnpopulateBrowserPathsFromSharingGroup(IngestDirection direction)
 	debug (check)
 		foreach (i, ref path; paths)
 			if (group.pathData[i].path)
-				group.pathData[i].path.checkState();
+				group.pathData[i].path.checkState(aggregateOnly: false);
 }
 
 /// Convenience alias for ingesting samples into BrowserPaths

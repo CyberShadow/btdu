@@ -162,6 +162,7 @@ void importJson(string path)
 
 	browserRoot.resetParents();
 	imported = true;
+	states[DataSet.main].aggregateOnly = true;
 }
 
 void importCompareData(string path)
@@ -197,6 +198,7 @@ private void importCompareJson(string path)
 	move(*s.root, compareRoot);
 
 	compareRoot.resetParents();
+	states[DataSet.compare].aggregateOnly = true;
 	compareMode = true;
 }
 
