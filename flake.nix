@@ -372,5 +372,164 @@
           };
         };
       }
-    );
+    ) // {
+      # NixOS module for periodic, unattended btdu scans.
+      #
+      # Each configured filesystem gets a systemd service + timer which runs
+      # btdu headlessly and saves a timestamped binary export (.btdu) to
+      # `outputDir`.  This builds up a history of disk usage snapshots, which
+      # is useful for tracking how disk usage changes over time: any two
+      # exports can later be compared to see what has grown or shrunk, e.g.
+      #
+      #   btdu --compare /var/lib/btdu/root-2026-09-19_00-00-00.btdu \
+      #        --import  /var/lib/btdu/root-2026-09-26_00-00-00.btdu
+      #
+      # This helps find active space consumers (runaway logs, growing caches,
+      # etc.) rather than just what currently uses the most space, and to
+      # check that cleanups had the intended effect.  Having a baseline
+      # recorded *before* the disk fills up is what makes this possible.
+      #
+      # Scans use deterministic sampling parameters (-j1, --max-samples) so
+      # that exports are comparable with each other; see "Comparing" in
+      # README.md.
+      #
+      # Usage (in your system flake):
+      #
+      #   inputs.btdu.url = "github:CyberShadow/btdu";
+      #   ...
+      #   nixosSystem {
+      #     modules = [
+      #       btdu.nixosModules.default
+      #       {
+      #         services.btdu = {
+      #           enable = true;
+      #           filesystems.root.mountpoint = "/mnt/btrfs-root";
+      #         };
+      #       }
+      #     ];
+      #   }
+      nixosModules.default = { config, lib, pkgs, ... }:
+        with lib;
+
+        let
+          cfg = config.services.btdu;
+
+          # Generate a systemd service for a single filesystem
+          mkBtduService = name: fsCfg: {
+            description = "btdu disk usage scan for ${name}";
+
+            # Pull in and order after the mount unit for the scanned path, so that a
+            # timer firing before the filesystem is mounted (e.g. a Persistent=true
+            # catch-up run right after boot) does not scan the bare mountpoint.
+            unitConfig.RequiresMountsFor = [ fsCfg.mountpoint ];
+
+            serviceConfig = {
+              Type = "simple";
+              ExecStart = pkgs.writeShellScript "btdu-${name}" ''
+                set -euo pipefail
+
+                date_str=$(${pkgs.coreutils}/bin/date -u +%Y-%m-%d_%H-%M-%S)
+                output_file="${cfg.outputDir}/${name}-$date_str.btdu"
+
+                ${pkgs.coreutils}/bin/mkdir -p ${cfg.outputDir}
+
+                exec ${cfg.package}/bin/btdu \
+                  --headless \
+                  --export="$output_file" \
+                  --max-samples=${toString fsCfg.maxSamples} \
+                  -j1 \
+                  ${fsCfg.mountpoint}
+              '';
+
+              # Only signal the main btdu process, not subprocesses.
+              # Subprocesses may be stuck in btrfs ioctls (unkillable) but are harmless.
+              KillMode = "process";
+            };
+          };
+
+          # Generate a systemd timer for a single filesystem
+          mkBtduTimer = name: fsCfg: {
+            description = "btdu disk usage scan timer for ${name}";
+            wantedBy = [ "timers.target" ];
+
+            timerConfig = {
+              OnCalendar = cfg.timerOnCalendar;
+              Persistent = true;
+              RandomizedDelaySec = "5min";
+            };
+          };
+
+        in {
+          options.services.btdu = {
+            enable = mkEnableOption "periodic btdu disk usage scanning";
+
+            package = mkOption {
+              type = types.package;
+              default = self.packages.${pkgs.stdenv.hostPlatform.system}.default;
+              defaultText = literalExpression "btdu.packages.\${pkgs.stdenv.hostPlatform.system}.default";
+              description = "The btdu package to use. Defaults to the package from this flake.";
+            };
+
+            outputDir = mkOption {
+              type = types.path;
+              default = "/var/lib/btdu";
+              description = "Directory where btdu export files are stored.";
+            };
+
+            timerOnCalendar = mkOption {
+              type = types.str;
+              default = "*-*-* 00:00:00 UTC";
+              description = "Systemd calendar expression for when to run the scans.";
+            };
+
+            filesystems = mkOption {
+              type = types.attrsOf (types.submodule {
+                options = {
+                  mountpoint = mkOption {
+                    type = types.str;
+                    description = "Path to the btrfs mountpoint (must be mounted with subvol=/ or subvolid=5).";
+                  };
+
+                  maxSamples = mkOption {
+                    type = types.int;
+                    default = 100000;
+                    description = ''
+                      Maximum number of samples to collect.
+                      Keep this constant across scans so that exports remain comparable.
+                    '';
+                  };
+                };
+              });
+              default = {};
+              example = literalExpression ''
+                {
+                  root = {
+                    mountpoint = "/mnt/btrfs-root";
+                    maxSamples = 1000000;
+                  };
+                  data = {
+                    mountpoint = "/mnt/data";
+                    maxSamples = 500000;
+                  };
+                }
+              '';
+              description = "Btrfs filesystems to scan. Each gets its own systemd service and timer.";
+            };
+          };
+
+          config = mkIf (cfg.enable && cfg.filesystems != {}) {
+            systemd.tmpfiles.rules = [
+              "d ${cfg.outputDir} 0750 root root -"
+            ];
+
+            systemd.services = mapAttrs' (name: fsCfg:
+              nameValuePair "btdu-${name}" (mkBtduService name fsCfg)
+            ) cfg.filesystems;
+
+            systemd.timers = mapAttrs' (name: fsCfg:
+              nameValuePair "btdu-${name}" (mkBtduTimer name fsCfg)
+            ) cfg.filesystems;
+          };
+        };
+    };
 }
