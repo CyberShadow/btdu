@@ -588,6 +588,52 @@ unittest
 
 unittest
 {
+	resetSamplingState();
+	expert = true;
+	auto unreachable = browserRootPtr.appendName("\0UNREACHABLE");
+	GlobalPath[] paths = [
+		GlobalPath(null, subPathRoot.appendName("a")),
+		GlobalPath(null, subPathRoot.appendName("a")),
+		GlobalPath(null, subPathRoot.appendName("snapshot-1")),
+		GlobalPath(null, subPathRoot.appendName("snapshot-1")),
+		GlobalPath(null, subPathRoot.appendName("snapshot-2")),
+		GlobalPath(null, subPathRoot.appendName("snapshot-2")),
+	];
+	bool isNew;
+	auto group = Subprocess.saveSharingGroup(unreachable, paths, isNew);
+	assert(isNew);
+	Offset offset;
+	populateBrowserPathsFromSharingGroup(group, isNew, 1, (&offset)[0 .. 1], 7);
+	group.data.add(1, (&offset)[0 .. 1], 7);
+
+	auto representative = group.pathData[group.representativeIndex].path;
+	assert(unreachable.getSamples(SampleType.represented) == 1);
+	assert(representative.getSamples(SampleType.represented) == 1);
+	assert(representative.getDuration(SampleType.represented) ==
+		unreachable.getDuration(SampleType.represented));
+	assert(representative.getSamples(SampleType.shared_) == 2);
+	import std.math : isClose;
+	assert(isClose(representative.getDistributedSamples(), 2.0 / 6));
+	auto seenAs = representative.collectSeenAs();
+	assert(seenAs.total == 1);
+	assert(seenAs.paths.length == 3);
+	foreach (path, samples; seenAs.paths)
+		assert(samples == 1);
+
+	resetSamplingState();
+	paths = [paths[0], paths[0]];
+	group = Subprocess.saveSharingGroup(unreachable, paths, isNew);
+	assert(isNew);
+	populateBrowserPathsFromSharingGroup(group, isNew, 1, (&offset)[0 .. 1], 7);
+	group.data.add(1, (&offset)[0 .. 1], 7);
+	assert(group.pathData[0].path.getSamples(SampleType.exclusive) == 1);
+
+	resetSamplingState();
+	expert = false;
+}
+
+unittest
+{
 	import core.sys.posix.sys.wait : WIFSIGNALED, WTERMSIG, waitpid;
 	import std.stdio : File;
 

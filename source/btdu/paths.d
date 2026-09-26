@@ -865,13 +865,13 @@ struct BrowserPath
 		return aggregateData;
 	}
 
-	/// Returns the number of relevant occurrences for a given sample type.
+	/// Returns the per-group sample multiplier for a given sample type.
 	/// Returns 0 if the group is not relevant for this sample type.
 	/// Note: Tombstone sharing groups (with data.samples == 0, created by deletion/eviction)
 	/// are automatically handled because callers either multiply by group.data.samples
 	/// (making the result 0), or check truthiness (making tombstone sharing groups
 	/// synonymous with irrelevant groups).
-	private size_t relevantOccurrences(const(SharingGroup)* group, SampleType type) const
+	private size_t sampleMultiplier(const(SharingGroup)* group, SampleType type) const
 	{
 		// Count how many times this path appears in the sharing group
 		// (same file may use same extent multiple times)
@@ -884,10 +884,10 @@ struct BrowserPath
 				return occurrences;
 			case SampleType.represented:
 				// Samples where this path is the representative
-				return group.pathData[group.representativeIndex].path is &this ? occurrences : 0;
+				return group.pathData[group.representativeIndex].path is &this ? 1 : 0;
 			case SampleType.exclusive:
 				// Samples exclusive to this path: ALL entries in the group must be this path
-				return occurrences == group.paths.length ? occurrences : 0;
+				return occurrences == group.paths.length ? 1 : 0;
 		}
 	}
 
@@ -995,7 +995,7 @@ struct BrowserPath
 			fromSharingGroups: {
 				ulong sum = 0;
 				for (const(SharingGroup)* group = firstSharingGroup; group !is null; group = group.getNext(&this))
-					sum += group.data.samples * relevantOccurrences(group, type);
+					sum += group.data.samples * sampleMultiplier(group, type);
 				return sum;
 			},
 			fromChildren: {
@@ -1015,7 +1015,7 @@ struct BrowserPath
 			fromSharingGroups: {
 				ulong sum = 0;
 				for (const(SharingGroup)* group = firstSharingGroup; group !is null; group = group.getNext(&this))
-					sum += group.data.duration * relevantOccurrences(group, type);
+					sum += group.data.duration * sampleMultiplier(group, type);
 				return sum;
 			},
 			fromChildren: {
@@ -1039,7 +1039,7 @@ struct BrowserPath
 
 				for (const(SharingGroup)* group = firstSharingGroup; group !is null; group = group.getNext(&this))
 				{
-					if (relevantOccurrences(group, type))
+					if (sampleMultiplier(group, type))
 					{
 						foreach (i; 0 .. historySize)
 						{
@@ -1259,8 +1259,9 @@ struct BrowserPath
 		for (auto group = firstSharingGroup; group !is null; group = group.getNext(&this))
 		{
 			// Add all paths in this group to the result
-			foreach (ref path; group.paths)
-				result.paths[path] += group.data.samples;
+			foreach (i, ref path; group.paths)
+				if (i == 0 || path != group.paths[i - 1])
+					result.paths[path] += group.data.samples;
 			result.total += group.data.samples;
 		}
 

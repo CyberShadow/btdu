@@ -640,7 +640,7 @@ void evictPathFromSharingGroups(BrowserPath* path)
 			// Note: when the representative changes, the group remains linked in the
 			// old representative's firstSharingGroup chain (we don't unlink it because
 			// that would require traversing the singly-linked list). This is harmless:
-			// relevantOccurrences() returns 0 for the old representative since it checks
+			// sampleMultiplier() returns 0 for the old representative since it checks
 			// group.pathData[group.representativeIndex].path, which no longer matches.
 			// Similar to tombstones, it's dead weight in the chain but not incorrect.
 			if (!expert && group.pathData[group.representativeIndex].path is null)
@@ -666,7 +666,7 @@ void evictPathFromSharingGroups(BrowserPath* path)
 			// It remains in paths' firstSharingGroup chains (via pathData[i].next),
 			// but setting data to SampleData.init makes it inert: getSamples() etc.
 			// multiply by group.data.samples which is now 0, so tombstones contribute
-			// nothing. See BrowserPath.relevantOccurrences for details.
+			// nothing. See BrowserPath.sampleMultiplier for details.
 			// The reason for using a tombstone is that properly unlinking the sharing
 			// group is expensive: sharing group linkage for browser paths is a
 			// singly-linked list, so we would need to iterate over the full chain of
