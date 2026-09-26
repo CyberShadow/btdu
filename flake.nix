@@ -414,6 +414,13 @@
         let
           cfg = config.services.btdu;
 
+          # Sampling parameters which must be identical across scans of the
+          # same filesystem for the results to be comparable.
+          samplingArgs = fsCfg: [
+            "--max-samples=${toString fsCfg.maxSamples}"
+            "-j1"
+          ] ++ optional fsCfg.physical "--physical";
+
           # Generate a systemd service for a single filesystem
           mkBtduService = name: fsCfg: {
             description = "btdu disk usage scan for ${name}";
@@ -436,9 +443,8 @@
                 exec ${cfg.package}/bin/btdu \
                   --headless \
                   --export="$output_file" \
-                  --max-samples=${toString fsCfg.maxSamples} \
-                  -j1 ${optionalString fsCfg.physical "--physical"} \
-                  ${fsCfg.mountpoint}
+                  ${escapeShellArgs (samplingArgs fsCfg)} \
+                  ${escapeShellArg fsCfg.mountpoint}
               '';
 
               # Only signal the main btdu process, not subprocesses.
@@ -531,6 +537,17 @@
             systemd.tmpfiles.rules = [
               "d ${cfg.outputDir} 0750 root root -"
             ];
+
+            # Describes the configured scans, so that tools can locate the
+            # exports and sample live filesystems comparably to them.
+            environment.etc."btdu/filesystems.json".text = builtins.toJSON {
+              inherit (cfg) outputDir;
+              btdu = "${cfg.package}/bin/btdu";
+              filesystems = mapAttrs (name: fsCfg: {
+                inherit (fsCfg) mountpoint;
+                samplingArgs = samplingArgs fsCfg;
+              }) cfg.filesystems;
+            };
 
             systemd.services = mapAttrs' (name: fsCfg:
               nameValuePair "btdu-${name}" (mkBtduService name fsCfg)
