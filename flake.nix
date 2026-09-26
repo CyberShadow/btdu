@@ -437,7 +437,7 @@
                   --headless \
                   --export="$output_file" \
                   --max-samples=${toString fsCfg.maxSamples} \
-                  -j1 \
+                  -j1 ${optionalString fsCfg.physical "--physical"} \
                   ${fsCfg.mountpoint}
               '';
 
@@ -498,6 +498,15 @@
                       Keep this constant across scans so that exports remain comparable.
                     '';
                   };
+
+                  physical = mkOption {
+                    type = types.bool;
+                    default = false;
+                    description = ''
+                      Sample physical instead of logical disk space (--physical).
+                      Keep this constant across scans so that exports remain comparable.
+                    '';
+                  };
                 };
               });
               default = {};
@@ -506,6 +515,7 @@
                   root = {
                     mountpoint = "/mnt/btrfs-root";
                     maxSamples = 1000000;
+                    physical = true;
                   };
                   data = {
                     mountpoint = "/mnt/data";
