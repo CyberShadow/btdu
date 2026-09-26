@@ -26,7 +26,6 @@ import std.array;
 import std.conv : ConvException, to;
 import std.parallelism : totalCPUs;
 import std.path;
-import std.random;
 import std.socket;
 import std.stdio : stdin, stdout, stderr;
 import std.string;
@@ -82,11 +81,15 @@ void program(
 	if (autoMount && (prefer.length || ignore.length))
 		throw new Exception("--prefer and --ignore options are not available with --auto-mount");
 
+	if (procs == 0)
+		procs = totalCPUs;
+
 	SamplingRun samplingRun;
 	samplingRun.initialize(
 		maxSamples ? maxSamples.value : null,
 		maxTime ? maxTime.value : null,
 		minResolution ? minResolution.value : null,
+		seed, procs,
 	);
 
 	if (man)
@@ -130,7 +133,6 @@ Please report defects and enhancement requests to the GitHub issue tracker:
 	}
 	else
 	{
-		rndGen = Random(seed);
 		fsPath = path.buildNormalizedPath;
 
 		.expert = expert;
@@ -144,14 +146,11 @@ Please report defects and enhancement requests to the GitHub issue tracker:
 		.pathRules = rules;
 
 		if (subprocess)
-			return subprocessMain(path, physical);
+			return subprocessMain(path, physical, seed);
 
 		checkBtrfs(fsPath, autoMount);
 
-		if (procs == 0)
-			procs = totalCPUs;
-
-		subprocesses = configureSubprocesses(rndGen, procs, &samplingRun.sampleLimit);
+		subprocesses = samplingRun.createWorkers();
 		foreach (ref subproc; subprocesses)
 			subproc.start();
 	}
@@ -251,7 +250,6 @@ Please report defects and enhancement requests to the GitHub issue tracker:
 				if (browser.consumeRestartRequest())
 				{
 					samplingRun.replaceWorkers(subprocesses);
-					paused = false;
 					foreach (i, ref worker; subprocesses)
 						worker.start();
 					browser.update();

@@ -47,11 +47,13 @@ import btrfs.c.kerncompat;
 import btrfs.c.kernel_shared.ctree;
 
 import btdu.alloc : StaticAppender;
-import btdu.common : errorString;
+import btdu.common : errorString, Seed;
 import btdu.proto;
 
-void subprocessMain(string fsPath, bool physical)
+void subprocessMain(string fsPath, bool physical, Seed seed)
 {
+	// Seed the sampler; the parent assigns one seed per worker.
+	rndGen = Random(seed);
 	try
 	{
 		// Ignore SIGINT/SIGTERM, because the main process will handle it for us.

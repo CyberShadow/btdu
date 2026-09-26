@@ -29,7 +29,6 @@ import std.conv;
 import std.exception;
 import std.file;
 import std.process;
-import std.random : Random, uniform;
 import std.socket;
 import std.stdio : stdin;
 import std.string;
@@ -472,13 +471,13 @@ struct Subprocess
 }
 
 /// Allocate fresh workers with parent-assigned seeds and one stable limit.
-Subprocess[] configureSubprocesses(ref Random random, size_t count, ulong* sampleLimit)
+Subprocess[] configureSubprocesses(const Seed[] seeds, ulong* sampleLimit)
 {
 	assert(sampleLimit !is null);
-	auto result = new Subprocess[count];
-	foreach (ref subprocess; result)
+	auto result = new Subprocess[seeds.length];
+	foreach (i, ref subprocess; result)
 	{
-		subprocess.seed = random.uniform!Seed;
+		subprocess.seed = seeds[i];
 		subprocess.sampleLimit = sampleLimit;
 	}
 	return result;
@@ -629,7 +628,6 @@ unittest
 
 unittest
 {
-	import std.random : Random, uniform;
 
 	void appendHeader(ref ubyte[] data, size_t type, size_t bodyLength)
 	{
@@ -675,11 +673,8 @@ unittest
 	resetSamplingState();
 	totalSize = 1;
 	ulong sampleLimit = ulong.max;
-	auto expectedRandom = Random(cast(Seed) 0);
-	auto actualRandom = Random(cast(Seed) 0);
-	auto oldWorkers = configureSubprocesses(actualRandom, 1, &sampleLimit);
-	assert(oldWorkers[0].seed == expectedRandom.uniform!Seed);
-	assert(actualRandom.uniform!Seed == expectedRandom.uniform!Seed);
+	auto oldWorkers = configureSubprocesses([cast(Seed) 42], &sampleLimit);
+	assert(oldWorkers[0].seed == cast(Seed) 42);
 	assert(oldWorkers[0].sampleLimit is &sampleLimit);
 	openInputPipe(oldWorkers[0]);
 

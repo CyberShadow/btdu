@@ -6,12 +6,13 @@ import core.time;
 import std.conv : to;
 import std.process : Pid, tryWait;
 import std.string : endsWith;
+import std.random : Random, uniform;
 import std.typecons : Nullable;
 import ae.utils.time.parsedur : parseDuration;
 
 import btdu.common : parseSize, Seed;
-import btdu.state : resetSamplingState;
-import btdu.subproc : Subprocess, forceTerminate;
+import btdu.state : resetSamplingState, paused;
+import btdu.subproc : Subprocess, forceTerminate, configureSubprocesses;
 
 struct SamplingRun
 {
@@ -29,8 +30,9 @@ struct SamplingRun
 
 	/// Killed workers not yet reaped; see reapRetiredWorkers.
 	Pid[] retiredWorkers;
+	Seed[] seeds; /// One per worker, fixed for the lifetime of the program.
 
-	void initialize(string maxSamples, string maxTime, string minResolution)
+	void initialize(string maxSamples, string maxTime, string minResolution, Seed seed, uint procs)
 	{
 		if (maxSamples)
 			this.maxSamples = maxSamples.to!ulong;
@@ -38,6 +40,11 @@ struct SamplingRun
 			this.maxTime = parseDuration(maxTime);
 		this.minResolution = minResolution;
 		sampleLimit = this.maxSamples.get(ulong.max);
+		assert(procs > 0);
+		auto random = Random(seed);
+		seeds = new Seed[procs];
+		foreach (ref s; seeds)
+			s = random.uniform!Seed;
 	}
 
 	real parsedMinResolution(ulong totalSize)
@@ -72,31 +79,29 @@ struct SamplingRun
 		retiredWorkers = retiredWorkers[0 .. kept];
 	}
 
+	Subprocess[] createWorkers()
+	{
+		return configureSubprocesses(seeds, &sampleLimit);
+	}
+
+	/// Retire running workers, discard the dataset, re-arm limits, and
+	/// configure a fresh batch with the run's seeds. The caller starts them.
 	void replaceWorkers(ref Subprocess[] subprocesses)
 	{
-		Seed[] seeds;
-		foreach (ref worker; subprocesses)
-			seeds ~= worker.seed;
 		retiredWorkers ~= forceTerminate(subprocesses);
 		resetSamplingState();
+		paused = false;
 		restart();
-		subprocesses = new Subprocess[seeds.length];
-		foreach (i, ref worker; subprocesses)
-		{
-			worker.seed = seeds[i];
-			worker.sampleLimit = &sampleLimit;
-		}
+		subprocesses = createWorkers();
 	}
 }
 
 unittest
 {
-	import btdu.state : currentGeneration, subprocesses;
-	import btdu.subproc : configureSubprocesses;
-	import std.random : Random;
+	import btdu.state : currentGeneration, imported, paused, subprocesses;
 
 	SamplingRun run;
-	run.initialize("7", "1s", "10%");
+	run.initialize("7", "1s", "10%", cast(Seed) 1, 3);
 	auto sampleLimit = &run.sampleLimit;
 	assert(run.parsedMinResolution(1000) == 100);
 	run.disarmLimits();
@@ -111,22 +116,30 @@ unittest
 	assert(&run.sampleLimit is sampleLimit);
 	assert(run.parsedMinResolution(2000) == 200);
 
+	auto random = Random(cast(Seed) 1);
+	assert(run.seeds.length == 3);
+	foreach (seed; run.seeds)
+		assert(seed == random.uniform!Seed);
+
 	auto oldStartTime = run.startTime;
 	currentGeneration = 9;
-	auto random = Random(cast(Seed) 1);
-	subprocesses = configureSubprocesses(random, 3, sampleLimit);
-	Seed[] oldSeeds;
-	foreach (ref worker; subprocesses)
-		oldSeeds ~= worker.seed;
+	imported = true;
+	paused = true;
+	subprocesses = null;
 	run.replaceWorkers(subprocesses);
 	assert(currentGeneration == 0);
+	assert(!imported && !paused);
+	assert(run.limitsArmed && run.sampleLimit == 7);
 	assert(run.startTime >= oldStartTime);
-	assert(subprocesses.length == oldSeeds.length);
+	assert(subprocesses.length == run.seeds.length);
 	foreach (i, ref worker; subprocesses)
 	{
-		assert(worker.seed == oldSeeds[i]);
+		assert(worker.seed == run.seeds[i]);
 		assert(worker.sampleLimit is sampleLimit);
 	}
+	run.replaceWorkers(subprocesses);
+	foreach (i, ref worker; subprocesses)
+		assert(worker.seed == run.seeds[i]);
 	assert(forceTerminate(subprocesses).length == 0);
 	run.reapRetiredWorkers();
 	assert(run.retiredWorkers.length == 0);
