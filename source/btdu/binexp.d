@@ -202,6 +202,8 @@ struct BinaryIO(BinaryFormatVersion ver, bool writing)
     PathsGlobalPath*[] rootPtrs;
     BrowserPath*[] browserRootPtrs;
 
+    SamplingState* targetState;
+
     static if (isWriting)
     {
         HashMap!(const(PathsGlobalPath)*, Index, CasualAllocator) rootToIndex;
@@ -209,7 +211,6 @@ struct BinaryIO(BinaryFormatVersion ver, bool writing)
     }
     else
     {
-        SamplingState* targetState;
         DataSet target;
     }
 
@@ -922,7 +923,7 @@ void visitSharingGroup(IO)(ref IO io, SharingGroup* group)
     visitTransformed(io, group.paths,
         (Index len) {
             enforce(len > 0, "SharingGroup must have at least one path");
-            return growAllocator.makeArray!PathsGlobalPath(len.to!size_t);
+            return io.targetState.sharingGroupDataAllocator.makeArray!PathsGlobalPath(len.to!size_t);
         },
         (ref PathsGlobalPath[] arr) => Index(arr.length)
     );
@@ -969,7 +970,7 @@ void visitSharingGroup(IO)(ref IO io, SharingGroup* group)
     // For reading: finalize the group
     static if (!IO.isWriting)
     {
-        group.pathData = growAllocator.makeArray!(SharingGroup.PathData)(group.paths.length).ptr;
+        group.pathData = io.targetState.sharingGroupDataAllocator.makeArray!(SharingGroup.PathData)(group.paths.length).ptr;
 
         // Update counters for target dataset
         io.targetState.numSharingGroups++;
@@ -1028,7 +1029,7 @@ void visitMarks(IO, MarksList)(ref IO io, MarksList marksList)
 // Export
 // ============================================================================
 
-import btdu.state : browserRoot, browserRootPtr, globalRoots, sharingGroupAllocator, expert, physical, totalSize, fsPath, fsid, imported;
+import btdu.state : browserRoot, browserRootPtr, globalRoots, sharingGroupAllocator, expert, physical, totalSize, fsPath, fsid, imported, states;
 
 void exportBinary(BinaryFormatVersion ver = latestBinaryFormatVersion)(string path)
 {
@@ -1048,6 +1049,7 @@ void exportBinary(BinaryFormatVersion ver = latestBinaryFormatVersion)(string pa
         : File(path, "wb");
 
     BinaryIO!(ver, true) io;
+    io.targetState = &states[DataSet.main];
     io.file = file;
 
     // ========================================================================
@@ -1262,4 +1264,68 @@ void importBinaryImpl(BinaryFormatVersion ver)(const(ubyte)[] data, DataSet targ
         imported = true;
     else
         compareMode = true;
+}
+
+unittest
+{
+    import std.experimental.allocator : make, makeArray;
+    import std.file : tempDir, remove;
+    import std.path : buildPath;
+    import std.process : thisProcessID;
+    import btdu.paths : GlobalPath, SampleType;
+    import btdu.state : resetSamplingState, sharingGroupDataAllocator,
+        sharingGroups, numSharingGroups, globalRoots;
+
+    auto path = buildPath(tempDir, "btdu-binexp-unittest-" ~ thisProcessID.to!string);
+    scope(exit) remove(path);
+
+    resetSamplingState();
+    auto root = browserRootPtr;
+    root.forceAggregateData();
+    auto child = root.appendName("foo");
+    child.setMark(true);
+    fsPath = "/tmp";
+    totalSize = 4096;
+    fsid[0] = 1;
+
+    auto paths = sharingGroupDataAllocator.makeArray!GlobalPath(1);
+    paths[0] = GlobalPath(null, subPathRoot.appendName("foo"));
+    auto pathData = sharingGroupDataAllocator.makeArray!(SharingGroup.PathData)(1);
+    auto group = make!SharingGroup(sharingGroupAllocator);
+    group.root = root;
+    group.paths = paths;
+    group.pathData = pathData.ptr;
+    group.representativeIndex = 0;
+    group.data.samples = 3;
+    group.data.duration = 7;
+    sharingGroups.insert(SharingGroup.Paths(group));
+    numSharingGroups = 1;
+    import btdu.state : populateBrowserPathsFromSharingGroup;
+    populateBrowserPathsFromSharingGroup(group, true, 3, group.data.offsets[], 7);
+    assert(child.getSamples(SampleType.represented) == 3);
+
+    exportBinary(path);
+    resetSamplingState();
+    importBinary(path);
+    assert(imported);
+    assert(browserRootPtr is root);
+    auto importedChild = "foo" in *root;
+    assert(importedChild !is null);
+    assert(importedChild.getSamples(SampleType.represented) == 3);
+    assert(importedChild.getEffectiveMark());
+    assert(!sharingGroupAllocator.opSlice.empty);
+
+    resetSamplingState();
+    assert(!imported);
+    assert(browserRootPtr is root);
+    assert(("foo" in *root) is importedChild);
+    assert(importedChild.getSamples(SampleType.represented) == 0);
+    assert(importedChild.getEffectiveMark());
+    assert(sharingGroupAllocator.opSlice.empty);
+    assert(sharingGroups.length == 0);
+    assert(numSharingGroups == 0);
+    assert(totalSize == 0);
+    assert(fsid == typeof(fsid).init);
+    assert(globalRoots.length == 0);
+    importedChild.setMark(false);
 }
