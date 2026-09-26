@@ -4,6 +4,7 @@ module btdu.runstate;
 import core.time;
 
 import std.conv : to;
+import std.process : Pid, tryWait;
 import std.string : endsWith;
 import std.typecons : Nullable;
 import ae.utils.time.parsedur : parseDuration;
@@ -25,6 +26,9 @@ struct SamplingRun
 	ulong sampleLimit = ulong.max;
 
 	MonoTime startTime, nextRefresh;
+
+	/// Killed workers not yet reaped; see reapRetiredWorkers.
+	Pid[] retiredWorkers;
 
 	void initialize(string maxSamples, string maxTime, string minResolution)
 	{
@@ -58,12 +62,22 @@ struct SamplingRun
 		nextRefresh = startTime;
 	}
 
+	/// Reap retired workers that have exited, without blocking.
+	void reapRetiredWorkers()
+	{
+		size_t kept;
+		foreach (pid; retiredWorkers)
+			if (!tryWait(pid).terminated)
+				retiredWorkers[kept++] = pid;
+		retiredWorkers = retiredWorkers[0 .. kept];
+	}
+
 	void replaceWorkers(ref Subprocess[] subprocesses)
 	{
 		Seed[] seeds;
 		foreach (ref worker; subprocesses)
 			seeds ~= worker.seed;
-		forceTerminate(subprocesses);
+		retiredWorkers ~= forceTerminate(subprocesses);
 		resetLiveSamplingState();
 		restart();
 		subprocesses = new Subprocess[seeds.length];
@@ -113,5 +127,7 @@ unittest
 		assert(worker.seed == oldSeeds[i]);
 		assert(worker.sampleLimit is sampleLimit);
 	}
-	forceTerminate(subprocesses);
+	assert(forceTerminate(subprocesses).length == 0);
+	run.reapRetiredWorkers();
+	assert(run.retiredWorkers.length == 0);
 }

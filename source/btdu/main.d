@@ -245,6 +245,7 @@ Please report defects and enhancement requests to the GitHub issue tracker:
 			Socket.select(readSet, null, exceptSet);
 
 		auto now = MonoTime.currTime();
+		samplingRun.reapRetiredWorkers();
 
 		if (browser.curses.stdinSocket && browser.handleInput())
 		{

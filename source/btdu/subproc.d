@@ -485,22 +485,24 @@ Subprocess[] configureSubprocesses(ref Random random, size_t count, ulong* sampl
 }
 
 /// Force-retire and discard every subprocess.
-void forceTerminate(ref Subprocess[] subprocesses)
+/// Does not wait: a worker stuck in a long uninterruptible ioctl only
+/// receives SIGKILL once the ioctl returns. Returns the killed workers'
+/// pids, which the caller must reap.
+Pid[] forceTerminate(ref Subprocess[] subprocesses)
 {
-	foreach (ref subprocess; subprocesses)
-		if (subprocess.pid !is Pid.init)
-			subprocess.pid.kill(SIGKILL);
-
+	Pid[] killed;
 	foreach (ref subprocess; subprocesses)
 	{
 		subprocess.closeDescriptors();
 		if (subprocess.pid !is Pid.init)
 		{
-			subprocess.pid.wait();
+			subprocess.pid.kill(SIGKILL);
+			killed ~= subprocess.pid;
 			subprocess.pid = Pid.init;
 		}
 	}
 	subprocesses = null;
+	return killed;
 }
 
 unittest
@@ -587,8 +589,7 @@ unittest
 
 unittest
 {
-	import core.stdc.errno : ECHILD, errno;
-	import core.sys.posix.sys.wait : WNOHANG, waitpid;
+	import core.sys.posix.sys.wait : WIFSIGNALED, WTERMSIG, waitpid;
 	import std.stdio : File;
 
 	ulong sampleLimit = 123;
@@ -614,14 +615,15 @@ unittest
 	}
 	subprocesses[0].pause(true);
 
-	forceTerminate(subprocesses);
+	auto killed = forceTerminate(subprocesses);
 
 	assert(subprocesses is null);
-	foreach (i; 0 .. oldPids.length)
+	assert(killed == oldPids);
+	foreach (pid; killed)
 	{
 		int status;
-		assert(waitpid(oldPids[i].processID, &status, WNOHANG) == -1);
-		assert(errno == ECHILD);
+		assert(waitpid(pid.processID, &status, 0) == pid.processID);
+		assert(WIFSIGNALED(status) && WTERMSIG(status) == SIGKILL);
 	}
 }
 
@@ -694,7 +696,8 @@ unittest
 	auto retired = oldWorkers;
 	auto savedSeed = retired[0].seed;
 	auto savedLimit = retired[0].sampleLimit;
-	forceTerminate(oldWorkers);
+	foreach (pid; forceTerminate(oldWorkers))
+		pid.wait();
 	assert(oldWorkers is null);
 	assert(browserRoot.getSamples(SampleType.represented) == 0);
 
