@@ -118,9 +118,11 @@ Please report defects and enhancement requests to the GitHub issue tracker:
 		return;
 	}
 
+	.exportSeenAs = exportSeenAs;
+
 	if (doImport)
 	{
-		if (procs || seed || subprocess || physical || maxSamples || maxTime || minResolution || prefer || ignore)
+		if (subprocess || physical || maxSamples || maxTime || minResolution || prefer || ignore)
 			throw new Exception("Conflicting command-line options");
 
 		// Set expert mode from CLI before import.
@@ -137,7 +139,6 @@ Please report defects and enhancement requests to the GitHub issue tracker:
 
 		.expert = expert;
 		.physical = physical;
-		.exportSeenAs = exportSeenAs;
 
 		// TODO: respect CLI order (needs std.getopt and ae.utils.funopt changes)
 		PathRule[] rules;

@@ -49,6 +49,7 @@ import btrfs;
 import btdu.alloc : StaticAppender;
 import btdu.common;
 import btdu.impexp : ExportFormat, exportData;
+import btdu.mount : checkLiveTarget;
 import btdu.paths;
 import btdu.proto : logicalOffsetHole, logicalOffsetSlack;
 import btdu.state;
@@ -1752,7 +1753,7 @@ struct Browser
 									printKey("Open selected node", button("↵ Enter"), " ", button("→"), " ", button("l"));
 									printKey("Return to parent node", button("←"), " ", button("h"));
 									printKey("Pause/resume", button("p"));
-									printKey("Restart live sampling", button("⇧ Shift"), "+", button("R"));
+									printKey("Start/restart live sampling", button("⇧ Shift"), "+", button("R"));
 									printKey("Sort by name (ascending/descending)", button("n"));
 									printKey("Sort by size (ascending/descending)", button("s"));
 									printKey("Sort by delta [compare mode]", button("c"));
@@ -1908,12 +1909,24 @@ struct Browser
 								break;
 
 							case Popup.restartConfirm:
-								title = "Restart sampling";
-								write(
-									"Restart sampling? Collected samples will be cleared and sampling will resume.", endl,
-									endl,
-									"Press Shift+Y to confirm, any other key to cancel.",
-								);
+								if (imported)
+								{
+									title = "Start live sampling";
+									write("Start live sampling of ", fsPath, "?", endl,
+										endl,
+										"Imported sample data will be cleared and replaced by live samples.", endl,
+										endl,
+										"Press Shift+Y to confirm, any other key to cancel.");
+								}
+								else
+								{
+									title = "Restart sampling";
+									write(
+										"Restart sampling? Collected samples will be cleared and sampling will resume.", endl,
+										endl,
+										"Press Shift+Y to confirm, any other key to cancel.",
+									);
+								}
 								break;
 
 							case Popup.rebuild:
@@ -2351,9 +2364,14 @@ struct Browser
 				{
 					case 'R':
 						if (imported)
-							showMessage("Viewing an imported file, cannot restart sampling");
-						else
-							popup = Popup.restartConfirm;
+							try
+								checkLiveTarget(fsPath, fsid);
+							catch (Exception e)
+							{
+								showMessage("Cannot start live sampling: " ~ e.msg);
+								break;
+							}
+						popup = Popup.restartConfirm;
 						break;
 					case '?':
 					case Curses.Key.f1:
@@ -2728,10 +2746,13 @@ unittest
 	assert(!browser.consumeRestartRequest());
 
 	imported = true;
+	fsPath = "/nonexistent/btdu-test";
 	browser.handleKey(Curses.Key('R'));
 	assert(browser.popup == Browser.Popup.none);
 	assert(!browser.consumeRestartRequest());
+	assert(browser.message.startsWith("Cannot start live sampling"));
 	imported = false;
+	fsPath = null;
 
 	resetSamplingState();
 }

@@ -178,6 +178,8 @@ Press <kbd>⇧ Shift</kbd><kbd>O</kbd> to save an export file during an interact
 
 Exports can be loaded with `--import`. Then, specify a file name instead of the filesystem path to sample.
 
+While viewing an import, press <kbd>⇧ Shift</kbd><kbd>R</kbd> to start live sampling of the same filesystem (it must be mounted at the path recorded in the export); the imported statistics are replaced by live samples.
+
 btdu supports two re-importable export formats:
 
 - **Binary** (`.btdu`): Compact, efficient format that preserves all sampling data losslessly. The binary format always contains complete data regardless of `--expert` mode; the `--expert` flag is specified at import time to control whether expert metrics are displayed (which uses more memory). Recommended for backups and comparisons.
