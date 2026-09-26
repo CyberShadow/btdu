@@ -970,6 +970,10 @@ void visitSharingGroup(IO)(ref IO io, SharingGroup* group)
     // For reading: finalize the group
     static if (!IO.isWriting)
     {
+        import std.algorithm.searching : countUntil;
+        auto representative = group.paths[group.representativeIndex];
+        SharingGroup.sortPaths(group.paths);
+        group.representativeIndex = group.paths.countUntil(representative);
         group.pathData = io.targetState.sharingGroupDataAllocator.makeArray!(SharingGroup.PathData)(group.paths.length).ptr;
 
         // Update counters for target dataset
@@ -1264,6 +1268,61 @@ void importBinaryImpl(BinaryFormatVersion ver)(const(ubyte)[] data, DataSet targ
         imported = true;
     else
         compareMode = true;
+}
+
+unittest
+{
+    import std.algorithm.sorting : isSorted;
+    import std.experimental.allocator : make, makeArray;
+    import std.file : tempDir, remove;
+    import std.path : buildPath;
+    import std.process : thisProcessID;
+    import btdu.paths : GlobalPath;
+    import btdu.state : resetSamplingState, sharingGroupDataAllocator,
+        sharingGroups, numSharingGroups, populateBrowserPathsFromSharingGroup;
+
+    auto path = buildPath(tempDir, "btdu-binexp-repeated-unittest-" ~ thisProcessID.to!string);
+    scope(exit) remove(path);
+
+    resetSamplingState();
+    expert = true;
+    auto root = browserRootPtr;
+    GlobalPath[] ordered = [
+        GlobalPath(null, subPathRoot.appendName("x")),
+        GlobalPath(null, subPathRoot.appendName("y")),
+        GlobalPath(null, subPathRoot.appendName("z")),
+    ];
+    SharingGroup.sortPaths(ordered);
+    auto repeated = ordered[1];
+    auto paths = sharingGroupDataAllocator.makeArray!GlobalPath(4);
+    paths[] = [repeated, ordered[0], ordered[2], repeated];
+    auto group = make!SharingGroup(sharingGroupAllocator);
+    group.root = root;
+    group.paths = paths;
+    group.pathData = sharingGroupDataAllocator.makeArray!(SharingGroup.PathData)(4).ptr;
+    group.representativeIndex = 3;
+    group.data.samples = 1;
+    group.data.duration = 7;
+    sharingGroups.insert(SharingGroup.Paths(group));
+    numSharingGroups = 1;
+    populateBrowserPathsFromSharingGroup(group, true, 1, group.data.offsets[], 7);
+    auto representative = group.pathData[group.representativeIndex].path;
+
+    exportBinary(path);
+    resetSamplingState();
+    importBinary(path);
+    auto importedGroup = &sharingGroupAllocator[].front();
+    assert(isSorted!((a, b) => a.identityLess(b))(importedGroup.paths));
+    auto importedRepresentative = importedGroup.pathData[importedGroup.representativeIndex].path;
+    assert(importedRepresentative is representative);
+    auto seenAs = importedRepresentative.collectSeenAs();
+    assert(seenAs.total == 1);
+    assert(seenAs.paths.length == 3);
+    foreach (entry, samples; seenAs.paths)
+        assert(samples <= seenAs.total);
+
+    resetSamplingState();
+    expert = false;
 }
 
 unittest

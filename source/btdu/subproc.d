@@ -423,13 +423,7 @@ struct Subprocess
 		auto pathsSlice = allPaths.peek();
 
 		// Sort paths for consistent hashing/deduplication
-		{
-			import std.algorithm.sorting : sort;
-			import std.typecons : tuple;
-			pathsSlice.sort!((ref a, ref b) =>
-				tuple(a.parent, a.subPath) < tuple(b.parent, b.subPath)
-			);
-		}
+		SharingGroup.sortPaths(pathsSlice);
 
 		// Get or create sharing group
 		bool isNewGroup;

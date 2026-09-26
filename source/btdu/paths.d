@@ -117,7 +117,9 @@ __gshared PathRule[] pathRules;
 struct SharingGroup
 {
 	BrowserPath* root;     /// The root BrowserPath for all filesystem paths
-	GlobalPath[] paths;    /// All filesystem paths that share this extent
+	/// All filesystem paths that share this extent.
+	/// Sorted with `sortPaths`, so equal entries are adjacent; Paths hashing and collectSeenAs rely on this.
+	GlobalPath[] paths;
 	SampleData data;       /// Sampling statistics for this extent
 	ulong[historySize] lastSeen; /// Counter snapshots of the last 3 times we've seen this extent
 
@@ -131,6 +133,13 @@ struct SharingGroup
 	}
 	PathData* pathData;    /// ditto
 	size_t representativeIndex;  /// Index of the representative path in paths array
+
+	/// Establish the `paths` ordering invariant.
+	static void sortPaths(GlobalPath[] paths)
+	{
+		import std.algorithm.sorting : sort;
+		paths.sort!((ref a, ref b) => a.identityLess(b));
+	}
 
 	/// Find the index of a path matching the given element range
 	/// Returns size_t.max if not found
@@ -665,6 +674,14 @@ struct GlobalPath
 	private int compareContents(const ref typeof(this) b) const
 	{
 		return subPath.opCmp(*b.subPath);
+	}
+
+	/// Cheap ordering by node identity (pointer values) rather than path contents.
+	/// Consistent within a process only; equal paths compare equal.
+	bool identityLess(const ref typeof(this) b) const
+	{
+		import std.typecons : tuple;
+		return tuple(parent, subPath) < tuple(b.parent, b.subPath);
 	}
 
 	/// Return an iterator for subpaths.
@@ -1258,7 +1275,7 @@ struct BrowserPath
 		// Each group represents one extent where multiple paths share data
 		for (auto group = firstSharingGroup; group !is null; group = group.getNext(&this))
 		{
-			// Add all paths in this group to the result
+			// Paths are sorted, so skip entries equal to the previous one.
 			foreach (i, ref path; group.paths)
 				if (i == 0 || path != group.paths[i - 1])
 					result.paths[path] += group.data.samples;
