@@ -2706,7 +2706,7 @@ struct Browser
 
 unittest
 {
-	resetLiveSamplingState();
+	resetSamplingState();
 	imported = false;
 
 	Browser browser;
@@ -2733,7 +2733,7 @@ unittest
 	assert(!browser.consumeRestartRequest());
 	imported = false;
 
-	resetLiveSamplingState();
+	resetSamplingState();
 }
 
 private:

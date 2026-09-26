@@ -479,14 +479,13 @@ void incrementGeneration()
 			kill(subproc.pid.processID, SIGUSR1);
 }
 
-/// Discard the live sampling dataset while preserving the browser tree identity.
+/// Discard the main dataset while preserving the browser tree identity.
 ///
-/// Call only for live sampling, after every subprocess has been retired, and
-/// while no deletion operation is active. The caller owns the deletion-operation
-/// precondition because asynchronous deletion is owned by the Browser.
-void resetLiveSamplingState()
+/// Call after every subprocess has been retired, and while no deletion
+/// operation is active. The caller owns the deletion-operation precondition
+/// because asynchronous deletion is owned by the Browser.
+void resetSamplingState()
 {
-	assert(!imported, "Cannot reset imported sampling data");
 	foreach (ref subproc; subprocesses)
 		assert(subproc.pid is typeof(subproc.pid).init,
 			"Cannot reset while a subprocess is still active");
@@ -509,6 +508,7 @@ void resetLiveSamplingState()
 	marked.resetNodeSamples();
 	markTotalSamples = 0;
 	currentGeneration = 0;
+	imported = false;
 }
 
 bool toFilesystemPath(BrowserPath* path, void delegate(const(char)[]) sink)
@@ -1015,7 +1015,7 @@ unittest
 {
 	import std.experimental.allocator : make, makeArray;
 
-	resetLiveSamplingState();
+	resetSamplingState();
 	compareMode = true;
 	expert = true;
 	totalSize = 4096;
@@ -1055,7 +1055,9 @@ unittest
 	auto compareSamples = compareRoot.getSamples(SampleType.represented);
 
 	group = null;
-	resetLiveSamplingState();
+	imported = true;
+	resetSamplingState();
+	assert(!imported);
 
 	assert(browserRootPtr is root);
 	assert(root.getEffectiveMark());

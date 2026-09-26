@@ -507,7 +507,7 @@ Pid[] forceTerminate(ref Subprocess[] subprocesses)
 
 unittest
 {
-	resetLiveSamplingState();
+	resetSamplingState();
 	expert = true;
 	auto root = browserRootPtr;
 	root.setMark(true);
@@ -544,7 +544,7 @@ unittest
 	assert(numSharingGroups == 1);
 
 	group = null;
-	resetLiveSamplingState();
+	resetSamplingState();
 
 	assert(browserRootPtr is root);
 	assert(root.getEffectiveMark());
@@ -575,14 +575,14 @@ unittest
 	assert(root.getSamples(SampleType.exclusive) == 1);
 
 	group = null;
-	resetLiveSamplingState();
+	resetSamplingState();
 	group = Subprocess.saveSharingGroup(root, paths, isNew);
 	assert(isNew);
 	observe(group, isNew);
 	assert(root.getSamples(SampleType.represented) == 1);
 
 	group = null;
-	resetLiveSamplingState();
+	resetSamplingState();
 	root.setMark(false);
 	expert = false;
 }
@@ -672,7 +672,7 @@ unittest
 		while (subprocess.handleInput()) {}
 	}
 
-	resetLiveSamplingState();
+	resetSamplingState();
 	totalSize = 1;
 	ulong sampleLimit = ulong.max;
 	auto expectedRandom = Random(cast(Seed) 0);
@@ -720,7 +720,7 @@ unittest
 	freshWorkers[0].closeDescriptors();
 	retired[0].terminate();
 
-	resetLiveSamplingState();
+	resetSamplingState();
 }
 
 private SubPath* appendError(ref SubPath path, ref btdu.proto.Error error)

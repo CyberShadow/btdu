@@ -10,7 +10,7 @@ import std.typecons : Nullable;
 import ae.utils.time.parsedur : parseDuration;
 
 import btdu.common : parseSize, Seed;
-import btdu.state : resetLiveSamplingState;
+import btdu.state : resetSamplingState;
 import btdu.subproc : Subprocess, forceTerminate;
 
 struct SamplingRun
@@ -78,7 +78,7 @@ struct SamplingRun
 		foreach (ref worker; subprocesses)
 			seeds ~= worker.seed;
 		retiredWorkers ~= forceTerminate(subprocesses);
-		resetLiveSamplingState();
+		resetSamplingState();
 		restart();
 		subprocesses = new Subprocess[seeds.length];
 		foreach (i, ref worker; subprocesses)
