@@ -242,6 +242,95 @@ private void exportJson(string path)
 	}
 }
 
+unittest
+{
+	import std.experimental.allocator : make, makeArray;
+	import std.file : tempDir, remove;
+	import std.path : buildPath;
+	import std.process : thisProcessID;
+	debug(check) import btdu.state : checkState;
+	import btdu.state : resetSamplingState, sharingGroupDataAllocator,
+		sharingGroupAllocator, sharingGroups, numSharingGroups,
+		populateBrowserPathsFromSharingGroup, subPathRoot;
+
+	auto path = buildPath(tempDir, "btdu-json-unittest-" ~ thisProcessID.to!string);
+	scope(exit) remove(path);
+
+	resetSamplingState();
+	auto root = browserRootPtr;
+	foreach (name; ["foo", "bar"])
+	{
+		auto leaf = root.appendName("dir").appendName(name);
+		auto paths = sharingGroupDataAllocator.makeArray!GlobalPath(1);
+		paths[0] = GlobalPath(null, subPathRoot.appendName("dir").appendName(name));
+		auto pathData = sharingGroupDataAllocator.makeArray!(SharingGroup.PathData)(1);
+		auto group = make!SharingGroup(sharingGroupAllocator);
+		group.root = root;
+		group.paths = paths;
+		group.pathData = pathData.ptr;
+		group.representativeIndex = 0;
+		group.data.samples = 3;
+		sharingGroups.insert(SharingGroup.Paths(group));
+		numSharingGroups++;
+		populateBrowserPathsFromSharingGroup(group, true, 3, group.data.offsets[], 0);
+		assert(leaf.getSamples(SampleType.represented) == 3);
+	}
+
+	exportJson(path);
+	resetSamplingState();
+	importJson(path);
+	debug(check) checkState();
+	assert(("dir" in *browserRootPtr).getSamples(SampleType.represented) == 6);
+}
+
+unittest
+{
+	import std.experimental.allocator : make, makeArray;
+	import std.file : tempDir, remove;
+	import std.path : buildPath;
+	import std.process : thisProcessID;
+	debug(check) import btdu.state : checkState;
+	import btdu.state : resetSamplingState, sharingGroupDataAllocator,
+		sharingGroupAllocator, sharingGroups, numSharingGroups,
+		populateBrowserPathsFromSharingGroup, subPathRoot;
+
+	auto path = buildPath(tempDir, "btdu-compare-json-unittest-" ~ thisProcessID.to!string);
+	scope(exit) remove(path);
+
+	resetSamplingState();
+	auto root = browserRootPtr;
+	foreach (name; ["foo", "bar"])
+	{
+		root.appendName("compare-dir").appendName(name);
+		auto paths = sharingGroupDataAllocator.makeArray!GlobalPath(1);
+		paths[0] = GlobalPath(null, subPathRoot.appendName("compare-dir").appendName(name));
+		auto pathData = sharingGroupDataAllocator.makeArray!(SharingGroup.PathData)(1);
+		auto group = make!SharingGroup(sharingGroupAllocator);
+		group.root = root;
+		group.paths = paths;
+		group.pathData = pathData.ptr;
+		group.representativeIndex = 0;
+		group.data.samples = 3;
+		sharingGroups.insert(SharingGroup.Paths(group));
+		numSharingGroups++;
+		populateBrowserPathsFromSharingGroup(group, true, 3, group.data.offsets[], 0);
+	}
+
+	exportJson(path);
+	importCompareData(path);
+	debug(check) checkState();
+	assert(("compare-dir" in *compareRootPtr).getSamples(SampleType.represented) == 6);
+	compareMode = false;
+	resetSamplingState();
+	auto emptyCompareRoot = BrowserPath.init;
+	move(emptyCompareRoot, compareRoot);
+	states[DataSet.compare].aggregateOnly = false;
+	compareTotalSize = 0;
+	compareExpert = false;
+	comparePhysical = false;
+	compareFsid = typeof(compareFsid).init;
+}
+
 // ============================================================================
 // du format
 // ============================================================================

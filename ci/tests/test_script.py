@@ -290,6 +290,31 @@ def test_binary_export_import():
     print("  ✓ Binary export and import verified: complete data structure with dir1 and dir2")
 
 
+def test_interactive_json_import():
+    """Open JSON imports in the checked browser and verify the first frame renders."""
+    setup_btrfs_basic()
+    create_test_files()
+
+    for expert, path, session in (
+        (False, "/tmp/interactive-import.json", "import-json"),
+        (True, "/tmp/interactive-import-expert.json", "import-json-expert"),
+    ):
+        expert_option = "--expert " if expert else ""
+        run_btdu(f"--headless {expert_option}--export={path} --max-samples=5000 /mnt/btrfs", timeout=120)
+        machine.succeed(f"tmux new-session -d -s {session} -x 100 -y 30 'btdu --import {path}; echo BTDUEXIT:$?; sleep 60'")
+        try:
+            for _ in range(30):
+                screen = machine.succeed(f"tmux capture-pane -p -t {session}")
+                assert "BTDUEXIT:" not in screen, f"Interactive import exited:\n{screen}"
+                if "[IMPORT]" in screen:
+                    break
+                time.sleep(0.5)
+            else:
+                assert False, f"Interactive import did not render:\n{screen}"
+        finally:
+            machine.succeed(f"tmux kill-session -t {session}")
+
+
 def test_binary_format_autodetect():
     """Verify auto-detection works for both JSON and binary formats."""
     setup_btrfs_basic()
@@ -1833,6 +1858,7 @@ def execute_all_tests():
         test_export_and_import,
         test_du_output_format,
         test_binary_export_import,
+        test_interactive_json_import,
         test_binary_format_autodetect,
         test_binary_expert_mode,
         test_binary_physical_mode,

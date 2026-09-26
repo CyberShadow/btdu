@@ -12,7 +12,7 @@ pkgs.testers.nixosTest {
     boot.supportedFilesystems = [ "btrfs" ];
 
     # Install btdu
-    environment.systemPackages = [ btdu ];
+    environment.systemPackages = [ btdu pkgs.tmux ];
 
     # Create virtual disks for btrfs and ext4 testing
     virtualisation = {
